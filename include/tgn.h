@@ -329,12 +329,11 @@ struct TGNMemoryImpl : torch::nn::Module {
 
     // Get local copy of updated memory, and then last_update.
     auto updated_memory = gru->forward(aggr, memory.index_select(0, n_id));
-    // TODO(kuba)
-    // last_update = scatter(t, idx, 0, dim_size=last_update.size(0),
-    // reduce="max")[n_id]
-    auto last_update =
-        torch::zeros({n_id.size(0)}, n_id.options().dtype(torch::kLong));
-    return {updated_memory, last_update};
+    auto updated_last_update = scatter_max(t, idx, last_update.size(0));
+    std::cout << "Here\n" << std::endl;
+    updated_last_update = updated_last_update.index_select(0, n_id);
+    std::cout << "Here2\n" << std::endl;
+    return {updated_memory, updated_last_update};
   }
 
   auto _update_msg_store(torch::Tensor src, torch::Tensor dst, torch::Tensor t,
@@ -419,6 +418,13 @@ struct TGNMemoryImpl : torch::nn::Module {
     }
 
     return out;
+  }
+
+  auto scatter_max(torch::Tensor src, torch::Tensor index, int dim_size)
+      -> torch::Tensor {
+    return src.new_zeros(src.size(0))
+        .scatter_reduce_(/*dim*/ 0, index, src, /* reduce */ "amax",
+                         /* include_self*/ false);
   }
 
   auto scatter_argmax(torch::Tensor src, torch::Tensor index, int dim_size)
