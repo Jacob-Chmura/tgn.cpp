@@ -3,6 +3,7 @@
 #include <c10/core/TensorOptions.h>
 #include <torch/csrc/autograd/generated/variable_factories.h>
 #include <torch/nn/module.h>
+#include <torch/nn/modules/rnn.h>
 #include <torch/nn/options/linear.h>
 #include <torch/nn/pimpl.h>
 #include <torch/optim/adam.h>
@@ -118,12 +119,10 @@ TORCH_MODULE(TransformerConv);
 
 struct LastNeighborLoader {
   LastNeighborLoader() : size(NUM_NBRS), num_nodes(NUM_NODES) {
-    // self.nbrs = torch.empty((num_nodes, size), dtype=torch.long,
-    // device=device) self.e_id = torch.empty((num_nodes, size),
-    // dtype=torch.long, device=device) self._assoc = torch.empty(num_nodes,
-    // dtype=torch.long, device=device)
-
-    // self.reset_state()
+    // self.nbrs = torch.empty((num_nodes, size), dtype=torch.long)
+    // self.e_id = torch.empty((num_nodes, size), dtype=torch.long)
+    // self._assoc = torch.empty(num_nodes, dtype=torch.long)
+    reset_state();
   }
 
   auto operator()(torch::Tensor global_n_id)
@@ -202,124 +201,134 @@ struct LastNeighborLoader {
 };
 
 struct TGNMemoryImpl : torch::nn::Module {
-  TGNMemoryImpl() : num_nodes(NUM_NODES) {
-    // super().__init__()
+  TGNMemoryImpl()
+      : num_nodes(NUM_NODES),
+        memory(torch::empty({NUM_NODES, MEMORY_DIM})),
+        last_update(torch::empty({NUM_NODES},
+                                 torch::TensorOptions().dtype(torch::kLong))),
+        assoc(torch::empty({NUM_NODES},
+                           torch::TensorOptions().dtype(torch::kLong))) {
+    register_buffer("memory", memory);
+    register_buffer("last_update", last_update);
+    register_buffer("assoc", assoc);
 
-    // self.num_nodes = num_nodes
-    // self.raw_msg_dim = raw_msg_dim
+    // since our identity msg is cat(mem[src], mem[dst], raw_msg, t_enc)
+    constexpr auto cell_dim = MEMORY_DIM + MEMORY_DIM + MSG_DIM + TIME_DIM;
+    gru = register_module("gru", torch::nn::GRUCell(cell_dim, MEMORY_DIM));
 
     // self.aggr_module = aggr_module
     // self.time_enc = TimeEncoder(time_dim)
-    // self.gru = GRUCell(msg_module.out_channels, memory_dim)
-
-    // self.register_buffer("memory", torch.empty(num_nodes, memory_dim))
-    // self.register_buffer("last_update", torch.empty(num_nodes,
-    // dtype=torch.long)) self.register_buffer("_assoc", torch.empty(num_nodes,
-    // dtype=torch.long))
-
     // self.msg_s_store = {}
     // self.msg_d_store = {}
 
-    // self.reset_state()
+    reset_state();
   }
 
   auto reset_state() -> void {
-    // zeros(self.memory)
-    // zeros(self.last_update)
-    // self._reset_message_store()
+    memory.zero_();
+    last_update.zero_();
+    _reset_message_store();
   }
 
-  auto detach() -> void {
-    // self.memory.detach_();
-  }
+  auto detach() -> void { memory.detach_(); }
 
   auto forward(torch::Tensor n_id) -> std::tuple<torch::Tensor, torch::Tensor> {
-    // return is_training() ? _get_updated_memory() :  // memory[n_id],
-    // last_update[n_id];
+    return is_training() ? _get_updated_memory(n_id)
+                         : std::make_pair(memory.index_select(0, n_id),
+                                          last_update.index_select(0, n_id));
+  }
+
+  auto update_state(torch::Tensor src, torch::Tensor dst, torch::Tensor t,
+                    torch::Tensor raw_msg) -> void {
+    auto [n_id, _] = at::_unique(torch::cat({src, dst}));
+
+    if (is_training()) {
+      _update_memory(n_id);
+      _update_msg_store(src, dst, t, raw_msg, true);
+      _update_msg_store(dst, src, t, raw_msg, false);
+    } else {
+      _update_msg_store(src, dst, t, raw_msg, true);
+      _update_msg_store(dst, src, t, raw_msg, false);
+      _update_memory(n_id);
+    }
+  }
+
+  auto _reset_message_store() -> void {
+    // i = self.memory.new_empty((0,), device=self.device, dtype=torch.long)
+    // msg = self.memory.new_empty((0, self.raw_msg_dim),
+    // device=self.device) # Message store format: (src, dst, t, msg)
+    // self.msg_s_store = {j: (i, i, i, msg) for j in range(self.num_nodes)}
+    // self.msg_d_store = {j: (i, i, i, msg) for j in range(self.num_nodes)}
+  }
+
+  auto _update_memory(torch::Tensor n_id) -> void {
+    auto [memory_nid, last_update_nid] = _get_updated_memory(n_id);
+    memory.index_put_({n_id}, memory_nid);
+    last_update.index_put_({n_id}, last_update_nid);
+  }
+
+  auto _get_updated_memory(torch::Tensor n_id)
+      -> std::tuple<torch::Tensor, torch::Tensor> {
+    // self._assoc[n_id] = torch.arange(n_id.size(0), device=n_id.device)
+
+    // # Compute messages (src -> dst), then (dst -> src).
+    // msg_s, t_s, src_s, _= self._compute_msg(n_id, self.msg_s_store)
+    // msg_d, t_d, src_d, _= self._compute_msg(n_id, self.msg_d_store)
+
+    // # Aggregate messages.
+    // idx = torch.cat([src_s, src_d], dim=0)
+    // msg = torch.cat([msg_s, msg_d], dim=0)
+    // t = torch.cat([t_s, t_d], dim=0)
+    // aggr = self.aggr_module(msg, self._assoc[idx], t, n_id.size(0))
+
+    // # Get local copy of updated memory, and then last_update.
+    // memory = self.gru(aggr, self.memory[n_id])
+    // last_update = scatter(t, idx, 0, dim_size=self.last_update.size(0),
+    // reduce="//max")[n_id]
+
+    // return memory, last_update
+    //
     auto x = torch::zeros({n_id.size(0), MEMORY_DIM});
     auto last_update =
         torch::zeros({n_id.size(0)}, n_id.options().dtype(torch::kLong));
     return {x, last_update};
   }
 
-  auto update_state(torch::Tensor src, torch::Tensor dst, torch::Tensor t,
-                    torch::Tensor raw_msg) -> void {
-    // n_id = torch.cat([src, dst]).unique()
+  auto _update_msg_store(torch::Tensor src, torch::Tensor dst, torch::Tensor t,
+                         torch::Tensor raw_msg, bool is_src_store) -> void {
+    //     n_id, perm = src.sort()
+    //     n_id, count = n_id.unique_consecutive(return_counts=True)
+    //     for i, idx in zip(n_id.tolist(), perm.split(count.tolist())):
+    //         msg_store[i] = (src[idx], dst[idx], t[idx], raw_msg[idx])
+  }
 
-    // if self.training:
-    //     self._update_memory(n_id)
-    //     self._update_msg_store(src, dst, t, raw_msg, self.msg_s_store)
-    //     self._update_msg_store(dst, src, t, raw_msg, self.msg_d_store)
-    // else:
-    //     self._update_msg_store(src, dst, t, raw_msg, self.msg_s_store)
-    //     self._update_msg_store(dst, src, t, raw_msg, self.msg_d_store)
-    //     self._update_memory(n_id)
+  auto _compute_msg() -> void {
+    // def _compute_msg(self, n_id: Tensor, msg_store: TGNMessageStoreType):
+    //     data = [msg_store[i] for i in n_id.tolist()]
+    //     src, dst, t, raw_msg = list(zip(*data))
+    //     src = torch.cat(src, dim=0).to(self.device)
+    //     dst = torch.cat(dst, dim=0).to(self.device)
+    //     t = torch.cat(t, dim=0).to(self.device)
+    //     # Filter out empty tensors to avoid `invalid configuration argument`.
+    //     # TODO Investigate why this is needed.
+    //     raw_msg = [m for i, m in enumerate(raw_msg) if m.numel() > 0 or i ==
+    //     0] raw_msg = torch.cat(raw_msg, dim=0).to(self.device) t_rel = t -
+    //     self.last_update[src] t_enc = self.time_enc(t_rel.to(raw_msg.dtype))
+
+    //    msg = torch.cat(self.memory[src], self.memory[dst], raw_msg, t_enc)
+    //    return msg, t, src, dst
+  }
+
+  auto train() -> void {
+    // def train(self, mode: bool = True):
+    //    if self.training and not mode:
+    //        # Flush message store in case we just entered eval mode.
+    //        self._update_memory(torch.arange(self.num_nodes,
+    //        device=self.memory.device)) self._reset_message_store()
+    // super().train(mode)
   }
 
   /*
-    def _reset_message_store(self):
-        i = self.memory.new_empty((0,), device=self.device, dtype=torch.long)
-        msg = self.memory.new_empty((0, self.raw_msg_dim), device=self.device)
-        # Message store format: (src, dst, t, msg)
-        self.msg_s_store = {j: (i, i, i, msg) for j in range(self.num_nodes)}
-        self.msg_d_store = {j: (i, i, i, msg) for j in range(self.num_nodes)}
-
-    def _update_memory(self, n_id: Tensor):
-        memory, last_update = self._get_updated_memory(n_id)
-        self.memory[n_id] = memory
-        self.last_update[n_id] = last_update
-
-    def _get_updated_memory(self, n_id: Tensor) -> Tuple[Tensor, Tensor]:
-        self._assoc[n_id] = torch.arange(n_id.size(0), device=n_id.device)
-
-        # Compute messages (src -> dst), then (dst -> src).
-        msg_s, t_s, src_s, _= self._compute_msg(n_id, self.msg_s_store)
-        msg_d, t_d, src_d, _= self._compute_msg(n_id, self.msg_d_store)
-
-        # Aggregate messages.
-        idx = torch.cat([src_s, src_d], dim=0)
-        msg = torch.cat([msg_s, msg_d], dim=0)
-        t = torch.cat([t_s, t_d], dim=0)
-        aggr = self.aggr_module(msg, self._assoc[idx], t, n_id.size(0))
-
-        # Get local copy of updated memory, and then last_update.
-        memory = self.gru(aggr, self.memory[n_id])
-        last_update = scatter(t, idx, 0, dim_size=self.last_update.size(0),
-reduce="max")[n_id]
-
-        return memory, last_update
-
-    def _update_msg_store(
-        self, src: Tensor, dst: Tensor, t: Tensor, raw_msg: Tensor, msg_store
-    ):
-        n_id, perm = src.sort()
-        n_id, count = n_id.unique_consecutive(return_counts=True)
-        for i, idx in zip(n_id.tolist(), perm.split(count.tolist())):
-            msg_store[i] = (src[idx], dst[idx], t[idx], raw_msg[idx])
-
-    def _compute_msg(self, n_id: Tensor, msg_store: TGNMessageStoreType):
-        data = [msg_store[i] for i in n_id.tolist()]
-        src, dst, t, raw_msg = list(zip(*data))
-        src = torch.cat(src, dim=0).to(self.device)
-        dst = torch.cat(dst, dim=0).to(self.device)
-        t = torch.cat(t, dim=0).to(self.device)
-        # Filter out empty tensors to avoid `invalid configuration argument`.
-        # TODO Investigate why this is needed.
-        raw_msg = [m for i, m in enumerate(raw_msg) if m.numel() > 0 or i == 0]
-        raw_msg = torch.cat(raw_msg, dim=0).to(self.device)
-        t_rel = t - self.last_update[src]
-        t_enc = self.time_enc(t_rel.to(raw_msg.dtype))
-
-        msg = torch.cat(self.memory[src], self.memory[dst], raw_msg, t_enc)
-        return msg, t, src, dst
-
-    def train(self, mode: bool = True):
-        if self.training and not mode:
-            # Flush message store to memory in case we just entered eval mode.
-            self._update_memory(torch.arange(self.num_nodes,
-device=self.memory.device)) self._reset_message_store() super().train(mode)
-
-
 class LastAggregator(torch.nn.Module):
     def forward(self, msg: Tensor, index: Tensor, t: Tensor, dim_size: int):
         argmax = scatter_argmax(t, index, dim=0, dim_size=dim_size)
@@ -334,6 +343,11 @@ class MeanAggregator(torch.nn.Module):
    */
 
   std::size_t num_nodes{};
+  torch::Tensor memory{};
+  torch::Tensor last_update{};
+  torch::Tensor assoc{};
+
+  torch::nn::GRUCell gru{nullptr};
 };
 TORCH_MODULE(TGNMemory);
 
@@ -387,7 +401,6 @@ struct TGNImpl : torch::nn::Module {
     assoc.index_put_({n_id_cache},
                      torch::arange(n_id_cache.size(0), assoc.options()));
 
-    // Map global query to local indices and select
     auto local_indices = assoc.index({global_n_id});
     return z_cache.index_select(0, local_indices);
   }
@@ -426,7 +439,8 @@ auto train(TGN tgn, LinkPredictor decoder, torch::optim::Adam& opt) -> float {
     auto batch = get_batch();
     opt.zero_grad();
 
-    auto n_id = torch::cat({batch.src, batch.dst, batch.neg_dst});  // unique()?
+    auto [n_id, _] =
+        at::_unique(torch::cat({batch.src, batch.dst, batch.neg_dst}));
     tgn->forward(n_id);
 
     auto z_src = tgn->get_embeddings(batch.src);
@@ -462,7 +476,7 @@ auto hello_torch() -> void {
   params.insert(params.end(), decoder_params.begin(), decoder_params.end());
   torch::optim::Adam opt(params, torch::optim::AdamOptions(lr));
 
-  for (std::size_t epoch = 1; epoch <= 2; ++epoch) {
+  for (std::size_t epoch = 1; epoch <= 5; ++epoch) {
     auto loss = train(encoder, decoder, opt);
     std::cout << "Epoch " << epoch << " Loss: " << loss << std::endl;
   }
