@@ -1,4 +1,6 @@
+#include <ATen/ops/_unique.h>
 #include <ATen/ops/rand.h>
+#include <c10/core/TensorOptions.h>
 #include <torch/csrc/autograd/generated/variable_factories.h>
 #include <torch/nn/module.h>
 #include <torch/nn/options/linear.h>
@@ -7,18 +9,21 @@
 #include <torch/serialize/input-archive.h>
 #include <torch/torch.h>
 
+#include <cstdint>
 #include <iostream>
 #include <memory>
 #include <shared_mutex>
 #include <tuple>
 #include <utility>
+#include <vector>
 
 namespace tgn {
 
 constexpr std::size_t MEMORY_DIM = 100;
 constexpr std::size_t TIME_DIM = 100;
+constexpr std::size_t MSG_DIM = 7;
 constexpr std::size_t EMBEDDING_DIM = 100;
-
+constexpr std::size_t BATCH_SIZE = 5;
 constexpr std::size_t NUM_NODES = 1000;
 constexpr std::size_t NUM_NBRS = 10;
 
@@ -43,7 +48,7 @@ struct LinkPredictorImpl : torch::nn::Module {
 TORCH_MODULE(LinkPredictor);
 
 struct TimeEncoderImpl : torch::nn::Module {
-  explcit TimeEncoderImpl(std::size_t out_channels) {
+  explicit TimeEncoderImpl(std::size_t out_channels) {
     lin = register_module("lin", torch::nn::Linear(1, out_channels));
   }
 
@@ -69,9 +74,9 @@ struct TransformerConvImpl : torch::nn::Module {
     lin_skip = register_module(
         "lin_skip", torch::nn::Linear(in_channels, heads * out_channels));
     lin_edge = register_module(
-        "lin_edge", torch::nn::Linear(torch::nn::LinearOptions(
-                                          in_channels, heads * out_channels)
-                                          .bias(false)));
+        "lin_edge", torch::nn::Linear(
+                        torch::nn::LinearOptions(edge_dim, heads * out_channels)
+                            .bias(false)));
   }
 
   torch::Tensor forward(torch::Tensor x, torch::Tensor edge_index,
@@ -111,32 +116,6 @@ struct TransformerConvImpl : torch::nn::Module {
 };
 TORCH_MODULE(TransformerConv);
 
-struct GraphAttentionEmbeddingImpl : torch::nn::Module {
-  GraphAttentionEmbeddingImpl(std::size_t in_channels, std::size_t out_channels,
-                              std::size_t msg_dim) {
-    // TODO(kuba): this should be shared with TGNMemory
-    time_encoder = register_module("time_encoder", TimeEncoder(TIME_DIM));
-
-    const auto edge_dim = msg_dim + TIME_DIM;
-    conv = register_module(
-        "conv", TransformerConv(in_channels, out_channels / 2, edge_dim,
-                                2 /*heads*/, 0.1 /* dropout*/));
-  }
-
-  torch::Tensor forward(torch::Tensor x, torch::Tensor last_update,
-                        torch::Tensor edge_index, torch::Tensor t,
-                        torch::Tensor msg) {
-    auto rel_t = last_update[edge_index[0]] - t;
-    auto rel_t_enc = time_encoder->forward(rel_t);
-    auto edge_attr = torch::cat({rel_t_enc, msg}, -1);
-    return conv(x, edge_index, edge_attr);
-  }
-
-  TimeEncoder time_encoder{nullptr};
-  TransformerConv conv{nullptr};
-};
-TORCH_MODULE(GraphAttentionEmbedding);
-
 struct LastNeighborLoader {
   LastNeighborLoader() : size(NUM_NBRS), num_nodes(NUM_NODES) {
     // self.nbrs = torch.empty((num_nodes, size), dtype=torch.long,
@@ -147,7 +126,8 @@ struct LastNeighborLoader {
     // self.reset_state()
   }
 
-  auto operator()(torch::Tensor n_id) -> void {
+  auto operator()(torch::Tensor global_n_id)
+      -> std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> {
     // nbrs = self.nbrs[n_id]
     // nodes = n_id.view(-1, 1).repeat(1, self.size)
     // e_id = self.e_id[n_id]
@@ -162,6 +142,16 @@ struct LastNeighborLoader {
     // nbrs, nodes = self._assoc[nbrs], self._assoc[nodes]
 
     // return n_id, torch.stack([nbrs, nodes]), e_id
+    auto [n_id, _] = at::_unique(global_n_id);
+
+    auto indices = torch::arange(n_id.size(0), n_id.options());
+    std::vector<torch::Tensor> indices_list = {indices, indices};
+    torch::Tensor edge_index = torch::stack(indices_list, 0);
+
+    torch::Tensor e_id =
+        torch::zeros({n_id.size(0)}, n_id.options().dtype(torch::kLong));
+
+    return {n_id, edge_index, e_id};
   }
 
   auto insert(torch::Tensor src, torch::Tensor dst) -> void {
@@ -230,7 +220,7 @@ struct TGNMemoryImpl : torch::nn::Module {
     // self.msg_s_store = {}
     // self.msg_d_store = {}
 
-    // self.reset_parameters()
+    // self.reset_state()
   }
 
   auto reset_state() -> void {
@@ -246,7 +236,10 @@ struct TGNMemoryImpl : torch::nn::Module {
   auto forward(torch::Tensor n_id) -> std::tuple<torch::Tensor, torch::Tensor> {
     // return is_training() ? _get_updated_memory() :  // memory[n_id],
     // last_update[n_id];
-    return {torch::rand({1, 1}), torch::rand({1, 1})};
+    auto x = torch::zeros({n_id.size(0), MEMORY_DIM});
+    auto last_update =
+        torch::zeros({n_id.size(0)}, n_id.options().dtype(torch::kLong));
+    return {x, last_update};
   }
 
   auto update_state(torch::Tensor src, torch::Tensor dst, torch::Tensor t,
@@ -264,7 +257,6 @@ struct TGNMemoryImpl : torch::nn::Module {
   }
 
   /*
-
     def _reset_message_store(self):
         i = self.memory.new_empty((0,), device=self.device, dtype=torch.long)
         msg = self.memory.new_empty((0, self.raw_msg_dim), device=self.device)
@@ -339,7 +331,6 @@ class LastAggregator(torch.nn.Module):
 class MeanAggregator(torch.nn.Module):
     def forward(self, msg: Tensor, index: Tensor, t: Tensor, dim_size: int):
         return scatter(msg, index, dim=0, dim_size=dim_size, reduce="mean")
-
    */
 
   std::size_t num_nodes{};
@@ -348,10 +339,12 @@ TORCH_MODULE(TGNMemory);
 
 struct TGNImpl : torch::nn::Module {
   TGNImpl() {
-    encoder = register_module(
-        "encoder",
-        GraphAttentionEmbedding(MEMORY_DIM, EMBEDDING_DIM, 10 /*msg_dim */));
     memory = register_module("memory", TGNMemory());
+    time_encoder = register_module("time_encoder", TimeEncoder(TIME_DIM));
+    conv =
+        register_module("conv", TransformerConv(MEMORY_DIM, EMBEDDING_DIM / 2,
+                                                MSG_DIM + TIME_DIM, 2 /*heads*/,
+                                                0.1 /* dropout*/));
   }
 
   auto reset_state() -> void {
@@ -367,63 +360,110 @@ struct TGNImpl : torch::nn::Module {
 
   auto detach_memory() -> void { memory->detach(); }
 
-  torch::Tensor forward(torch::Tensor n_id) {
-    // n_id, edge_index, e_id = nbr_loader(n_id)
-    // assoc[n_id] = torch.arange(n_id.size(0), device=device)
-    // z, last_update = memory(n_id)
-    // z = gnn(z, last_update, edge_index, data.t[e_id], data.msg[e_id])
-    return torch::rand({10, 1}, torch::requires_grad()).mean();
+  torch::Tensor forward(torch::Tensor global_n_id) {
+    auto [n_id, edge_index, e_id] = nbr_loader(global_n_id);
+    auto [x, last_update] = memory(n_id);
+
+    // Problem: global ref to data
+    // auto t = data_t.index_select(0, e_id);
+    // auto msg = data_msg.index_select(0, e_id);
+    auto t = torch::rand({n_id.size(0)});
+    auto msg = torch::rand({n_id.size(0), MSG_DIM});
+
+    auto rel_t = last_update.index_select(0, edge_index[0]) - t;
+    auto rel_t_z = time_encoder->forward(rel_t);
+    auto edge_attr = torch::cat({rel_t_z, msg}, -1);
+
+    z_cache = conv(x, edge_index, edge_attr);
+    n_id_cache = n_id;
+
+    return z_cache;
   }
 
-  GraphAttentionEmbedding encoder{nullptr};
+  auto get_embeddings(torch::Tensor global_n_id) -> torch::Tensor {
+    // Build the local mapping (assoc) on the fly for the cached nodes
+    auto assoc = torch::full({static_cast<std::uint64_t>(NUM_NODES)}, -1,
+                             torch::TensorOptions().dtype(torch::kLong));
+    assoc.index_put_({n_id_cache},
+                     torch::arange(n_id_cache.size(0), assoc.options()));
+
+    // Map global query to local indices and select
+    auto local_indices = assoc.index({global_n_id});
+    return z_cache.index_select(0, local_indices);
+  }
+
+  TimeEncoder time_encoder{nullptr};
+  TransformerConv conv{nullptr};
   TGNMemory memory{nullptr};
   LastNeighborLoader nbr_loader{};
+
+  torch::Tensor z_cache;
+  torch::Tensor n_id_cache;
 };
 TORCH_MODULE(TGN);
 
-auto train(TGN tgn, torch::optim::Adam& opt) -> float {
-  // Helper vector to map global node indices to local ones.
-  // assoc = torch.empty(data.num_nodes, dtype=torch.long, device=device)
+struct Batch {
+  torch::Tensor src, dst, neg_dst, t, msg;
+};
+
+auto get_batch() -> Batch {
+  return Batch{
+      .src = torch::randint(0, NUM_NODES, {BATCH_SIZE}),
+      .dst = torch::randint(0, NUM_NODES, {BATCH_SIZE}),
+      .neg_dst = torch::randint(0, NUM_NODES, {BATCH_SIZE}),
+      .t = torch::zeros({BATCH_SIZE}),
+      .msg = torch::zeros({BATCH_SIZE, MSG_DIM}),
+  };
+}
+
+auto train(TGN tgn, LinkPredictor decoder, torch::optim::Adam& opt) -> float {
   tgn->train();
+  decoder->train();
   tgn->reset_state();
 
-  opt.zero_grad();
+  float loss_{0};
+  {
+    auto batch = get_batch();
+    opt.zero_grad();
 
-  auto src = torch::rand({1, 1});
-  auto dst = torch::rand({1, 1});
-  auto neg_dst = torch::rand({1, 1});
-  auto t = torch::rand({1, 1});
-  auto msg = torch::rand({1, 1});
-  auto n_id = torch::rand({1, 1});
+    auto n_id = torch::cat({batch.src, batch.dst, batch.neg_dst});  // unique()?
+    tgn->forward(n_id);
 
-  auto z = tgn->forward(n_id);
+    auto z_src = tgn->get_embeddings(batch.src);
+    auto z_dst = tgn->get_embeddings(batch.dst);
+    auto z_neg = tgn->get_embeddings(batch.neg_dst);
 
-  // pos_out = decoder(z[assoc[batch.src]], z[assoc[batch.dst]]);
-  // neg_out = decoder(z[assoc[batch.src]], z[assoc[batch.neg_dst]]);
-  auto pos_out = torch::rand({10, 1}, torch::requires_grad()).mean();
-  auto neg_out = torch::rand({10, 1}, torch::requires_grad()).mean();
+    auto pos_out = decoder->forward(z_src, z_dst);
+    auto neg_out = decoder->forward(z_src, z_neg);
 
-  auto loss = torch::nn::functional::binary_cross_entropy_with_logits(
-      pos_out, torch::ones_like(pos_out));
-  loss += torch::nn::functional::binary_cross_entropy_with_logits(
-      neg_out, torch::ones_like(neg_out));
+    auto loss = torch::nn::functional::binary_cross_entropy_with_logits(
+                    pos_out, torch::ones_like(pos_out)) +
+                torch::nn::functional::binary_cross_entropy_with_logits(
+                    neg_out, torch::zeros_like(neg_out));
+    std::cout << "Loss: " << loss << std::endl;
 
-  tgn->update_state(src, dst, t, msg);
+    tgn->update_state(batch.src, batch.dst, batch.t, batch.msg);
+    loss.backward();
+    opt.step();
+    tgn->detach_memory();
 
-  loss.backward();
-  opt.step();
+    loss_ = loss.item<float>();
+  }
 
-  tgn->detach_memory();
-
-  return loss.item<float>();
+  return loss_;
 }
 
 auto hello_torch() -> void {
-  TGN tgn;
-  torch::optim::Adam opt(tgn->parameters(), torch::optim::AdamOptions(lr));
+  TGN encoder;
+  LinkPredictor decoder{EMBEDDING_DIM};
+
+  std::vector<torch::Tensor> params = encoder->parameters();
+  auto decoder_params = decoder->parameters();
+  params.insert(params.end(), decoder_params.begin(), decoder_params.end());
+  torch::optim::Adam opt(params, torch::optim::AdamOptions(lr));
 
   for (std::size_t epoch = 1; epoch <= 2; ++epoch) {
-    auto loss = train(tgn, opt);
+    auto loss = train(encoder, decoder, opt);
     std::cout << "Epoch " << epoch << " Loss: " << loss << std::endl;
   }
 }
