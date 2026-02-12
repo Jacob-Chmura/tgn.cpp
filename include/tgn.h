@@ -352,37 +352,54 @@ struct TGNMemoryImpl : torch::nn::Module {
     auto t_s = t.index_select(0, perm).split_with_sizes(sizes);
     auto msg_s = raw_msg.index_select(0, perm).split_with_sizes(sizes);
 
+    auto& store = is_src_store ? src_store : dst_store;
+
     for (std::int64_t i = 0; i < unique_nid.size(0); ++i) {
       auto key = unique_nid[i].item<std::int64_t>();
       auto value = std::make_tuple(src_s[i], dst_s[i], t_s[i], msg_s[i]);
       if (is_src_store) {
-        src_store[key] = value;
+        store[key] = value;
       } else {
-        dst_store[key] = value;
+        store[key] = value;
       }
     }
   }
 
   auto _compute_msg(torch::Tensor n_id, bool is_src_store)
       -> std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> {
-    // TODO(kuba)
-    //     data = [msg_store[i] for i in n_id.tolist()]
-    //     src, dst, t, raw_msg = list(zip(*data))
-    //     src = torch.cat(src, dim=0).to(self.device)
-    //     dst = torch.cat(dst, dim=0).to(self.device)
-    //     t = torch.cat(t, dim=0).to(self.device)
-    //     # Filter out empty tensors to avoid `invalid configuration argument`.
-    //     # TODO Investigate why this is needed.
-    //     raw_msg = [m for i, m in enumerate(raw_msg) if m.numel() > 0 or i ==
-    //     0] raw_msg = torch.cat(raw_msg, dim=0).to(self.device) t_rel = t -
-    //     self.last_update[src] t_enc = self.time_enc(t_rel.to(raw_msg.dtype))
+    // Gather stored messages
+    std::vector<torch::Tensor> src_list;
+    std::vector<torch::Tensor> dst_list;
+    std::vector<torch::Tensor> t_list;
+    std::vector<torch::Tensor> raw_msg_list;
 
-    //    msg = torch.cat(self.memory[src], self.memory[dst], raw_msg, t_enc)
-    //    return msg, t, src, dst
-    return std::make_tuple(torch::rand({n_id.size(0), MEMORY_DIM + MEMORY_DIM +
-                                                          MSG_DIM + TIME_DIM}),
-                           torch::rand({n_id.size(0)}),
-                           torch::randint(0, 1, n_id.size(0)));
+    auto& store = is_src_store ? src_store : dst_store;
+    auto n_acc = n_id.accessor<std::int64_t, 1>();
+    for (std::int64_t i = 0; i < n_id.numel(); ++i) {
+      auto node = n_acc[i];
+
+      const auto& data = store[node];
+      src_list.push_back(std::get<0>(data));
+      dst_list.push_back(std::get<1>(data));
+      t_list.push_back(std::get<2>(data));
+      raw_msg_list.push_back(std::get<3>(data));
+    }
+
+    auto src = torch::cat(src_list, 0);
+    auto dst = torch::cat(dst_list, 0);
+    auto t = torch::cat(t_list, 0);
+    auto raw_msg = torch::cat(raw_msg_list, 0);
+
+    // Compute msg components
+    auto rel_t = t - last_update.index_select(0, src);
+    auto rel_t_z = time_encoder->forward(rel_t.to(raw_msg.dtype()));
+    auto mem_src = memory.index_select(0, src);
+    auto mem_dst = memory.index_select(0, dst);
+
+    // Final message (identity aggr)
+    auto msg = torch::cat({mem_src, mem_dst, raw_msg, rel_t_z}, 1);
+
+    return std::make_tuple(msg, t, src);
   }
 
   auto last_aggr(torch::Tensor msg, torch::Tensor index, torch::Tensor t,
