@@ -27,7 +27,8 @@ constexpr std::size_t EMBEDDING_DIM = 100;
 constexpr std::size_t BATCH_SIZE = 5;
 constexpr std::size_t NUM_NODES = 1000;
 constexpr std::size_t NUM_NBRS = 10;
-
+constexpr std::size_t NUM_HEADS = 2;
+constexpr float DROPOUT = 0.1;
 const double lr = 1e-3;
 
 struct LinkPredictorImpl : torch::nn::Module {
@@ -97,12 +98,12 @@ struct TransformerConvImpl : torch::nn::Module {
     auto alpha = (query_i * key_j).sum(-1) /
                  std::sqrt(static_cast<double>(out_channels));
 
-    // Scatter softmax
+    // TODO(kuba): Scatter softmax
     // a = torch_geometric.softmax(a, index=i, size_i=w_q.size(0))
     alpha = torch::dropout(alpha, dropout, is_training());
 
     auto out = (v.index_select(0, j) + e) * alpha.view({-1, heads, 1});
-    // Scatter add
+    // TODO(kuba): Scatter add
     // out = aggr_module(out, i, dim=0, dim_size=w_q.size(0));
 
     out = out.view({num_nodes, heads * out_channels});
@@ -167,6 +168,7 @@ struct LastNeighborLoader {
   }
 
   auto insert(torch::Tensor src, torch::Tensor dst) -> void {
+    // TODO(kuba)
     // # Collect central nodes, their nbrs and the current event ids.
     // nbrs = torch.cat([src, dst], dim=0)
     // nodes = torch.cat([dst, src], dim=0)
@@ -219,8 +221,9 @@ struct LastNeighborLoader {
 };
 
 struct TGNMemoryImpl : torch::nn::Module {
-  TGNMemoryImpl()
-      : num_nodes(NUM_NODES),
+  explicit TGNMemoryImpl(TimeEncoder time_encoder)
+      : time_encoder(time_encoder),
+        num_nodes(NUM_NODES),
         memory(torch::empty({NUM_NODES, MEMORY_DIM})),
         last_update(torch::empty({NUM_NODES},
                                  torch::TensorOptions().dtype(torch::kLong))),
@@ -233,11 +236,6 @@ struct TGNMemoryImpl : torch::nn::Module {
     // since our identity msg is cat(mem[src], mem[dst], raw_msg, t_enc)
     constexpr auto cell_dim = MEMORY_DIM + MEMORY_DIM + MSG_DIM + TIME_DIM;
     gru = register_module("gru", torch::nn::GRUCell(cell_dim, MEMORY_DIM));
-
-    // self.aggr_module = aggr_module
-    // self.time_enc = TimeEncoder(time_dim)
-    // self.msg_s_store = {}
-    // self.msg_d_store = {}
 
     reset_state();
   }
@@ -272,6 +270,7 @@ struct TGNMemoryImpl : torch::nn::Module {
   }
 
   auto _reset_message_store() -> void {
+    // TODO(kuba)
     // i = self.memory.new_empty((0,), device=self.device, dtype=torch.long)
     // msg = self.memory.new_empty((0, self.raw_msg_dim),
     // device=self.device) # Message store format: (src, dst, t, msg)
@@ -287,41 +286,40 @@ struct TGNMemoryImpl : torch::nn::Module {
 
   auto _get_updated_memory(torch::Tensor n_id)
       -> std::tuple<torch::Tensor, torch::Tensor> {
-    // self._assoc[n_id] = torch.arange(n_id.size(0), device=n_id.device)
+    assoc.index_put_({n_id}, torch::arange(n_id.size(0)));
 
-    // # Compute messages (src -> dst), then (dst -> src).
-    // msg_s, t_s, src_s, _= self._compute_msg(n_id, self.msg_s_store)
-    // msg_d, t_d, src_d, _= self._compute_msg(n_id, self.msg_d_store)
+    // Compute messages (src -> dst), then (dst -> src).
+    auto [msg_s, t_s, src_s] = _compute_msg(n_id, true);
+    auto [msg_d, t_d, src_d] = _compute_msg(n_id, false);
 
-    // # Aggregate messages.
-    // idx = torch.cat([src_s, src_d], dim=0)
-    // msg = torch.cat([msg_s, msg_d], dim=0)
-    // t = torch.cat([t_s, t_d], dim=0)
-    // aggr = self.aggr_module(msg, self._assoc[idx], t, n_id.size(0))
+    // Aggregate messages.
+    auto idx = torch::cat({src_s, src_d}, 0);
+    auto msg = torch::cat({msg_s, msg_d}, 0);
+    auto t = torch::cat({t_s, t_d}, 0);
+    auto aggr = last_aggr(msg, assoc.index_select(0, idx), t, n_id.size(0));
 
-    // # Get local copy of updated memory, and then last_update.
-    // memory = self.gru(aggr, self.memory[n_id])
-    // last_update = scatter(t, idx, 0, dim_size=self.last_update.size(0),
-    // reduce="//max")[n_id]
-
-    // return memory, last_update
-    //
-    auto x = torch::zeros({n_id.size(0), MEMORY_DIM});
+    // Get local copy of updated memory, and then last_update.
+    auto updated_memory = gru->forward(aggr, memory.index_select(0, n_id));
+    // TODO(kuba)
+    // last_update = scatter(t, idx, 0, dim_size=last_update.size(0),
+    // reduce="max")[n_id]
     auto last_update =
         torch::zeros({n_id.size(0)}, n_id.options().dtype(torch::kLong));
-    return {x, last_update};
+    return {updated_memory, last_update};
   }
 
   auto _update_msg_store(torch::Tensor src, torch::Tensor dst, torch::Tensor t,
                          torch::Tensor raw_msg, bool is_src_store) -> void {
+    // TODO(kuba)
     //     n_id, perm = src.sort()
     //     n_id, count = n_id.unique_consecutive(return_counts=True)
     //     for i, idx in zip(n_id.tolist(), perm.split(count.tolist())):
     //         msg_store[i] = (src[idx], dst[idx], t[idx], raw_msg[idx])
   }
 
-  auto _compute_msg() -> void {
-    // def _compute_msg(self, n_id: Tensor, msg_store: TGNMessageStoreType):
+  auto _compute_msg(torch::Tensor n_id, bool is_src_store)
+      -> std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> {
+    // TODO(kuba)
     //     data = [msg_store[i] for i in n_id.tolist()]
     //     src, dst, t, raw_msg = list(zip(*data))
     //     src = torch.cat(src, dim=0).to(self.device)
@@ -335,36 +333,38 @@ struct TGNMemoryImpl : torch::nn::Module {
 
     //    msg = torch.cat(self.memory[src], self.memory[dst], raw_msg, t_enc)
     //    return msg, t, src, dst
+    return std::make_tuple(torch::rand({n_id.size(0), MEMORY_DIM + MEMORY_DIM +
+                                                          MSG_DIM + TIME_DIM}),
+                           torch::rand({n_id.size(0)}),
+                           torch::randint(0, 1, n_id.size(0)));
   }
 
-  auto train() -> void {
-    // def train(self, mode: bool = True):
-    //    if self.training and not mode:
-    //        # Flush message store in case we just entered eval mode.
-    //        self._update_memory(torch.arange(self.num_nodes,
-    //        device=self.memory.device)) self._reset_message_store()
-    // super().train(mode)
+  auto last_aggr(torch::Tensor msg, torch::Tensor index, torch::Tensor t,
+                 int dim_size) -> torch::Tensor {
+    // TODO(kuba)
+    // argmax = scatter_argmax(t, index, dim=0, dim_size=dim_size)
+    // out = msg.new_zeros((dim_size, msg.size(-1)))
+    // mask = argmax < msg.size(0)  # Filter items with at least one entry.
+    // out[mask] = msg[argmax[mask]]
+    // return out
+    return torch::zeros({dim_size, msg.size(-1)}, msg.options());
   }
 
-  /*
-class LastAggregator(torch.nn.Module):
-    def forward(self, msg: Tensor, index: Tensor, t: Tensor, dim_size: int):
-        argmax = scatter_argmax(t, index, dim=0, dim_size=dim_size)
-        out = msg.new_zeros((dim_size, msg.size(-1)))
-        mask = argmax < msg.size(0)  # Filter items with at least one entry.
-        out[mask] = msg[argmax[mask]]
-        return out
-
-class MeanAggregator(torch.nn.Module):
-    def forward(self, msg: Tensor, index: Tensor, t: Tensor, dim_size: int):
-        return scatter(msg, index, dim=0, dim_size=dim_size, reduce="mean")
-   */
+  auto train(bool mode = true) -> void override {
+    if (is_training() && !mode) {
+      // Flush message store in case we just entered eval mode.
+      _update_memory(torch::arange(num_nodes));
+      _reset_message_store();
+    }
+    torch::nn::Module::train(mode);
+  }
 
   std::size_t num_nodes{};
   torch::Tensor memory{};
   torch::Tensor last_update{};
   torch::Tensor assoc{};
 
+  TimeEncoder time_encoder{nullptr};
   torch::nn::GRUCell gru{nullptr};
 };
 TORCH_MODULE(TGNMemory);
@@ -373,12 +373,11 @@ struct TGNImpl : torch::nn::Module {
   TGNImpl()
       : assoc(torch::full({NUM_NODES}, -1,
                           torch::TensorOptions().dtype(torch::kLong))) {
-    memory = register_module("memory", TGNMemory());
     time_encoder = register_module("time_encoder", TimeEncoder(TIME_DIM));
-    conv =
-        register_module("conv", TransformerConv(MEMORY_DIM, EMBEDDING_DIM / 2,
-                                                MSG_DIM + TIME_DIM, 2 /*heads*/,
-                                                0.1 /* dropout*/));
+    memory = register_module("memory", TGNMemory(time_encoder));
+    conv = register_module(
+        "conv", TransformerConv(MEMORY_DIM, EMBEDDING_DIM / 2,
+                                MSG_DIM + TIME_DIM, NUM_HEADS, DROPOUT));
   }
 
   auto reset_state() -> void {
@@ -401,7 +400,7 @@ struct TGNImpl : torch::nn::Module {
     assoc.index_put_({n_id}, torch::arange(n_id.size(0), assoc.options()));
 
     if (e_id.numel() > 0) {
-      // Problem: global ref to data
+      // TODO(kuba): global ref to data
       auto t = torch::rand({n_id.size(0)});             // data.t[e_id]
       auto msg = torch::rand({n_id.size(0), MSG_DIM});  // data.msg[e_id]
 
