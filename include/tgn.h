@@ -66,18 +66,18 @@ struct TransformerConvImpl : torch::nn::Module {
                       std::size_t edge_dim, std::size_t heads,
                       float dropout = 0.0)
       : dropout(dropout), out_channels(out_channels), heads(heads) {
-    lin_key = register_module(
-        "lin_key", torch::nn::Linear(in_channels, heads * out_channels));
-    lin_query = register_module(
-        "lin_query", torch::nn::Linear(in_channels, heads * out_channels));
-    lin_value = register_module(
-        "lin_value", torch::nn::Linear(in_channels, heads * out_channels));
-    lin_skip = register_module(
-        "lin_skip", torch::nn::Linear(in_channels, heads * out_channels));
-    lin_edge = register_module(
-        "lin_edge", torch::nn::Linear(
-                        torch::nn::LinearOptions(edge_dim, heads * out_channels)
-                            .bias(false)));
+    w_k = register_module("w_k",
+                          torch::nn::Linear(in_channels, heads * out_channels));
+    w_q = register_module("w_q",
+                          torch::nn::Linear(in_channels, heads * out_channels));
+    w_v = register_module("w_v",
+                          torch::nn::Linear(in_channels, heads * out_channels));
+    w_skip = register_module(
+        "w_skip", torch::nn::Linear(in_channels, heads * out_channels));
+    w_e = register_module(
+        "w_e", torch::nn::Linear(
+                   torch::nn::LinearOptions(edge_dim, heads * out_channels)
+                       .bias(false)));
   }
 
   torch::Tensor forward(torch::Tensor x, torch::Tensor edge_index,
@@ -86,10 +86,10 @@ struct TransformerConvImpl : torch::nn::Module {
     auto j = edge_index[0];  // j is the sender
     auto i = edge_index[1];  // i is the receiver
 
-    auto q = lin_query->forward(x).view({-1, heads, out_channels});
-    auto k = lin_key->forward(x).view({-1, heads, out_channels});
-    auto v = lin_value->forward(x).view({-1, heads, out_channels});
-    auto e = lin_edge->forward(edge_attr).view({-1, heads, out_channels});
+    auto q = w_q->forward(x).view({-1, heads, out_channels});
+    auto k = w_k->forward(x).view({-1, heads, out_channels});
+    auto v = w_v->forward(x).view({-1, heads, out_channels});
+    auto e = w_e->forward(edge_attr).view({-1, heads, out_channels});
 
     // Message Function
     auto key_j = k.index_select(0, j) + e;
@@ -106,11 +106,11 @@ struct TransformerConvImpl : torch::nn::Module {
     // out = aggr_module(out, i, dim=0, dim_size=w_q.size(0));
 
     out = out.view({num_nodes, heads * out_channels});
-    return out + lin_skip->forward(x);
+    return out + w_skip->forward(x);
   }
 
-  torch::nn::Linear lin_key{nullptr}, lin_query{nullptr}, lin_value{nullptr},
-      lin_edge{nullptr}, lin_skip{nullptr};
+  torch::nn::Linear w_k{nullptr}, w_q{nullptr}, w_v{nullptr}, w_e{nullptr},
+      w_skip{nullptr};
   float dropout{};
   std::size_t out_channels{};
   std::size_t heads{};
@@ -118,39 +118,52 @@ struct TransformerConvImpl : torch::nn::Module {
 TORCH_MODULE(TransformerConv);
 
 struct LastNeighborLoader {
-  LastNeighborLoader() : size(NUM_NBRS), num_nodes(NUM_NODES) {
-    // self.nbrs = torch.empty((num_nodes, size), dtype=torch.long)
-    // self.e_id = torch.empty((num_nodes, size), dtype=torch.long)
-    // self._assoc = torch.empty(num_nodes, dtype=torch.long)
+  LastNeighborLoader()
+      : size(NUM_NBRS),
+        num_nodes(NUM_NODES),
+        nbrs(torch::empty({NUM_NODES, NUM_NBRS},
+                          torch::TensorOptions().dtype(torch::kLong))),
+        e_id(torch::empty({NUM_NODES, NUM_NBRS},
+                          torch::TensorOptions().dtype(torch::kLong))),
+        assoc(torch::empty({NUM_NODES},
+                           torch::TensorOptions().dtype(torch::kLong))) {
     reset_state();
   }
 
   auto operator()(torch::Tensor global_n_id)
       -> std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> {
-    // nbrs = self.nbrs[n_id]
-    // nodes = n_id.view(-1, 1).repeat(1, self.size)
-    // e_id = self.e_id[n_id]
+    // Shape: [batch_size, sampler_size]
+    auto curr_nbrs = nbrs.index_select(0, global_n_id);
+    auto curr_e_id = e_id.index_select(0, global_n_id);
 
-    // # Filter invalid nbrs (identified by `e_id < 0`).
-    // mask = e_id >= 0
-    // nbrs, nodes, e_id = nbrs[mask], nodes[mask], e_id[mask]
+    // Shape: [batch_size, sampler_size]
+    auto nodes = global_n_id.view({-1, 1}).expand_as(curr_nbrs);
 
-    // # Relabel node indices.
-    // n_id = torch.cat([n_id, nbrs]).unique()
-    // self._assoc[n_id] = torch.arange(n_id.size(0), device=n_id.device)
-    // nbrs, nodes = self._assoc[nbrs], self._assoc[nodes]
+    // Filter invalid neighbors (e_id < 0)
+    auto mask = curr_e_id >= 0;
 
-    // return n_id, torch.stack([nbrs, nodes]), e_id
-    auto [n_id, _] = at::_unique(global_n_id);
+    auto filtered_nbrs = curr_nbrs.index({mask});
+    auto filtered_e_id = curr_e_id.index({mask});
+    auto filtered_nodes = nodes.index({mask});
 
-    auto indices = torch::arange(n_id.size(0), n_id.options());
-    std::vector<torch::Tensor> indices_list = {indices, indices};
-    torch::Tensor edge_index = torch::stack(indices_list, 0);
+    // Relabel node indices and combine nodes with sampled neighbors
+    auto [unique_n_id, _] =
+        at::_unique(torch::cat({global_n_id, filtered_nbrs}));
+    assoc.index_put_({unique_n_id},
+                     torch::arange(unique_n_id.size(0), unique_n_id.options()));
 
-    torch::Tensor e_id =
-        torch::zeros({n_id.size(0)}, n_id.options().dtype(torch::kLong));
+    if (filtered_nbrs.numel() == 0) {
+      auto empty_edge_index =
+          torch::empty({2, 0}, global_n_id.options().dtype(torch::kLong));
+      return std::make_tuple(unique_n_id, empty_edge_index, filtered_e_id);
+    }
 
-    return {n_id, edge_index, e_id};
+    // Map global IDs to local IDs [0, len(n_id) - 1]
+    auto local_nbrs = assoc.index_select(0, filtered_nbrs);
+    auto local_nodes = assoc.index_select(0, filtered_nodes);
+    auto edge_index = torch::stack({local_nbrs, local_nodes}, 0);
+
+    return std::make_tuple(unique_n_id, edge_index, filtered_e_id);
   }
 
   auto insert(torch::Tensor src, torch::Tensor dst) -> void {
@@ -192,12 +205,17 @@ struct LastNeighborLoader {
   }
 
   auto reset_state() -> void {
-    // self.cur_e_id = 0
-    // self.e_id.fill_(-1)
+    cur_e_id = 0;
+    e_id.fill_(-1);
   }
 
   std::size_t size{};
   std::size_t num_nodes{};
+  std::size_t cur_e_id{};
+
+  torch::Tensor nbrs;
+  torch::Tensor e_id;
+  torch::Tensor assoc;
 };
 
 struct TGNMemoryImpl : torch::nn::Module {
@@ -352,7 +370,9 @@ class MeanAggregator(torch.nn.Module):
 TORCH_MODULE(TGNMemory);
 
 struct TGNImpl : torch::nn::Module {
-  TGNImpl() {
+  TGNImpl()
+      : assoc(torch::full({NUM_NODES}, -1,
+                          torch::TensorOptions().dtype(torch::kLong))) {
     memory = register_module("memory", TGNMemory());
     time_encoder = register_module("time_encoder", TimeEncoder(TIME_DIM));
     conv =
@@ -378,29 +398,26 @@ struct TGNImpl : torch::nn::Module {
     auto [n_id, edge_index, e_id] = nbr_loader(global_n_id);
     auto [x, last_update] = memory(n_id);
 
-    // Problem: global ref to data
-    // auto t = data_t.index_select(0, e_id);
-    // auto msg = data_msg.index_select(0, e_id);
-    auto t = torch::rand({n_id.size(0)});
-    auto msg = torch::rand({n_id.size(0), MSG_DIM});
+    assoc.index_put_({n_id}, torch::arange(n_id.size(0), assoc.options()));
 
-    auto rel_t = last_update.index_select(0, edge_index[0]) - t;
-    auto rel_t_z = time_encoder->forward(rel_t);
-    auto edge_attr = torch::cat({rel_t_z, msg}, -1);
+    if (e_id.numel() > 0) {
+      // Problem: global ref to data
+      auto t = torch::rand({n_id.size(0)});             // data.t[e_id]
+      auto msg = torch::rand({n_id.size(0), MSG_DIM});  // data.msg[e_id]
 
-    z_cache = conv(x, edge_index, edge_attr);
-    n_id_cache = n_id;
+      auto rel_t = last_update.index_select(0, edge_index[0]) - t;
+      auto rel_t_z = time_encoder->forward(rel_t);
+      auto edge_attr = torch::cat({rel_t_z, msg}, -1);
+
+      z_cache = conv(x, edge_index, edge_attr);
+    } else {
+      z_cache = x;
+    }
 
     return z_cache;
   }
 
   auto get_embeddings(torch::Tensor global_n_id) -> torch::Tensor {
-    // Build the local mapping (assoc) on the fly for the cached nodes
-    auto assoc = torch::full({static_cast<std::uint64_t>(NUM_NODES)}, -1,
-                             torch::TensorOptions().dtype(torch::kLong));
-    assoc.index_put_({n_id_cache},
-                     torch::arange(n_id_cache.size(0), assoc.options()));
-
     auto local_indices = assoc.index({global_n_id});
     return z_cache.index_select(0, local_indices);
   }
@@ -411,7 +428,7 @@ struct TGNImpl : torch::nn::Module {
   LastNeighborLoader nbr_loader{};
 
   torch::Tensor z_cache;
-  torch::Tensor n_id_cache;
+  torch::Tensor assoc;
 };
 TORCH_MODULE(TGN);
 
