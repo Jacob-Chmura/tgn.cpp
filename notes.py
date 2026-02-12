@@ -72,8 +72,8 @@ class TGNMemory(torch.nn.Module):
         self._assoc[n_id] = torch.arange(n_id.size(0), device=n_id.device)
 
         # Compute messages (src -> dst), then (dst -> src).
-        msg_s, t_s, src_s, _= self._compute_msg(n_id, self.msg_s_store)
-        msg_d, t_d, src_d, _= self._compute_msg(n_id, self.msg_d_store)
+        msg_s, t_s, src_s, _ = self._compute_msg(n_id, self.msg_s_store)
+        msg_d, t_d, src_d, _ = self._compute_msg(n_id, self.msg_d_store)
 
         # Aggregate messages.
         idx = torch.cat([src_s, src_d], dim=0)
@@ -83,7 +83,9 @@ class TGNMemory(torch.nn.Module):
 
         # Get local copy of updated memory, and then last_update.
         memory = self.gru(aggr, self.memory[n_id])
-        last_update = scatter(t, idx, 0, dim_size=self.last_update.size(0), reduce="max")[n_id]
+        last_update = scatter(
+            t, idx, 0, dim_size=self.last_update.size(0), reduce="max"
+        )[n_id]
 
         return memory, last_update
 
@@ -131,7 +133,6 @@ class LastAggregator(torch.nn.Module):
 class MeanAggregator(torch.nn.Module):
     def forward(self, msg: Tensor, index: Tensor, t: Tensor, dim_size: int):
         return scatter(msg, index, dim=0, dim_size=dim_size, reduce="mean")
-
 
 
 class LastNeighborLoader:
@@ -199,72 +200,6 @@ class LastNeighborLoader:
     def reset_state(self):
         self.cur_e_id = 0
         self.e_id.fill_(-1)
-
-
-class TransformerConv(torch.nn.Module):
-    def __init__(
-        self,
-        in_channels: int,
-        out_channels: int,
-        edge_dim: int,
-        heads: int,
-        dropout: float = 0.0
-    ):
-        self.aggr_module = SumAggr()
-
-        self.in_channels = in_channels
-        self.out_channels = out_channels
-        self.heads = heads
-        self.dropout = dropout
-        self.edge_dim = edge_dim
-
-        self.lin_key = Linear(in_channels, heads * out_channels)
-        self.lin_query = Linear(in_channels, heads * out_channels)
-        self.lin_value = Linear(in_channels, heads * out_channels)
-        self.lin_edge = Linear(edge_dim, heads * out_channels, bias=False)
-        self.lin_skip = Linear(in_channels, heads * out_channels)
-
-        self.reset_parameters()
-
-    def reset_parameters(self):
-        self.lin_key.reset_parameters()
-        self.lin_query.reset_parameters()
-        self.lin_value.reset_parameters()
-        self.lin_edge.reset_parameters()
-        self.lin_skip.reset_parameters()
-
-    def forward(self, x: Tensor, edge_index: Adj, edge_attr: OptTensor):
-        query = self.lin_query(x).view(-1, self.heads, self.out_channels)
-        key = self.lin_key(x).view(-1, self.heads, self.out_channels)
-        value = self.lin_value(x).view(-1, self.heads, self.out_channels)
-
-        j, i = edge_index[0], edge_index[1] # i is the receiver, j is the sender
-        out = self.message(query[i], key[j], value[j], edge_attr, index=i, size_i=query.size(0))
-        out = self.aggr_module(out, i, dim=0, dim_size=query.size(0))
-
-        out = out.view(-1, self.heads * self.out_channels)
-        return out + self.lin_skip(x)
-
-    def message(
-        self,
-        query_i: Tensor,
-        key_j: Tensor,
-        value_j: Tensor,
-        edge_attr: Tensor,
-        index: Tensor,
-        size_i: int
-    ) -> Tensor:
-        edge_attr = self.lin_edge(edge_attr).view(-1, self.heads, self.out_channels)
-        key_j = key_j + edge_attr
-
-        alpha = (query_i * key_j).sum(dim=-1) / sqrt(self.out_channels)
-        alpha = softmax(alpha, index, ptr=None, size_i)
-        alpha = F.dropout(alpha, p=self.dropout, training=self.training)
-
-        out = value_j
-        out = out + edge_attr
-        out = out * alpha.view(-1, self.heads, 1)
-        return out
 
 
 memory = TGNMemory(

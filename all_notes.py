@@ -382,4 +382,3 @@ def test(loader):
 
         memory.update_state(batch.src, batch.dst, batch.t, batch.msg)
         neighbor_loader.insert(batch.src, batch.dst)
-
