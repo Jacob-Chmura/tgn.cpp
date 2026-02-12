@@ -122,10 +122,10 @@ struct LastNeighborLoader {
   LastNeighborLoader()
       : size(NUM_NBRS),
         num_nodes(NUM_NODES),
-        nbrs(torch::empty({NUM_NODES, NUM_NBRS},
-                          torch::TensorOptions().dtype(torch::kLong))),
-        e_id(torch::empty({NUM_NODES, NUM_NBRS},
-                          torch::TensorOptions().dtype(torch::kLong))),
+        buffer_nbrs(torch::empty({NUM_NODES, NUM_NBRS},
+                                 torch::TensorOptions().dtype(torch::kLong))),
+        buffer_e_id(torch::empty({NUM_NODES, NUM_NBRS},
+                                 torch::TensorOptions().dtype(torch::kLong))),
         assoc(torch::empty({NUM_NODES},
                            torch::TensorOptions().dtype(torch::kLong))) {
     reset_state();
@@ -134,17 +134,16 @@ struct LastNeighborLoader {
   auto operator()(torch::Tensor global_n_id)
       -> std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> {
     // Shape: [batch_size, sampler_size]
-    auto curr_nbrs = nbrs.index_select(0, global_n_id);
-    auto curr_e_id = e_id.index_select(0, global_n_id);
+    auto nbrs = buffer_nbrs.index_select(0, global_n_id);
+    auto e_id = buffer_e_id.index_select(0, global_n_id);
 
     // Shape: [batch_size, sampler_size]
-    auto nodes = global_n_id.view({-1, 1}).expand_as(curr_nbrs);
+    auto nodes = global_n_id.view({-1, 1}).expand_as(nbrs);
 
     // Filter invalid neighbors (e_id < 0)
-    auto mask = curr_e_id >= 0;
-
-    auto filtered_nbrs = curr_nbrs.index({mask});
-    auto filtered_e_id = curr_e_id.index({mask});
+    auto mask = e_id >= 0;
+    auto filtered_nbrs = nbrs.index({mask});
+    auto filtered_e_id = e_id.index({mask});
     auto filtered_nodes = nodes.index({mask});
 
     // Relabel node indices and combine nodes with sampled neighbors
@@ -168,55 +167,76 @@ struct LastNeighborLoader {
   }
 
   auto insert(torch::Tensor src, torch::Tensor dst) -> void {
-    // TODO(kuba)
-    // # Collect central nodes, their nbrs and the current event ids.
-    // nbrs = torch.cat([src, dst], dim=0)
-    // nodes = torch.cat([dst, src], dim=0)
-    // e_id = torch.arange(
-    //     self.cur_e_id, self.cur_e_id + src.size(0), device=src.device
-    //).repeat(2)
-    // self.cur_e_id += src.numel()
+    // Collect central nodes, their nbrs and the current event ids.
+    auto nbrs = torch::cat({src, dst}, 0);
+    auto nodes = torch::cat({dst, src}, 0);
 
-    // # Convert newly encountered interaction ids so that they point to
-    // # locations of a "dense" format of shape [num_nodes, size].
-    // nodes, perm = nodes.sort()
-    // nbrs, e_id = nbrs[perm], e_id[perm]
+    // Create edge IDs for this batch and repeat for bi-directional edges
+    auto batch_size = src.size(0);
+    auto e_id_range =
+        torch::arange(cur_e_id, cur_e_id + batch_size, src.options());
+    auto e_id = e_id_range.repeat({2});
+    cur_e_id += batch_size;
 
-    // n_id = nodes.unique()
-    // self._assoc[n_id] = torch.arange(n_id.numel(), device=n_id.device)
+    // Sort interactions by node ID to simplify batch processing
+    auto [sort_out, perm] = nodes.sort();
+    nodes = sort_out;
+    nbrs = nbrs.index_select(0, perm);
+    e_id = e_id.index_select(0, perm);
 
-    // dense_id = torch.arange(nodes.size(0), device=nodes.device) % self.size
-    // dense_id += self._assoc[nodes].mul_(self.size)
+    // Find unique nodes and map to local range [0, num_unique - 1]
+    auto [unique_out, _] = at::_unique(nodes);
+    auto n_id = unique_out;
+    assoc.index_put_({n_id}, torch::arange(n_id.size(0), n_id.options()));
 
-    // dense_e_id = e_id.new_full((n_id.numel() * self.size,), -1)
-    // dense_e_id[dense_id] = e_id
-    // dense_e_id = dense_e_id.view(-1, self.size)
+    // Create "dense" temporary representation
+    // dense_id determines the column in the [num_unique, size] window
+    auto dense_id = torch::arange(nodes.size(0), nodes.options()) % size;
+    dense_id += assoc.index_select(0, nodes).mul_(size);
 
-    // dense_nbrs = e_id.new_empty(n_id.numel() * self.size)
-    // dense_nbrs[dense_id] = nbrs
-    // dense_nbrs = dense_nbrs.view(-1, self.size)
+    auto total_temp_slots = n_id.size(0) * size;
 
-    // # Collect new and old interactions...
-    // e_id = torch.cat([self.e_id[n_id, : self.size], dense_e_id], dim=-1)
-    // nbrs = torch.cat([self.nbrs[n_id, : self.size], dense_nbrs], dim=-1)
+    auto dense_e_id = torch::full({total_temp_slots}, -1, e_id.options());
+    dense_e_id.index_put_({dense_id}, e_id);
+    dense_e_id = dense_e_id.view({-1, size});
 
-    // # And sort them based on `e_id`.
-    // e_id, perm = e_id.topk(self.size, dim=-1)
-    // self.e_id[n_id] = e_id
-    // self.nbrs[n_id] = torch.gather(nbrs, 1, perm)
+    auto dense_nbrs = torch::empty({total_temp_slots}, nbrs.options());
+    dense_nbrs.index_put_({dense_id}, nbrs);
+    dense_nbrs = dense_nbrs.view({-1, size});
+
+    // Merge new interactions with existing ones in the global buffers
+    // Fetch old data for the relevant nodes: shape [num_unique, size]
+    auto old_e_id = buffer_e_id.index_select(0, n_id);
+    auto old_nbrs = buffer_nbrs.index_select(0, n_id);
+
+    // Concatenate old and new: shape [num_unique, size * 2]
+    auto merged_e_id = torch::cat({old_e_id, dense_e_id}, -1);
+    auto merged_nbrs = torch::cat({old_nbrs, dense_nbrs}, -1);
+
+    // Keep only the 'size' most recent interactions (highest e_id)
+    auto topk_out = merged_e_id.topk(size, -1);
+    auto new_e_id = std::get<0>(topk_out);
+    auto topk_perm = std::get<1>(topk_out);
+
+    // Use gather to pick the corresponding neighbors
+    auto new_nbrs = torch::gather(merged_nbrs, 1, topk_perm);
+
+    // Write back to global buffers
+    buffer_e_id.index_put_({n_id}, new_e_id);
+    buffer_nbrs.index_put_({n_id}, new_nbrs);
   }
 
   auto reset_state() -> void {
     cur_e_id = 0;
-    e_id.fill_(-1);
+    buffer_e_id.fill_(-1);
   }
 
   std::size_t size{};
   std::size_t num_nodes{};
   std::size_t cur_e_id{};
 
-  torch::Tensor nbrs;
-  torch::Tensor e_id;
+  torch::Tensor buffer_nbrs;
+  torch::Tensor buffer_e_id;
   torch::Tensor assoc;
 };
 
