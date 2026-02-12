@@ -1,0 +1,121 @@
+---
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: no-commit-to-branch
+        name: No commits to master
+      - id: end-of-file-fixer
+        name: End-of-file fixer
+      - name: mixed-line-ending
+        id: mixed-line-ending
+        args: [--fix, lf]
+      - id: trailing-whitespace
+        name: Remove trailing whitespaces
+      - id: check-toml
+        name: Check toml
+      - id: check-yaml
+        name: Check yaml
+
+  - repo: https://github.com/adrienverge/yamllint.git
+    rev: v1.35.1
+    hooks:
+      - id: yamllint
+        name: Lint yaml
+        args:
+          [
+            -d,
+            "{extends: default, rules: {line-length: disable, document-start: disable, truthy: {level: error}, braces: {max-spaces-inside: 1}}}",
+          ]
+
+  - repo: https://github.com/PyCQA/autoflake
+    rev: v2.3.1
+    hooks:
+      - id: autoflake
+        name: Remove unused imports and variables
+        args:
+          [
+            --remove-all-unused-imports,
+            --remove-unused-variables,
+            --remove-duplicate-keys,
+            --ignore-init-module-imports,
+            --in-place,
+          ]
+
+  - repo: https://github.com/pycqa/isort
+    rev: 5.13.2
+    hooks:
+      - id: isort
+        name: Sort imports
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.6.9
+    hooks:
+      - id: ruff
+        name: Ruff Linting
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
+        name: Ruff formatting
+
+  - repo: https://github.com/executablebooks/mdformat
+    rev: 0.7.17
+    hooks:
+      - id: mdformat
+        name: Format Markdown
+        additional_dependencies:
+          - mdformat-gfm
+          - mdformat_frontmatter
+          - mdformat_footnote
+
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.19.0
+    hooks:
+      - id: mypy
+        name: MyPy Static Analysis
+
+  - repo: https://github.com/koalaman/shellcheck-precommit
+    rev: "v0.11.0"
+    hooks:
+      - id: shellcheck
+        name: Check shell scripts
+
+  - repo: https://github.com/bmorcos/pre-commit-hooks-cpp
+    rev: 9a5aa38207bf557961110d6a4f7e3a9d352911f9
+    hooks:
+      - id: cpplint
+        name: Lint C++ code
+        args:
+          - "--filter=-whitespace,\
+            -legal/copyright,\
+            -build/include_subdir,\
+            -build/header_guard,\
+            -build/c++17,\
+            -build/include_order"
+
+  - repo: local
+    hooks:
+      - id: cppcheck
+        name: Run cppcheck
+        entry: cppcheck
+        language: system
+        args:
+          - --force
+          - --language=c++
+          - --std=c++20
+
+  - repo: https://github.com/pre-commit/mirrors-clang-format
+    rev: "v20.1.0"
+    hooks:
+      - id: clang-format
+        name: Format C++ code
+
+  - repo: local
+    hooks:
+      - id: clang-tidy
+        name: Run clang-tidy
+        entry: clang-tidy
+        language: system
+        files: \.(c|cc|cpp|cxx|h|hpp)$
+        args:
+          - "-p=./build"
+          - "--quiet"

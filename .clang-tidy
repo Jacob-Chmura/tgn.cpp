@@ -1,0 +1,28 @@
+---
+Checks: >
+  google-readability-*,
+  clang-analyzer-*,
+  bugprone-*,
+  performance-*,
+  readability-*,
+  modernize-*,
+  misc-*,
+  -llvm-libc-*,
+  -fuchsia-trailing-return,
+  -performance-avoid-endl,
+
+WarningsAsErrors: ""
+
+CheckOptions:
+  - key: readability-identifier-length.MinimumIdentifierLength
+    value: 2
+  - key: readability-identifier-naming.ClassCase
+    value: CamelCase
+  - key: readability-identifier-naming.FunctionCase
+    value: lower_case
+  - key: readability-identifier-naming.VariableCase
+    value: lower_case
+  - key: readability-identifier-naming.PrivateMemberCase
+    value: lower_case
+  - key: readability-identifier-naming.PrivateMemberSuffix
+    value: "_"
