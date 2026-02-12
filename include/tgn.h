@@ -22,32 +22,37 @@
 
 namespace tgn {
 
-constexpr std::size_t MEMORY_DIM = 100;
-constexpr std::size_t TIME_DIM = 100;
-constexpr std::size_t MSG_DIM = 7;
+// Networks params
 constexpr std::size_t EMBEDDING_DIM = 100;
-constexpr std::size_t BATCH_SIZE = 5;
-constexpr std::size_t NUM_NODES = 1000;
-constexpr std::size_t NUM_NBRS = 10;
+constexpr std::size_t MEMORY_DIM = 100;
 constexpr std::size_t NUM_HEADS = 2;
+constexpr std::size_t NUM_NBRS = 10;
+constexpr std::size_t TIME_DIM = 100;
 constexpr float DROPOUT = 0.1;
+
+// Data params
+constexpr std::size_t NUM_NODES = 1000;
+constexpr std::size_t MSG_DIM = 7;
+
+// Learning params
+constexpr std::size_t BATCH_SIZE = 5;
 const double lr = 1e-3;
 
 struct LinkPredictorImpl : torch::nn::Module {
   explicit LinkPredictorImpl(std::size_t in_channels) {
-    lin_src =
-        register_module("lin_src", torch::nn::Linear(in_channels, in_channels));
-    lin_dst =
-        register_module("lin_dst", torch::nn::Linear(in_channels, in_channels));
-    lin_final = register_module("lin_final", torch::nn::Linear(in_channels, 1));
+    w_src =
+        register_module("w_src", torch::nn::Linear(in_channels, in_channels));
+    w_dst =
+        register_module("w_dst", torch::nn::Linear(in_channels, in_channels));
+    w_final = register_module("w_final", torch::nn::Linear(in_channels, 1));
   }
 
   torch::Tensor forward(torch::Tensor z_src, torch::Tensor z_dst) {
-    auto z = torch::relu(lin_src->forward(z_src) + lin_dst->forward(z_dst));
-    return lin_final->forward(z);
+    auto z = torch::relu(w_src->forward(z_src) + w_dst->forward(z_dst));
+    return w_final->forward(z);
   }
 
-  torch::nn::Linear lin_src{nullptr}, lin_dst{nullptr}, lin_final{nullptr};
+  torch::nn::Linear w_src{nullptr}, w_dst{nullptr}, w_final{nullptr};
 };
 TORCH_MODULE(LinkPredictor);
 
@@ -404,13 +409,31 @@ struct TGNMemoryImpl : torch::nn::Module {
 
   auto last_aggr(torch::Tensor msg, torch::Tensor index, torch::Tensor t,
                  int dim_size) -> torch::Tensor {
-    // TODO(kuba)
-    // argmax = scatter_argmax(t, index, dim=0, dim_size=dim_size)
-    // out = msg.new_zeros((dim_size, msg.size(-1)))
-    // mask = argmax < msg.size(0)  # Filter items with at least one entry.
-    // out[mask] = msg[argmax[mask]]
-    // return out
-    return torch::zeros({dim_size, msg.size(-1)}, msg.options());
+    auto out = msg.new_zeros({dim_size, msg.size(-1)});
+
+    // Number of messages is t.numel();
+    if (t.numel()) {
+      auto argmax = scatter_argmax(t, index, dim_size);
+      auto mask = argmax < msg.size(0);  // Filter items with at least one entry
+      out.index_put_({mask}, argmax.index({mask}));
+    }
+
+    return out;
+  }
+
+  auto scatter_argmax(torch::Tensor src, torch::Tensor index, int dim_size)
+      -> torch::Tensor {
+    auto res = src.new_empty(dim_size);
+    res.scatter_reduce_(0, index, src.detach(), /* reduction*/ "amax",
+                        /* include_self */ false);
+    auto out = index.new_full({dim_size}, /*fill_value*/ dim_size - 1);
+
+    auto mask = src == res.index_select(0, index);
+    auto nonzero = torch::nonzero(mask).view(-1);
+    auto target_indices = index.index_select(0, nonzero);
+    out.index_put_({target_indices}, nonzero);
+
+    return out;
   }
 
   auto train(bool mode = true) -> void override {
