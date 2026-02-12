@@ -1,5 +1,6 @@
 #include <ATen/ops/_unique.h>
 #include <ATen/ops/rand.h>
+#include <ATen/ops/unique_consecutive.h>
 #include <c10/core/TensorOptions.h>
 #include <torch/csrc/autograd/generated/variable_factories.h>
 #include <torch/nn/module.h>
@@ -10,6 +11,7 @@
 #include <torch/serialize/input-archive.h>
 #include <torch/torch.h>
 
+#include <cstddef>
 #include <cstdint>
 #include <iostream>
 #include <memory>
@@ -214,9 +216,7 @@ struct LastNeighborLoader {
     auto merged_nbrs = torch::cat({old_nbrs, dense_nbrs}, -1);
 
     // Keep only the 'size' most recent interactions (highest e_id)
-    auto topk_out = merged_e_id.topk(size, -1);
-    auto new_e_id = std::get<0>(topk_out);
-    auto topk_perm = std::get<1>(topk_out);
+    auto [new_e_id, topk_perm] = merged_e_id.topk(size, -1);
 
     // Use gather to pick the corresponding neighbors
     auto new_nbrs = torch::gather(merged_nbrs, 1, topk_perm);
@@ -257,6 +257,8 @@ struct TGNMemoryImpl : torch::nn::Module {
     constexpr auto cell_dim = MEMORY_DIM + MEMORY_DIM + MSG_DIM + TIME_DIM;
     gru = register_module("gru", torch::nn::GRUCell(cell_dim, MEMORY_DIM));
 
+    src_store.resize(NUM_NODES);
+    dst_store.resize(NUM_NODES);
     reset_state();
   }
 
@@ -290,12 +292,14 @@ struct TGNMemoryImpl : torch::nn::Module {
   }
 
   auto _reset_message_store() -> void {
-    // TODO(kuba)
-    // i = self.memory.new_empty((0,), device=self.device, dtype=torch.long)
-    // msg = self.memory.new_empty((0, self.raw_msg_dim),
-    // device=self.device) # Message store format: (src, dst, t, msg)
-    // self.msg_s_store = {j: (i, i, i, msg) for j in range(self.num_nodes)}
-    // self.msg_d_store = {j: (i, i, i, msg) for j in range(self.num_nodes)}
+    // Message store format: (src, dst, t, msg)
+    auto i = memory.new_empty(0, torch::TensorOptions().dtype(torch::kLong));
+    auto msg = memory.new_empty({0, MSG_DIM});
+
+    for (auto j = 0; j < num_nodes; ++j) {
+      src_store[j] = std::make_tuple(i, i, i, msg);
+      dst_store[j] = std::make_tuple(i, i, i, msg);
+    }
   }
 
   auto _update_memory(torch::Tensor n_id) -> void {
@@ -330,11 +334,33 @@ struct TGNMemoryImpl : torch::nn::Module {
 
   auto _update_msg_store(torch::Tensor src, torch::Tensor dst, torch::Tensor t,
                          torch::Tensor raw_msg, bool is_src_store) -> void {
-    // TODO(kuba)
-    //     n_id, perm = src.sort()
-    //     n_id, count = n_id.unique_consecutive(return_counts=True)
-    //     for i, idx in zip(n_id.tolist(), perm.split(count.tolist())):
-    //         msg_store[i] = (src[idx], dst[idx], t[idx], raw_msg[idx])
+    // Group interactions by node ID
+    auto [n_id_sorted, perm] = src.sort();
+    auto [unique_nid, _, count] = torch::unique_consecutive(
+        n_id_sorted, /*return_inverse=*/true, /*return_counts=*/true);
+
+    // Convert count tensor to a C++ vector for split_with_sizes
+    std::vector<std::int64_t> sizes(count.numel());
+    auto count_acc = count.accessor<int64_t, 1>();
+    for (std::int64_t i = 0; i < count.numel(); ++i) {
+      sizes[i] = count_acc[i];
+    }
+
+    // Reorder all data based on the sorted node IDs and split them
+    auto src_s = src.index_select(0, perm).split_with_sizes(sizes);
+    auto dst_s = dst.index_select(0, perm).split_with_sizes(sizes);
+    auto t_s = t.index_select(0, perm).split_with_sizes(sizes);
+    auto msg_s = raw_msg.index_select(0, perm).split_with_sizes(sizes);
+
+    for (std::int64_t i = 0; i < unique_nid.size(0); ++i) {
+      auto key = unique_nid[i].item<std::int64_t>();
+      auto value = std::make_tuple(src_s[i], dst_s[i], t_s[i], msg_s[i]);
+      if (is_src_store) {
+        src_store[key] = value;
+      } else {
+        dst_store[key] = value;
+      }
+    }
   }
 
   auto _compute_msg(torch::Tensor n_id, bool is_src_store)
@@ -386,6 +412,10 @@ struct TGNMemoryImpl : torch::nn::Module {
 
   TimeEncoder time_encoder{nullptr};
   torch::nn::GRUCell gru{nullptr};
+
+  std::vector<
+      std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>>
+      src_store, dst_store;
 };
 TORCH_MODULE(TGNMemory);
 
