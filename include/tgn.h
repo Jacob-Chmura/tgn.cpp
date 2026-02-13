@@ -175,11 +175,10 @@ struct TGNMemoryImpl : torch::nn::Module {
     const auto i =
         memory_.new_empty(0, torch::TensorOptions().dtype(torch::kLong));
     const auto msg = memory_.new_empty({0, MSG_DIM});
+    const auto empty_entry = std::make_tuple(i, i, i, msg);
 
-    for (std::size_t j = 0; j < num_nodes_; ++j) {
-      src_store_[j] = std::make_tuple(i, i, i, msg);
-      dst_store_[j] = std::make_tuple(i, i, i, msg);
-    }
+    std::fill(src_store_.begin(), src_store_.end(), empty_entry);
+    std::fill(dst_store_.begin(), dst_store_.end(), empty_entry);
   }
 
   auto update_memory(const torch::Tensor& n_id) -> void {
