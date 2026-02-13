@@ -6,16 +6,11 @@
 #include <torch/nn/module.h>
 #include <torch/nn/modules/rnn.h>
 #include <torch/nn/options/linear.h>
-#include <torch/nn/pimpl.h>
-#include <torch/optim/adam.h>
-#include <torch/serialize/input-archive.h>
 #include <torch/torch.h>
 
 #include <cstddef>
 #include <cstdint>
-#include <iostream>
 #include <memory>
-#include <shared_mutex>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -25,36 +20,14 @@ namespace tgn {
 // Networks params
 constexpr std::size_t EMBEDDING_DIM = 100;
 constexpr std::size_t MEMORY_DIM = 100;
+constexpr std::size_t TIME_DIM = 100;
 constexpr std::size_t NUM_HEADS = 2;
 constexpr std::size_t NUM_NBRS = 10;
-constexpr std::size_t TIME_DIM = 100;
 constexpr float DROPOUT = 0.1;
 
 // Data params
 constexpr std::size_t NUM_NODES = 1000;
 constexpr std::size_t MSG_DIM = 7;
-
-// Learning params
-constexpr std::size_t BATCH_SIZE = 5;
-const double lr = 1e-3;
-
-struct LinkPredictorImpl : torch::nn::Module {
-  explicit LinkPredictorImpl(std::size_t in_channels) {
-    w_src =
-        register_module("w_src", torch::nn::Linear(in_channels, in_channels));
-    w_dst =
-        register_module("w_dst", torch::nn::Linear(in_channels, in_channels));
-    w_final = register_module("w_final", torch::nn::Linear(in_channels, 1));
-  }
-
-  torch::Tensor forward(torch::Tensor z_src, torch::Tensor z_dst) {
-    auto z = torch::relu(w_src->forward(z_src) + w_dst->forward(z_dst));
-    return w_final->forward(z);
-  }
-
-  torch::nn::Linear w_src{nullptr}, w_dst{nullptr}, w_final{nullptr};
-};
-TORCH_MODULE(LinkPredictor);
 
 struct TimeEncoderImpl : torch::nn::Module {
   explicit TimeEncoderImpl(std::size_t out_channels) {
@@ -541,72 +514,5 @@ struct TGNImpl : torch::nn::Module {
   torch::Tensor assoc;
 };
 TORCH_MODULE(TGN);
-
-struct Batch {
-  torch::Tensor src, dst, neg_dst, t, msg;
-};
-
-auto get_batch() -> Batch {
-  return Batch{
-      .src = torch::randint(0, NUM_NODES, {BATCH_SIZE}),
-      .dst = torch::randint(0, NUM_NODES, {BATCH_SIZE}),
-      .neg_dst = torch::randint(0, NUM_NODES, {BATCH_SIZE}),
-      .t = torch::zeros({BATCH_SIZE}),
-      .msg = torch::zeros({BATCH_SIZE, MSG_DIM}),
-  };
-}
-
-auto train(TGN tgn, LinkPredictor decoder, torch::optim::Adam& opt) -> float {
-  tgn->train();
-  decoder->train();
-  tgn->reset_state();
-
-  float loss_{0};
-  {
-    auto batch = get_batch();
-    opt.zero_grad();
-
-    auto [n_id, _] =
-        at::_unique(torch::cat({batch.src, batch.dst, batch.neg_dst}));
-    tgn->forward(n_id);
-
-    auto z_src = tgn->get_embeddings(batch.src);
-    auto z_dst = tgn->get_embeddings(batch.dst);
-    auto z_neg = tgn->get_embeddings(batch.neg_dst);
-
-    auto pos_out = decoder->forward(z_src, z_dst);
-    auto neg_out = decoder->forward(z_src, z_neg);
-
-    auto loss = torch::nn::functional::binary_cross_entropy_with_logits(
-                    pos_out, torch::ones_like(pos_out)) +
-                torch::nn::functional::binary_cross_entropy_with_logits(
-                    neg_out, torch::zeros_like(neg_out));
-    std::cout << "Loss: " << loss << std::endl;
-
-    tgn->update_state(batch.src, batch.dst, batch.t, batch.msg);
-    loss.backward();
-    opt.step();
-    tgn->detach_memory();
-
-    loss_ = loss.item<float>();
-  }
-
-  return loss_;
-}
-
-auto hello_torch() -> void {
-  TGN encoder;
-  LinkPredictor decoder{EMBEDDING_DIM};
-
-  std::vector<torch::Tensor> params = encoder->parameters();
-  auto decoder_params = decoder->parameters();
-  params.insert(params.end(), decoder_params.begin(), decoder_params.end());
-  torch::optim::Adam opt(params, torch::optim::AdamOptions(lr));
-
-  for (std::size_t epoch = 1; epoch <= 5; ++epoch) {
-    auto loss = train(encoder, decoder, opt);
-    std::cout << "Epoch " << epoch << " Loss: " << loss << std::endl;
-  }
-}
 
 }  // namespace tgn
