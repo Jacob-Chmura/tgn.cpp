@@ -240,7 +240,7 @@ struct TGNMemoryImpl : torch::nn::Module {
   }
 
   auto compute_msg(const torch::Tensor& n_id, bool is_src_store)
-      -> std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> {
+      -> const std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> {
     // Gather stored messages
     std::vector<torch::Tensor> src_list;
     std::vector<torch::Tensor> dst_list;
@@ -277,7 +277,7 @@ struct TGNMemoryImpl : torch::nn::Module {
   }
 
   auto last_aggr(const torch::Tensor& msg, const torch::Tensor& index,
-                 const torch::Tensor& t, int dim_size) -> torch::Tensor {
+                 const torch::Tensor& t, int dim_size) -> const torch::Tensor {
     auto out = msg.new_zeros({dim_size, msg.size(-1)});
 
     // Number of messages is t.numel();
@@ -329,8 +329,23 @@ struct TGNImpl : torch::nn::Module {
 
   auto detach_memory() -> void { memory_->detach(); }
 
-  torch::Tensor forward(const torch::Tensor& global_n_id) {
-    const auto [n_id, edge_index, e_id] = nbr_loader_(global_n_id);
+  template <typename... Ts>
+  auto forward(const Ts&... inputs) {
+    if constexpr (sizeof...(inputs) == 0) {
+      throw std::invalid_argument(
+          "TGN::forward requires at least one input ID tensor.");
+    }
+    std::vector<torch::Tensor> input_list = {inputs...};
+    const auto all_global_ids = torch::cat(input_list).view({-1});
+    const auto [unique_global_ids, _] = at::_unique(all_global_ids);
+
+    compute_embeddings(unique_global_ids);
+
+    return std::make_tuple(get_embeddings(inputs)...);
+  }
+
+  auto compute_embeddings(const torch::Tensor& unique_global_ids) -> void {
+    const auto [n_id, edge_index, e_id] = nbr_loader_(unique_global_ids);
     const auto [x, last_update] = memory_(n_id);
 
     assoc_.index_put_({n_id}, torch::arange(n_id.size(0), assoc_.options()));
@@ -348,11 +363,9 @@ struct TGNImpl : torch::nn::Module {
     } else {
       z_cache_ = x;
     }
-
-    return z_cache_;
   }
 
-  auto get_embeddings(const torch::Tensor& global_n_id) -> torch::Tensor {
+  auto get_embeddings(const torch::Tensor& global_n_id) -> const torch::Tensor {
     const auto local_indices = assoc_.index({global_n_id});
     return z_cache_.index_select(0, local_indices);
   }
