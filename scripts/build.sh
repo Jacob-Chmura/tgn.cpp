@@ -10,6 +10,8 @@ echo "Configuring CMake project (Build type: $BUILD_TYPE) in $BUILD_DIR"
 mkdir -p "$BUILD_DIR" && cd "$BUILD_DIR"
 
 cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
-      -DCMAKE_PREFIX_PATH=/home/kuba/repo/tgn.cpp/libtorch/ ..
+      -DCMAKE_PREFIX_PATH=/home/kuba/repo/tgn.cpp/libtorch/ \
+      -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
+      ..
 
-cmake --build .
+cmake --build . --parallel "$(nproc)"

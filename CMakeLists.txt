@@ -9,10 +9,25 @@ project(
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
-add_compile_options(-Wall -Wextra -pedantic)
+add_compile_options(
+    -Wall
+    -Wextra
+    -Wpedantic
+    -Wshadow                 # Catches local variables hiding class members
+    -Wnon-virtual-dtor       # Ensures proper cleanup of polymorphic classes
+    -Wold-style-cast         # Encourages static_cast over C-style casts
+    -Woverloaded-virtual     # Warns if you accidentally hide virtual functions
+    -Wnull-dereference       # Warns if a null dereference is detected
+)
 
 find_package(Torch REQUIRED)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
+
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    message(STATUS "Debug build: Enabling Address and UndefinedBehavior Sanitizers")
+    add_compile_options(-fsanitize=address -fsanitize=undefined -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=address -fsanitize=undefined)
+endif()
 
 add_library(${PROJECT_NAME} INTERFACE)
 target_include_directories(${PROJECT_NAME} INTERFACE
