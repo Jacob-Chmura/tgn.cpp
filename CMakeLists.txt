@@ -1,10 +1,12 @@
 cmake_minimum_required(VERSION 3.16)
 project(
-    ggb
+    tgn
     VERSION 0.1.0
     DESCRIPTION "C++ Port of Temporal Graph Networks for Deep Learning on Dynamic Graphs"
     LANGUAGES CXX
 )
+
+option(TGN_BUILD_TESTS "Build test binaries" ON)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 20)
@@ -35,5 +37,26 @@ target_include_directories(${PROJECT_NAME} INTERFACE
         $<INSTALL_INTERFACE:include>
 )
 
-add_executable(test_tgn test/test_tgn.cpp)
-target_link_libraries(test_tgn PRIVATE ${PROJECT_NAME} "${TORCH_LIBRARIES}")
+if (TGN_BUILD_TESTS)
+    enable_testing()
+
+    include(FetchContent)
+    FetchContent_Declare(
+            googletest
+            GIT_REPOSITORY https://github.com/google/googletest.git
+            GIT_TAG v1.17.0
+    )
+    set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+    FetchContent_MakeAvailable(googletest)
+
+    add_executable(test_tgn
+        test/test_tgn.cpp
+    )
+    target_link_libraries(test_tgn PRIVATE
+        ${PROJECT_NAME}
+        "${TORCH_LIBRARIES}"
+        GTest::gtest_main
+    )
+    include(GoogleTest)
+    gtest_discover_tests(test_tgn)
+endif()
