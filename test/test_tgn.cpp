@@ -62,8 +62,8 @@ auto train(tgn::TGN& tgn, LinkPredictor& decoder, torch::optim::Adam& opt)
 
     const auto [n_id, _] =
         at::_unique(torch::cat({batch.src, batch.dst, batch.neg_dst}));
-    tgn->forward(n_id);
 
+    tgn->forward(n_id);
     const auto z_src = tgn->get_embeddings(batch.src);
     const auto z_dst = tgn->get_embeddings(batch.dst);
     const auto z_neg = tgn->get_embeddings(batch.neg_dst);

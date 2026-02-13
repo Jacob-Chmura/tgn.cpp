@@ -72,8 +72,8 @@ struct TransformerConvImpl : torch::nn::Module {
                               .bias(false)));
   }
 
-  torch::Tensor forward(torch::Tensor x, torch::Tensor edge_index,
-                        torch::Tensor edge_attr) {
+  torch::Tensor forward(const torch::Tensor& x, const torch::Tensor& edge_index,
+                        const torch::Tensor& edge_attr) {
     const auto num_nodes = x.size(0);
     const auto j = edge_index[0];  // j is the sender
     const auto i = edge_index[1];  // i is the receiver
@@ -83,7 +83,7 @@ struct TransformerConvImpl : torch::nn::Module {
     const auto v = w_v->forward(x).view({-1, heads_, out_channels_});
     const auto e = w_e->forward(edge_attr).view({-1, heads_, out_channels_});
 
-    // Message Function
+    // Attention
     const auto k_j = k.index_select(0, j) + e;
     const auto q_i = q.index_select(0, i);
     auto a =
@@ -137,14 +137,16 @@ struct TGNMemoryImpl : torch::nn::Module {
 
   auto detach() -> void { memory_.detach_(); }
 
-  auto forward(torch::Tensor n_id) -> std::tuple<torch::Tensor, torch::Tensor> {
+  auto forward(const torch::Tensor& n_id)
+      -> std::tuple<torch::Tensor, torch::Tensor> {
     return is_training() ? get_updated_memory(n_id)
                          : std::make_pair(memory_.index_select(0, n_id),
                                           last_update_.index_select(0, n_id));
   }
 
-  auto update_state(torch::Tensor src, torch::Tensor dst, torch::Tensor t,
-                    torch::Tensor raw_msg) -> void {
+  auto update_state(const torch::Tensor& src, const torch::Tensor& dst,
+                    const torch::Tensor& t, const torch::Tensor& raw_msg)
+      -> void {
     const auto [n_id, _] = at::_unique(torch::cat({src, dst}));
 
     if (is_training()) {
@@ -180,13 +182,13 @@ struct TGNMemoryImpl : torch::nn::Module {
     }
   }
 
-  auto update_memory(torch::Tensor n_id) -> void {
+  auto update_memory(const torch::Tensor& n_id) -> void {
     auto [memory_nid, last_update_nid] = get_updated_memory(n_id);
     memory_.index_put_({n_id}, memory_nid);
     last_update_.index_put_({n_id}, last_update_nid);
   }
 
-  auto get_updated_memory(torch::Tensor n_id)
+  auto get_updated_memory(const torch::Tensor& n_id)
       -> std::tuple<torch::Tensor, torch::Tensor> {
     assoc_.index_put_({n_id}, torch::arange(n_id.size(0)));
 
@@ -208,8 +210,9 @@ struct TGNMemoryImpl : torch::nn::Module {
     return {updated_memory, updated_last_update};
   }
 
-  auto update_msg_store(torch::Tensor src, torch::Tensor dst, torch::Tensor t,
-                        torch::Tensor raw_msg, bool is_src_store) -> void {
+  auto update_msg_store(const torch::Tensor& src, const torch::Tensor& dst,
+                        const torch::Tensor& t, const torch::Tensor& raw_msg,
+                        bool is_src_store) -> void {
     // Group interactions by node ID
     const auto [n_id_sorted, perm] = src.sort();
     const auto [unique_nid, _, count] = torch::unique_consecutive(
@@ -237,7 +240,7 @@ struct TGNMemoryImpl : torch::nn::Module {
     }
   }
 
-  auto compute_msg(torch::Tensor n_id, bool is_src_store)
+  auto compute_msg(const torch::Tensor& n_id, bool is_src_store)
       -> std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> {
     // Gather stored messages
     std::vector<torch::Tensor> src_list;
@@ -274,8 +277,8 @@ struct TGNMemoryImpl : torch::nn::Module {
     return std::make_tuple(msg, t, src);
   }
 
-  auto last_aggr(torch::Tensor msg, torch::Tensor index, torch::Tensor t,
-                 int dim_size) -> torch::Tensor {
+  auto last_aggr(const torch::Tensor& msg, const torch::Tensor& index,
+                 const torch::Tensor& t, int dim_size) -> torch::Tensor {
     auto out = msg.new_zeros({dim_size, msg.size(-1)});
 
     // Number of messages is t.numel();
@@ -319,15 +322,15 @@ struct TGNImpl : torch::nn::Module {
     nbr_loader_.reset_state();
   }
 
-  auto update_state(torch::Tensor src, torch::Tensor dst, torch::Tensor t,
-                    torch::Tensor msg) -> void {
+  auto update_state(const torch::Tensor& src, const torch::Tensor& dst,
+                    const torch::Tensor& t, const torch::Tensor& msg) -> void {
     memory_->update_state(src, dst, t, msg);
     nbr_loader_.insert(src, dst);
   }
 
   auto detach_memory() -> void { memory_->detach(); }
 
-  torch::Tensor forward(torch::Tensor global_n_id) {
+  torch::Tensor forward(const torch::Tensor& global_n_id) {
     const auto [n_id, edge_index, e_id] = nbr_loader_(global_n_id);
     const auto [x, last_update] = memory_(n_id);
 
@@ -350,7 +353,7 @@ struct TGNImpl : torch::nn::Module {
     return z_cache_;
   }
 
-  auto get_embeddings(torch::Tensor global_n_id) -> torch::Tensor {
+  auto get_embeddings(const torch::Tensor& global_n_id) -> torch::Tensor {
     const auto local_indices = assoc_.index({global_n_id});
     return z_cache_.index_select(0, local_indices);
   }

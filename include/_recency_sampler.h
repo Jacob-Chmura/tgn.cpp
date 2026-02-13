@@ -17,7 +17,7 @@ struct LastNeighborLoader {
     reset_state();
   }
 
-  auto operator()(torch::Tensor global_n_id)
+  auto operator()(const torch::Tensor& global_n_id)
       -> std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> {
     // Shape: [batch_size, sampler_size]
     const auto nbrs = buffer_nbrs_.index_select(0, global_n_id);
@@ -39,9 +39,9 @@ struct LastNeighborLoader {
                                                    unique_n_id.options()));
 
     if (filtered_nbrs.numel() == 0) {
-      const auto empty_edge_index =
-          torch::empty({2, 0}, global_n_id.options().dtype(torch::kLong));
-      return std::make_tuple(unique_n_id, empty_edge_index, filtered_e_id);
+      return std::make_tuple(unique_n_id,
+                             torch::empty({2, 0}, unique_n_id.options()),
+                             filtered_e_id);
     }
 
     // Map global IDs to local IDs [0, len(n_id) - 1]
@@ -51,16 +51,15 @@ struct LastNeighborLoader {
     return std::make_tuple(unique_n_id, edge_index, filtered_e_id);
   }
 
-  auto insert(torch::Tensor src, torch::Tensor dst) -> void {
+  auto insert(const torch::Tensor& src, const torch::Tensor& dst) -> void {
     // Collect central nodes, their nbrs and the current event ids.
     auto nbrs = torch::cat({src, dst}, 0);
     auto nodes = torch::cat({dst, src}, 0);
 
     // Create edge IDs for this batch and repeat for bi-directional edges
     const auto batch_size = src.size(0);
-    const auto e_id_range =
-        torch::arange(cur_e_id_, cur_e_id_ + batch_size, src.options());
-    auto e_id = e_id_range.repeat({2});
+    auto e_id = torch::arange(cur_e_id_, cur_e_id_ + batch_size, src.options())
+                    .repeat({2});
     cur_e_id_ += batch_size;
 
     // Sort interactions by node ID to simplify batch processing
@@ -116,7 +115,7 @@ struct LastNeighborLoader {
   }
 
   std::int64_t buffer_size_{};
-  std::size_t cur_e_id_{};
+  std::size_t cur_e_id_{0};
 
   torch::Tensor buffer_nbrs_;
   torch::Tensor buffer_e_id_;
