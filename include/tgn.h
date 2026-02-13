@@ -69,6 +69,13 @@ struct TimeEncoderImpl : torch::nn::Module {
 };
 TORCH_MODULE(TimeEncoder);
 
+auto scatter_max(torch::Tensor src, torch::Tensor index, int dim_size)
+    -> torch::Tensor {
+  return src.new_zeros(dim_size).scatter_reduce_(/*dim*/ 0, index, src,
+                                                 /* reduce */ "amax",
+                                                 /* include_self*/ false);
+}
+
 struct TransformerConvImpl : torch::nn::Module {
   TransformerConvImpl(std::size_t in_channels, std::size_t out_channels,
                       std::size_t edge_dim, std::size_t heads,
@@ -105,16 +112,27 @@ struct TransformerConvImpl : torch::nn::Module {
     auto alpha = (query_i * key_j).sum(-1) /
                  std::sqrt(static_cast<double>(out_channels));
 
-    // TODO(kuba): Scatter softmax
-    // a = torch_geometric.softmax(a, index=i, size_i=w_q.size(0))
+    alpha = scatter_softmax(alpha, /* index*/ i,
+                            /* num_nodes*/ w_q->weight.size(0));
     alpha = torch::dropout(alpha, dropout, is_training());
 
     auto out = (v.index_select(0, j) + e) * alpha.view({-1, heads, 1});
     // TODO(kuba): Scatter add
-    // out = aggr_module(out, i, dim=0, dim_size=w_q.size(0));
+    // out = aggr_module(out, i, dim=0, dim_size=w_q->weight.size(0));
 
     out = out.view({num_nodes, heads * out_channels});
     return out + w_skip->forward(x);
+  }
+
+  auto scatter_softmax(torch::Tensor src, torch::Tensor index, int num_nodes)
+      -> torch::Tensor {
+    auto src_max = scatter_max(src.detach(), index, /* dim_size*/ num_nodes);
+    auto out = src - src_max.index_select(0, index);
+    out = out.exp();
+
+    auto out_sum = scatter_max(out, index, /*dim_size*/ num_nodes) + 1e-16;
+    out_sum = out_sum.index_select(0, index);
+    return out / out_sum;
   }
 
   torch::nn::Linear w_k{nullptr}, w_q{nullptr}, w_v{nullptr}, w_e{nullptr},
@@ -330,9 +348,7 @@ struct TGNMemoryImpl : torch::nn::Module {
     // Get local copy of updated memory, and then last_update.
     auto updated_memory = gru->forward(aggr, memory.index_select(0, n_id));
     auto updated_last_update = scatter_max(t, idx, last_update.size(0));
-    std::cout << "Here\n" << std::endl;
     updated_last_update = updated_last_update.index_select(0, n_id);
-    std::cout << "Here2\n" << std::endl;
     return {updated_memory, updated_last_update};
   }
 
@@ -418,13 +434,6 @@ struct TGNMemoryImpl : torch::nn::Module {
     }
 
     return out;
-  }
-
-  auto scatter_max(torch::Tensor src, torch::Tensor index, int dim_size)
-      -> torch::Tensor {
-    return src.new_zeros(src.size(0))
-        .scatter_reduce_(/*dim*/ 0, index, src, /* reduce */ "amax",
-                         /* include_self*/ false);
   }
 
   auto scatter_argmax(torch::Tensor src, torch::Tensor index, int dim_size)
