@@ -26,10 +26,11 @@ struct LinkPredictorImpl : torch::nn::Module {
   }
 
   torch::Tensor forward(torch::Tensor z_src, torch::Tensor z_dst) {
-    auto z = torch::relu(w_src->forward(z_src) + w_dst->forward(z_dst));
+    const auto z = torch::relu(w_src->forward(z_src) + w_dst->forward(z_dst));
     return w_final->forward(z);
   }
 
+ private:
   torch::nn::Linear w_src{nullptr}, w_dst{nullptr}, w_final{nullptr};
 };
 TORCH_MODULE(LinkPredictor);
@@ -48,7 +49,7 @@ auto get_batch() -> Batch {
   };
 }
 
-auto train(tgn::TGN tgn, LinkPredictor decoder, torch::optim::Adam& opt)
+auto train(tgn::TGN& tgn, LinkPredictor& decoder, torch::optim::Adam& opt)
     -> float {
   tgn->train();
   decoder->train();
@@ -56,19 +57,19 @@ auto train(tgn::TGN tgn, LinkPredictor decoder, torch::optim::Adam& opt)
 
   float loss_{0};
   {
-    auto batch = get_batch();
+    const auto batch = get_batch();
     opt.zero_grad();
 
-    auto [n_id, _] =
+    const auto [n_id, _] =
         at::_unique(torch::cat({batch.src, batch.dst, batch.neg_dst}));
     tgn->forward(n_id);
 
-    auto z_src = tgn->get_embeddings(batch.src);
-    auto z_dst = tgn->get_embeddings(batch.dst);
-    auto z_neg = tgn->get_embeddings(batch.neg_dst);
+    const auto z_src = tgn->get_embeddings(batch.src);
+    const auto z_dst = tgn->get_embeddings(batch.dst);
+    const auto z_neg = tgn->get_embeddings(batch.neg_dst);
 
-    auto pos_out = decoder->forward(z_src, z_dst);
-    auto neg_out = decoder->forward(z_src, z_neg);
+    const auto pos_out = decoder->forward(z_src, z_dst);
+    const auto neg_out = decoder->forward(z_src, z_neg);
 
     auto loss = torch::nn::functional::binary_cross_entropy_with_logits(
                     pos_out, torch::ones_like(pos_out)) +
@@ -88,16 +89,16 @@ auto train(tgn::TGN tgn, LinkPredictor decoder, torch::optim::Adam& opt)
 
 }  // namespace
 auto main() -> int {
-  tgn::TGN encoder;
+  tgn::TGN tgn{};
   LinkPredictor decoder{tgn::EMBEDDING_DIM};
 
-  std::vector<torch::Tensor> params = encoder->parameters();
+  std::vector<torch::Tensor> params = tgn->parameters();
   auto decoder_params = decoder->parameters();
   params.insert(params.end(), decoder_params.begin(), decoder_params.end());
   torch::optim::Adam opt(params, torch::optim::AdamOptions(lr));
 
   for (std::size_t epoch = 1; epoch <= NUM_EPOCHS; ++epoch) {
-    auto loss = train(encoder, decoder, opt);
+    auto loss = train(tgn, decoder, opt);
     std::cout << "Epoch " << epoch << " Loss: " << loss << std::endl;
   }
 }

@@ -56,19 +56,20 @@ struct TransformerConvImpl : torch::nn::Module {
   TransformerConvImpl(std::size_t in_channels, std::size_t out_channels,
                       std::size_t edge_dim, std::size_t heads,
                       float dropout = 0.0)
-      : dropout_(dropout), out_channels_(out_channels), heads_(heads) {
-    w_k = register_module("w_k",
-                          torch::nn::Linear(in_channels, heads * out_channels));
-    w_q = register_module("w_q",
-                          torch::nn::Linear(in_channels, heads * out_channels));
-    w_v = register_module("w_v",
-                          torch::nn::Linear(in_channels, heads * out_channels));
-    w_skip = register_module(
-        "w_skip", torch::nn::Linear(in_channels, heads * out_channels));
+      : dropout_(dropout),
+        out_channels_(static_cast<std::int64_t>(out_channels)),
+        heads_(static_cast<std::int64_t>(heads)) {
+    const auto in_dim = static_cast<std::int64_t>(in_channels);
+    const auto out_dim = heads_ * out_channels_;
+    w_k = register_module("w_k", torch::nn::Linear(in_dim, out_dim));
+    w_q = register_module("w_q", torch::nn::Linear(in_dim, out_dim));
+    w_v = register_module("w_v", torch::nn::Linear(in_dim, out_dim));
+    w_skip = register_module("w_skip", torch::nn::Linear(in_dim, out_dim));
     w_e = register_module(
-        "w_e", torch::nn::Linear(
-                   torch::nn::LinearOptions(edge_dim, heads * out_channels)
-                       .bias(false)));
+        "w_e",
+        torch::nn::Linear(torch::nn::LinearOptions(
+                              static_cast<std::int64_t>(edge_dim), out_dim)
+                              .bias(false)));
   }
 
   torch::Tensor forward(torch::Tensor x, torch::Tensor edge_index,
@@ -101,20 +102,20 @@ struct TransformerConvImpl : torch::nn::Module {
   torch::nn::Linear w_k{nullptr}, w_q{nullptr}, w_v{nullptr}, w_e{nullptr},
       w_skip{nullptr};
   float dropout_{};
-  std::size_t out_channels_{};
-  std::size_t heads_{};
+  std::int64_t out_channels_{};
+  std::int64_t heads_{};
 };
 TORCH_MODULE(TransformerConv);
 
 struct TGNMemoryImpl : torch::nn::Module {
   explicit TGNMemoryImpl(TimeEncoder time_encoder)
-      : time_encoder_(time_encoder),
-        num_nodes_(NUM_NODES),
+      : num_nodes_(NUM_NODES),
         memory_(torch::empty({NUM_NODES, MEMORY_DIM})),
         last_update_(torch::empty({NUM_NODES},
                                   torch::TensorOptions().dtype(torch::kLong))),
         assoc_(torch::empty({NUM_NODES},
-                            torch::TensorOptions().dtype(torch::kLong))) {
+                            torch::TensorOptions().dtype(torch::kLong))),
+        time_encoder_(time_encoder) {
     register_buffer("memory_", memory_);
     register_buffer("last_update_", last_update_);
     register_buffer("assoc_", assoc_);
@@ -173,7 +174,7 @@ struct TGNMemoryImpl : torch::nn::Module {
         memory_.new_empty(0, torch::TensorOptions().dtype(torch::kLong));
     const auto msg = memory_.new_empty({0, MSG_DIM});
 
-    for (auto j = 0; j < num_nodes_; ++j) {
+    for (std::size_t j = 0; j < num_nodes_; ++j) {
       src_store_[j] = std::make_tuple(i, i, i, msg);
       dst_store_[j] = std::make_tuple(i, i, i, msg);
     }
@@ -303,9 +304,9 @@ TORCH_MODULE(TGNMemory);
 
 struct TGNImpl : torch::nn::Module {
   TGNImpl()
-      : assoc_(torch::full({NUM_NODES}, -1,
-                           torch::TensorOptions().dtype(torch::kLong))),
-        nbr_loader_(NUM_NBRS, NUM_NODES) {
+      : nbr_loader_(NUM_NBRS, NUM_NODES),
+        assoc_(torch::full({NUM_NODES}, -1,
+                           torch::TensorOptions().dtype(torch::kLong))) {
     time_encoder_ = register_module("time_encoder_", TimeEncoder(TIME_DIM));
     memory_ = register_module("memory_", TGNMemory(time_encoder_));
     conv_ = register_module(
