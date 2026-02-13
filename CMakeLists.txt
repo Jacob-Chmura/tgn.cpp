@@ -20,8 +20,13 @@ add_compile_options(
     -Wold-style-cast         # Encourages static_cast over C-style casts
     -Woverloaded-virtual     # Warns if you accidentally hide virtual functions
     -Wnull-dereference       # Warns if a null dereference is detected
+
+    # TODO(kuba): ensure these are broadly compatible
+    #-O3 -march=native -ffast-math #-flto
 )
 
+
+# TODO(kuba): ensure we get a good version of libtorch
 find_package(Torch REQUIRED)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
 
@@ -55,8 +60,8 @@ if (TGN_BUILD_TESTS)
     target_link_libraries(test_tgn PRIVATE
         ${PROJECT_NAME}
         "${TORCH_LIBRARIES}"
-        GTest::gtest_main
+        #GTest::gtest_main
     )
-    include(GoogleTest)
-    gtest_discover_tests(test_tgn)
+    #include(GoogleTest)
+    #gtest_discover_tests(test_tgn)
 endif()

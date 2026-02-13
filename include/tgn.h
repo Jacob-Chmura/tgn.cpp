@@ -11,6 +11,8 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
+#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -37,6 +39,64 @@ constexpr float DROPOUT = 0.1;
 // Data params
 constexpr std::size_t NUM_NODES = 1000;
 constexpr std::size_t MSG_DIM = 7;
+
+struct Batch {
+  torch::Tensor src, dst, t, msg;
+  torch::Tensor neg_dst;  // neg_dst should be std::optional<>
+};
+
+class TGStore {
+ public:
+  [[nodiscard]] virtual auto get_batch(std::size_t start,
+                                       std::size_t batch_size) const
+      -> Batch = 0;
+
+  virtual auto size() const -> std::size_t = 0;
+
+  [[nodiscard]] virtual auto fetch_t(const torch::Tensor global_n_id) const
+      -> torch::Tensor = 0;
+  [[nodiscard]] virtual auto fetch_msg(const torch::Tensor global_n_id) const
+      -> torch::Tensor = 0;
+};
+
+class SimpleTGStore final : public TGStore {
+ public:
+  explicit SimpleTGStore(const std::string& data_dir) {
+    n_events_ = 1000;
+    msg_dim_ = static_cast<std::int64_t>(MSG_DIM);
+  }
+
+  [[nodiscard]] auto get_batch(std::size_t start, std::size_t batch_size) const
+      -> Batch override {
+    const auto end = std::min(start + batch_size, n_events_);
+    const auto current_batch_size = static_cast<std::int64_t>(end - start);
+    const auto s = torch::indexing::Slice(start, end);
+    return Batch{
+        .src = torch::randint(0, tgn::NUM_NODES, {current_batch_size}),
+        .dst = torch::randint(0, tgn::NUM_NODES, {current_batch_size}),
+        .t = torch::zeros({current_batch_size}),
+        .msg = torch::zeros({current_batch_size, tgn::MSG_DIM}),
+        .neg_dst = torch::randint(0, tgn::NUM_NODES, {current_batch_size}),
+    };
+  }
+
+  auto size() const -> std::size_t override { return n_events_; }
+
+  [[nodiscard]] auto fetch_t(const torch::Tensor global_n_id) const
+      -> torch::Tensor override {
+    return torch::rand({global_n_id.size(0)});
+  }
+
+  [[nodiscard]] auto fetch_msg(const torch::Tensor global_n_id) const
+      -> torch::Tensor override {
+    return torch::rand({global_n_id.size(0), msg_dim_});
+  }
+
+ private:
+  std::size_t n_events_{};
+  std::int64_t msg_dim_{};
+  torch::Tensor src_{}, dst_{}, t_{}, neg_dst_{};
+};
 
 struct TimeEncoderImpl : torch::nn::Module {
   explicit TimeEncoderImpl(std::size_t out_channels) {
@@ -305,8 +365,9 @@ struct TGNMemoryImpl : torch::nn::Module {
 TORCH_MODULE(TGNMemory);
 
 struct TGNImpl : torch::nn::Module {
-  TGNImpl()
-      : nbr_loader_(NUM_NBRS, NUM_NODES),
+  TGNImpl(std::shared_ptr<TGStore> store)
+      : store_(store),
+        nbr_loader_(NUM_NBRS, NUM_NODES),
         assoc_(torch::full({NUM_NODES}, -1,
                            torch::TensorOptions().dtype(torch::kLong))) {
     time_encoder_ = register_module("time_encoder_", TimeEncoder(TIME_DIM));
@@ -347,14 +408,11 @@ struct TGNImpl : torch::nn::Module {
   auto compute_embeddings(const torch::Tensor& unique_global_ids) -> void {
     const auto [n_id, edge_index, e_id] = nbr_loader_(unique_global_ids);
     const auto [x, last_update] = memory_(n_id);
-
     assoc_.index_put_({n_id}, torch::arange(n_id.size(0), assoc_.options()));
 
     if (e_id.numel() > 0) {
-      // TODO(kuba): global ref to data
-      const auto t = torch::rand({n_id.size(0)});             // data.t[e_id]
-      const auto msg = torch::rand({n_id.size(0), MSG_DIM});  // data.msg[e_id]
-
+      const auto t = store_->fetch_t(n_id);
+      const auto msg = store_->fetch_msg(n_id);
       const auto rel_t = last_update.index_select(0, edge_index[0]) - t;
       const auto rel_t_z = time_encoder_->forward(rel_t);
       const auto edge_attr = torch::cat({rel_t_z, msg}, -1);
@@ -371,6 +429,8 @@ struct TGNImpl : torch::nn::Module {
   }
 
  private:
+  std::shared_ptr<TGStore> store_;
+
   TimeEncoder time_encoder_{nullptr};
   TransformerConv conv_{nullptr};
   TGNMemory memory_{nullptr};

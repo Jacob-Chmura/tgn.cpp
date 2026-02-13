@@ -3,7 +3,9 @@
 #include <torch/torch.h>
 
 #include <cstddef>
+#include <cstdint>
 #include <iostream>
+#include <memory>
 #include <utility>
 #include <vector>
 
@@ -35,33 +37,20 @@ struct LinkPredictorImpl : torch::nn::Module {
 };
 TORCH_MODULE(LinkPredictor);
 
-struct Batch {
-  torch::Tensor src, dst, neg_dst, t, msg;
-};
-
-auto get_batch() -> Batch {
-  return Batch{
-      .src = torch::randint(0, tgn::NUM_NODES, {BATCH_SIZE}),
-      .dst = torch::randint(0, tgn::NUM_NODES, {BATCH_SIZE}),
-      .neg_dst = torch::randint(0, tgn::NUM_NODES, {BATCH_SIZE}),
-      .t = torch::zeros({BATCH_SIZE}),
-      .msg = torch::zeros({BATCH_SIZE, tgn::MSG_DIM}),
-  };
-}
-
-auto train(tgn::TGN& tgn, LinkPredictor& decoder, torch::optim::Adam& opt)
-    -> float {
-  tgn->train();
+auto train(tgn::TGN& engine, LinkPredictor& decoder, torch::optim::Adam& opt,
+           const std::shared_ptr<tgn::TGStore>& store) -> float {
+  engine->train();
   decoder->train();
-  tgn->reset_state();
+  engine->reset_state();
 
-  float loss_{0};
-  {
-    const auto batch = get_batch();
+  float total_loss{0};
+  std::size_t e_id = 0;
+  for (; e_id < store->size(); e_id += BATCH_SIZE) {
     opt.zero_grad();
 
+    const auto batch = store->get_batch(e_id, BATCH_SIZE);
     const auto [z_src, z_dst, z_neg] =
-        tgn->forward(batch.src, batch.dst, batch.neg_dst);
+        engine->forward(batch.src, batch.dst, batch.neg_dst);
 
     const auto pos_out = decoder->forward(z_src, z_dst);
     const auto neg_out = decoder->forward(z_src, z_neg);
@@ -71,29 +60,33 @@ auto train(tgn::TGN& tgn, LinkPredictor& decoder, torch::optim::Adam& opt)
                 torch::nn::functional::binary_cross_entropy_with_logits(
                     neg_out, torch::zeros_like(neg_out));
 
-    tgn->update_state(batch.src, batch.dst, batch.t, batch.msg);
+    engine->update_state(batch.src, batch.dst, batch.t, batch.msg);
     loss.backward();
     opt.step();
-    tgn->detach_memory();
+    engine->detach_memory();
 
-    loss_ = loss.item<float>();
+    total_loss += loss.item<float>();
   }
 
-  return loss_;
+  return total_loss / static_cast<float>(e_id);
 }
 
 }  // namespace
+
 auto main() -> int {
-  tgn::TGN tgn{};
+  std::shared_ptr<tgn::TGStore> store =
+      std::make_shared<tgn::SimpleTGStore>("foo");
+  tgn::TGN engine(store);
+
   LinkPredictor decoder{tgn::EMBEDDING_DIM};
 
-  std::vector<torch::Tensor> params = tgn->parameters();
+  std::vector<torch::Tensor> params = engine->parameters();
   auto decoder_params = decoder->parameters();
   params.insert(params.end(), decoder_params.begin(), decoder_params.end());
   torch::optim::Adam opt(params, torch::optim::AdamOptions(lr));
 
   for (std::size_t epoch = 1; epoch <= NUM_EPOCHS; ++epoch) {
-    auto loss = train(tgn, decoder, opt);
+    auto loss = train(engine, decoder, opt, store);
     std::cout << "Epoch " << epoch << " Loss: " << loss << std::endl;
   }
 }
