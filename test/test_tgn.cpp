@@ -10,6 +10,7 @@
 #include "tgn.h"
 
 // Learning params
+constexpr std::size_t NUM_EPOCHS = 10;
 constexpr std::size_t BATCH_SIZE = 5;
 const double lr = 1e-3;
 
@@ -95,7 +96,7 @@ auto main() -> int {
   params.insert(params.end(), decoder_params.begin(), decoder_params.end());
   torch::optim::Adam opt(params, torch::optim::AdamOptions(lr));
 
-  for (std::size_t epoch = 1; epoch <= 5; ++epoch) {
+  for (std::size_t epoch = 1; epoch <= NUM_EPOCHS; ++epoch) {
     auto loss = train(encoder, decoder, opt);
     std::cout << "Epoch " << epoch << " Loss: " << loss << std::endl;
   }
