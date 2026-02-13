@@ -48,7 +48,6 @@ struct Batch {
 class TGStore {
  public:
   virtual ~TGStore() = default;
-
   virtual auto size() const -> std::size_t = 0;
 
   [[nodiscard]] virtual auto get_batch(std::size_t start,
@@ -64,15 +63,16 @@ class TGStore {
 class SimpleTGStore final : public TGStore {
  public:
   explicit SimpleTGStore(const std::string& data_dir) {
-    n_events_ = 1000;
+    n_events_ = 100;
     msg_dim_ = static_cast<std::int64_t>(MSG_DIM);
   }
+
+  auto size() const -> std::size_t override { return n_events_; }
 
   [[nodiscard]] auto get_batch(std::size_t start, std::size_t batch_size) const
       -> Batch override {
     const auto end = std::min(start + batch_size, n_events_);
     const auto current_batch_size = static_cast<std::int64_t>(end - start);
-    const auto s = torch::indexing::Slice(start, end);
     return Batch{
         .src = torch::randint(0, tgn::NUM_NODES, {current_batch_size}),
         .dst = torch::randint(0, tgn::NUM_NODES, {current_batch_size}),
@@ -82,8 +82,6 @@ class SimpleTGStore final : public TGStore {
         .neg_dst = torch::randint(0, tgn::NUM_NODES, {current_batch_size}),
     };
   }
-
-  auto size() const -> std::size_t override { return n_events_; }
 
   [[nodiscard]] auto fetch_t(const torch::Tensor global_n_id) const
       -> torch::Tensor override {
@@ -390,8 +388,9 @@ struct TGNMemoryImpl : torch::nn::Module {
 TORCH_MODULE(TGNMemory);
 
 struct TGNImpl : torch::nn::Module {
-  TGNImpl()
-      : nbr_loader_(NUM_NBRS, NUM_NODES),
+  TGNImpl(const std::shared_ptr<TGStore>& store)
+      : store_(std::move(store)),
+        nbr_loader_(NUM_NBRS, NUM_NODES),
         assoc_(torch::full({NUM_NODES}, -1,
                            torch::TensorOptions().dtype(torch::kLong))) {
     time_encoder_ = register_module("time_encoder_", TimeEncoder(TIME_DIM));
@@ -454,6 +453,8 @@ struct TGNImpl : torch::nn::Module {
   }
 
  private:
+  std::shared_ptr<TGStore> store_{};
+
   TimeEncoder time_encoder_{nullptr};
   TransformerConv conv_{nullptr};
   TGNMemory memory_{nullptr};
