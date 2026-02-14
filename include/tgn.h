@@ -434,33 +434,31 @@ struct TGNImpl : torch::nn::Module {
     const auto all_global_ids = torch::cat(input_list).view({-1});
     const auto [unique_global_ids, _] = at::_unique(all_global_ids);
 
-    compute_embeddings(unique_global_ids);
+    auto compute_embeddings = [&](const torch::Tensor& u_ids) -> torch::Tensor {
+      const auto [n_id, edge_index, e_id] = nbr_loader_(u_ids);
+      const auto [x, last_update] = memory_(n_id);
 
-    return std::make_tuple(get_embeddings(inputs)...);
-  }
+      assoc_.index_put_({n_id}, torch::arange(n_id.size(0), assoc_.options()));
 
-  auto compute_embeddings(const torch::Tensor& unique_global_ids) -> void {
-    const auto [n_id, edge_index, e_id] = nbr_loader_(unique_global_ids);
-    const auto [x, last_update] = memory_(n_id);
-    const std::int64_t num_edges = edge_index.size(1);
+      if (edge_index.size(1)) {
+        const auto t = store_->fetch_t(e_id);
+        const auto msg = store_->fetch_msg(e_id);
+        const auto rel_t = last_update.index_select(0, edge_index[0]) - t;
+        const auto rel_t_z = time_encoder_->forward(rel_t);
+        const auto edge_attr = torch::cat({rel_t_z, msg}, -1);
+        return conv_(x, edge_index, edge_attr);
+      }
+      return x;
+    };
 
-    assoc_.index_put_({n_id}, torch::arange(n_id.size(0), assoc_.options()));
+    const torch::Tensor z = compute_embeddings(unique_global_ids);
 
-    if (num_edges) {
-      const auto t = store_->fetch_t(e_id);
-      const auto msg = store_->fetch_msg(e_id);
-      const auto rel_t = last_update.index_select(0, edge_index[0]) - t;
-      const auto rel_t_z = time_encoder_->forward(rel_t);
-      const auto edge_attr = torch::cat({rel_t_z, msg}, -1);
-      z_cache_ = conv_(x, edge_index, edge_attr);
-    } else {
-      z_cache_ = x;
-    }
-  }
+    auto map_to_local = [&](const torch::Tensor& global_n_id) {
+      const auto local_indices = assoc_.index({global_n_id});
+      return z.index_select(0, local_indices);
+    };
 
-  auto get_embeddings(const torch::Tensor& global_n_id) -> const torch::Tensor {
-    const auto local_indices = assoc_.index({global_n_id});
-    return z_cache_.index_select(0, local_indices);
+    return std::make_tuple(map_to_local(inputs)...);
   }
 
  private:
@@ -472,7 +470,6 @@ struct TGNImpl : torch::nn::Module {
   TGNMemory memory_{nullptr};
   LastNeighborLoader nbr_loader_;
 
-  torch::Tensor z_cache_;
   torch::Tensor assoc_;
 };
 TORCH_MODULE(TGN);
