@@ -8,9 +8,11 @@
 #include <torch/nn/options/linear.h>
 #include <torch/torch.h>
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <tuple>
 #include <utility>
 #include <vector>
@@ -26,17 +28,79 @@ using detail::scatter_argmax;
 using detail::scatter_max;
 using detail::scatter_softmax;
 
-// Networks params
-constexpr std::size_t EMBEDDING_DIM = 100;
-constexpr std::size_t MEMORY_DIM = 100;
-constexpr std::size_t TIME_DIM = 100;
-constexpr std::size_t NUM_HEADS = 2;
-constexpr std::size_t NUM_NBRS = 10;
-constexpr float DROPOUT = 0.1;
+struct TGNConfig {
+  // Model parameters
+  std::size_t embedding_dim = 100;
+  std::size_t memory_dim = 100;
+  std::size_t time_dim = 100;
 
-// Data params
-constexpr std::size_t NUM_NODES = 1000;
-constexpr std::size_t MSG_DIM = 7;
+  std::size_t num_heads = 2;
+  std::size_t num_nbrs = 10;
+  float dropout = 0.1;
+
+  // Data parameters
+  std::size_t num_nodes = 1000;
+  std::size_t msg_dim = 7;
+};
+
+struct Batch {
+  torch::Tensor src, dst, t, msg;
+  torch::Tensor neg_dst;  // neg_dst should be std::optional<>
+};
+
+class TGStore {
+ public:
+  virtual ~TGStore() = default;
+  virtual auto size() const -> std::size_t = 0;
+
+  [[nodiscard]] virtual auto get_batch(std::size_t start,
+                                       std::size_t batch_size) const
+      -> Batch = 0;
+
+  [[nodiscard]] virtual auto fetch_t(const torch::Tensor global_n_id) const
+      -> torch::Tensor = 0;
+  [[nodiscard]] virtual auto fetch_msg(const torch::Tensor global_n_id) const
+      -> torch::Tensor = 0;
+};
+
+class SimpleTGStore final : public TGStore {
+ public:
+  explicit SimpleTGStore(const std::string& data_dir) {
+    n_events_ = 100;
+    msg_dim_ = 7;
+  }
+
+  auto size() const -> std::size_t override { return n_events_; }
+
+  [[nodiscard]] auto get_batch(std::size_t start, std::size_t batch_size) const
+      -> Batch override {
+    const auto end = std::min(start + batch_size, n_events_);
+    const auto current_batch_size = static_cast<std::int64_t>(end - start);
+    return Batch{
+        .src = torch::randint(0, 5, {current_batch_size}),
+        .dst = torch::randint(0, 5, {current_batch_size}),
+        .t = torch::arange(static_cast<std::int64_t>(start),
+                           static_cast<std::int64_t>(end), torch::kLong),
+        .msg = torch::zeros({current_batch_size, msg_dim_}),
+        .neg_dst = torch::randint(0, 5, {current_batch_size}),
+    };
+  }
+
+  [[nodiscard]] auto fetch_t(const torch::Tensor global_n_id) const
+      -> torch::Tensor override {
+    return torch::rand({global_n_id.size(0)});
+  }
+
+  [[nodiscard]] auto fetch_msg(const torch::Tensor global_n_id) const
+      -> torch::Tensor override {
+    return torch::rand({global_n_id.size(0), msg_dim_});
+  }
+
+ private:
+  std::size_t n_events_{};
+  std::int64_t msg_dim_{};
+  torch::Tensor src_{}, dst_{}, t_{}, neg_dst_{};
+};
 
 struct TimeEncoderImpl : torch::nn::Module {
   explicit TimeEncoderImpl(std::size_t out_channels) {
@@ -74,27 +138,45 @@ struct TransformerConvImpl : torch::nn::Module {
 
   torch::Tensor forward(const torch::Tensor& x, const torch::Tensor& edge_index,
                         const torch::Tensor& edge_attr) {
-    const auto num_nodes = x.size(0);
-    const auto j = edge_index[0];  // j is the sender
-    const auto i = edge_index[1];  // i is the receiver
+    // TODO(kuba): implement 2d scatter ops to avoid these huge flatten ops
+    const auto B = x.size(0);
+    const auto E = edge_index.size(1);
+    const auto H = heads_;
+    const auto C = out_channels_;
+    const auto opts = edge_index.options();  // torch::LongTensor
 
-    const auto q = w_q->forward(x).view({-1, heads_, out_channels_});
-    const auto k = w_k->forward(x).view({-1, heads_, out_channels_});
-    const auto v = w_v->forward(x).view({-1, heads_, out_channels_});
-    const auto e = w_e->forward(edge_attr).view({-1, heads_, out_channels_});
+    // Projections
+    const auto q = w_q->forward(x).view({B, H, C});
+    const auto k = w_k->forward(x).view({B, H, C});
+    const auto v = w_v->forward(x).view({B, H, C});
+    const auto e = w_e->forward(edge_attr).view({E, H, C});
 
-    // Attention
-    const auto k_j = k.index_select(0, j) + e;
-    const auto q_i = q.index_select(0, i);
-    auto a =
-        (q_i * k_j).sum(-1) / std::sqrt(static_cast<double>(out_channels_));
+    // Attention scores
+    const auto src = edge_index[0];  // src is the sender
+    const auto dst = edge_index[1];  // dst is the receiver
 
-    a = scatter_softmax(a, /* index*/ i, /* dim_size */ w_q->weight.size(0));
-    a = torch::dropout(a, dropout_, is_training());
+    const auto k_src = k.index_select(0, src) + e;
+    const auto q_dst = q.index_select(0, dst);
+    auto alpha = (q_dst * k_src).sum(-1) / std::sqrt(static_cast<double>(C));
+    alpha = alpha.view(-1);  // flatten for 2-d scatter [E * H]
 
-    auto out = (v.index_select(0, j) + e) * a.view({-1, heads_, 1});
-    out = scatter_add(out, /* index */ i, /*dim_size*/ w_q->weight.size(0));
-    out = out.view({num_nodes, heads_ * out_channels_});
+    // Scatter-softmax attention
+    const auto H_offset = torch::arange(H, opts).repeat({E});
+    auto scatter_idx = (dst.repeat_interleave(H) * H) + H_offset;
+
+    alpha = scatter_softmax(alpha, scatter_idx, B * H);
+    alpha = torch::dropout(alpha, dropout_, is_training());
+
+    // Scatter-add message aggregation
+    auto msgs = (v.index_select(0, src) + e) * alpha.view({E, H, 1});
+    msgs = msgs.view(-1);  // flatten for 3-d scatter [E * H * C]
+
+    const auto C_offset = torch::arange(C, opts).repeat({E * H});
+    scatter_idx = (scatter_idx.repeat_interleave(C) * C) + C_offset;
+
+    auto out = scatter_add(msgs, scatter_idx, B * H * C);
+    out = out.view({B, H * C});
+
     return out + w_skip->forward(x);
   }
 
@@ -108,12 +190,14 @@ struct TransformerConvImpl : torch::nn::Module {
 TORCH_MODULE(TransformerConv);
 
 struct TGNMemoryImpl : torch::nn::Module {
-  explicit TGNMemoryImpl(TimeEncoder time_encoder)
-      : num_nodes_(NUM_NODES),
-        memory_(torch::empty({NUM_NODES, MEMORY_DIM})),
-        last_update_(torch::empty({NUM_NODES},
+  explicit TGNMemoryImpl(const TGNConfig& cfg, TimeEncoder time_encoder)
+      : msg_dim_(cfg.msg_dim),
+        num_nodes_(cfg.num_nodes),
+        memory_(torch::empty({static_cast<std::int64_t>(cfg.num_nodes),
+                              static_cast<std::int64_t>(cfg.memory_dim)})),
+        last_update_(torch::empty({static_cast<std::int64_t>(cfg.num_nodes)},
                                   torch::TensorOptions().dtype(torch::kLong))),
-        assoc_(torch::empty({NUM_NODES},
+        assoc_(torch::empty({static_cast<std::int64_t>(cfg.num_nodes)},
                             torch::TensorOptions().dtype(torch::kLong))),
         time_encoder_(time_encoder) {
     register_buffer("memory_", memory_);
@@ -121,8 +205,10 @@ struct TGNMemoryImpl : torch::nn::Module {
     register_buffer("assoc_", assoc_);
 
     // since our identity msg is cat(mem[src], mem[dst], raw_msg, t_enc)
-    constexpr auto cell_dim = MEMORY_DIM + MEMORY_DIM + MSG_DIM + TIME_DIM;
-    gru_ = register_module("gru_", torch::nn::GRUCell(cell_dim, MEMORY_DIM));
+    const auto cell_dim =
+        cfg.memory_dim + cfg.memory_dim + cfg.msg_dim + cfg.time_dim;
+    gru_ =
+        register_module("gru_", torch::nn::GRUCell(cell_dim, cfg.memory_dim));
 
     src_store_.resize(num_nodes_);
     dst_store_.resize(num_nodes_);
@@ -174,7 +260,8 @@ struct TGNMemoryImpl : torch::nn::Module {
     // Message store format: (src, dst, t, msg)
     const auto i =
         memory_.new_empty(0, torch::TensorOptions().dtype(torch::kLong));
-    const auto msg = memory_.new_empty({0, MSG_DIM});
+    const auto msg =
+        memory_.new_empty({0, static_cast<std::int64_t>(msg_dim_)});
     const auto empty_entry = std::make_tuple(i, i, i, msg);
 
     std::fill(src_store_.begin(), src_store_.end(), empty_entry);
@@ -199,12 +286,14 @@ struct TGNMemoryImpl : torch::nn::Module {
     const auto idx = torch::cat({src_s, src_d}, 0);
     const auto msg = torch::cat({msg_s, msg_d}, 0);
     const auto t = torch::cat({t_s, t_d}, 0);
+
     const auto aggr =
         last_aggr(msg, assoc_.index_select(0, idx), t, n_id.size(0));
 
     // Get local copy of updated memory, and then last_update.
     auto updated_memory = gru_->forward(aggr, memory_.index_select(0, n_id));
     auto updated_last_update = scatter_max(t, idx, last_update_.size(0));
+
     updated_last_update = updated_last_update.index_select(0, n_id);
     return {updated_memory, updated_last_update};
   }
@@ -284,12 +373,14 @@ struct TGNMemoryImpl : torch::nn::Module {
     if (t.numel()) {
       const auto argmax = scatter_argmax(t, index, dim_size);
       const auto mask = argmax < msg.size(0);  // Items with at least one entry
-      out.index_put_({mask}, argmax.index({mask}));
+      const auto latest_msgs = msg.index_select(0, argmax.index({mask}));
+      out.index_put_({mask}, latest_msgs);
     }
 
     return out;
   }
 
+  std::size_t msg_dim_{};
   std::size_t num_nodes_{};
   torch::Tensor memory_{};
   torch::Tensor last_update_{};
@@ -305,15 +396,19 @@ struct TGNMemoryImpl : torch::nn::Module {
 TORCH_MODULE(TGNMemory);
 
 struct TGNImpl : torch::nn::Module {
-  TGNImpl()
-      : nbr_loader_(NUM_NBRS, NUM_NODES),
-        assoc_(torch::full({NUM_NODES}, -1,
+  TGNImpl(const TGNConfig& cfg, const std::shared_ptr<TGStore>& store)
+      : cfg_(cfg),
+        store_(std::move(store)),
+        nbr_loader_(cfg.num_nbrs, cfg.num_nodes),
+        assoc_(torch::full({static_cast<std::int64_t>(cfg.num_nodes)}, -1,
                            torch::TensorOptions().dtype(torch::kLong))) {
-    time_encoder_ = register_module("time_encoder_", TimeEncoder(TIME_DIM));
-    memory_ = register_module("memory_", TGNMemory(time_encoder_));
+    time_encoder_ =
+        register_module("time_encoder_", TimeEncoder(cfg_.time_dim));
+    memory_ = register_module("memory_", TGNMemory(cfg_, time_encoder_));
     conv_ = register_module(
-        "conv_", TransformerConv(MEMORY_DIM, EMBEDDING_DIM / 2,
-                                 MSG_DIM + TIME_DIM, NUM_HEADS, DROPOUT));
+        "conv_", TransformerConv(cfg_.memory_dim, cfg_.embedding_dim / 2,
+                                 cfg_.msg_dim + cfg_.time_dim, cfg_.num_heads,
+                                 cfg_.dropout));
   }
 
   auto reset_state() -> void {
@@ -347,18 +442,16 @@ struct TGNImpl : torch::nn::Module {
   auto compute_embeddings(const torch::Tensor& unique_global_ids) -> void {
     const auto [n_id, edge_index, e_id] = nbr_loader_(unique_global_ids);
     const auto [x, last_update] = memory_(n_id);
+    const std::int64_t num_edges = edge_index.size(1);
 
     assoc_.index_put_({n_id}, torch::arange(n_id.size(0), assoc_.options()));
 
-    if (e_id.numel() > 0) {
-      // TODO(kuba): global ref to data
-      const auto t = torch::rand({n_id.size(0)});             // data.t[e_id]
-      const auto msg = torch::rand({n_id.size(0), MSG_DIM});  // data.msg[e_id]
-
+    if (num_edges) {
+      const auto t = store_->fetch_t(e_id);
+      const auto msg = store_->fetch_msg(e_id);
       const auto rel_t = last_update.index_select(0, edge_index[0]) - t;
       const auto rel_t_z = time_encoder_->forward(rel_t);
       const auto edge_attr = torch::cat({rel_t_z, msg}, -1);
-
       z_cache_ = conv_(x, edge_index, edge_attr);
     } else {
       z_cache_ = x;
@@ -371,6 +464,9 @@ struct TGNImpl : torch::nn::Module {
   }
 
  private:
+  const TGNConfig cfg_{};
+  std::shared_ptr<TGStore> store_{};
+
   TimeEncoder time_encoder_{nullptr};
   TransformerConv conv_{nullptr};
   TGNMemory memory_{nullptr};
