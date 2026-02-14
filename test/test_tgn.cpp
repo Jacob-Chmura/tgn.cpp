@@ -36,11 +36,11 @@ struct LinkPredictorImpl : torch::nn::Module {
 };
 TORCH_MODULE(LinkPredictor);
 
-auto train(tgn::TGN& engine, LinkPredictor& decoder, torch::optim::Adam& opt,
+auto train(tgn::TGN& encoder, LinkPredictor& decoder, torch::optim::Adam& opt,
            const std::shared_ptr<tgn::TGStore>& store) -> float {
-  engine->train();
+  encoder->train();
   decoder->train();
-  engine->reset_state();
+  encoder->reset_state();
 
   float total_loss{0};
   std::size_t e_id = 0;
@@ -50,7 +50,7 @@ auto train(tgn::TGN& engine, LinkPredictor& decoder, torch::optim::Adam& opt,
 
     const auto batch = store->get_batch(e_id, BATCH_SIZE);
     const auto [z_src, z_dst, z_neg] =
-        engine->forward(batch.src, batch.dst, batch.neg_dst);
+        encoder->forward(batch.src, batch.dst, batch.neg_dst);
 
     const auto pos_out = decoder->forward(z_src, z_dst);
     const auto neg_out = decoder->forward(z_src, z_neg);
@@ -60,10 +60,10 @@ auto train(tgn::TGN& engine, LinkPredictor& decoder, torch::optim::Adam& opt,
                 torch::nn::functional::binary_cross_entropy_with_logits(
                     neg_out, torch::zeros_like(neg_out));
 
-    engine->update_state(batch.src, batch.dst, batch.t, batch.msg);
+    encoder->update_state(batch.src, batch.dst, batch.t, batch.msg);
     loss.backward();
     opt.step();
-    engine->detach_memory();
+    encoder->detach_memory();
 
     total_loss += loss.item<float>();
   }
@@ -73,18 +73,19 @@ auto train(tgn::TGN& engine, LinkPredictor& decoder, torch::optim::Adam& opt,
 }  // namespace
 
 auto main() -> int {
-  std::shared_ptr<tgn::TGStore> store =
-      std::make_shared<tgn::SimpleTGStore>("foo");
-  tgn::TGN engine(store);
-  LinkPredictor decoder{tgn::EMBEDDING_DIM};
+  const auto cfg = tgn::TGNConfig{};
+  const auto store = std::make_shared<tgn::SimpleTGStore>("foo");
 
-  auto params = engine->parameters();
+  tgn::TGN encoder(cfg, store);
+  LinkPredictor decoder{cfg.embedding_dim};
+
+  auto params = encoder->parameters();
   auto dec_params = decoder->parameters();
   params.insert(params.end(), dec_params.begin(), dec_params.end());
   torch::optim::Adam opt(params, torch::optim::AdamOptions(LEARNING_RATE));
 
   for (std::size_t epoch = 1; epoch <= NUM_EPOCHS; ++epoch) {
-    auto loss = train(engine, decoder, opt, store);
+    auto loss = train(encoder, decoder, opt, store);
     std::cout << "Epoch " << epoch << " Loss: " << loss << std::endl;
   }
 }
