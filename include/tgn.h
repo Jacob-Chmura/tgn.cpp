@@ -436,8 +436,8 @@ struct TGNImpl : torch::nn::Module {
     assoc_.index_put_({n_id}, torch::arange(n_id.size(0), assoc_.options()));
 
     if (num_edges) {
-      const auto t = torch::rand({num_edges});             // data.t[e_id]
-      const auto msg = torch::rand({num_edges, MSG_DIM});  // data.msg[e_id]
+      const auto t = store_->fetch_t(e_id);
+      const auto msg = store_->fetch_msg(e_id);
       const auto rel_t = last_update.index_select(0, edge_index[0]) - t;
       const auto rel_t_z = time_encoder_->forward(rel_t);
       const auto edge_attr = torch::cat({rel_t_z, msg}, -1);

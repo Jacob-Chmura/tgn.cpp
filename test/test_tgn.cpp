@@ -13,7 +13,7 @@
 // Learning params
 constexpr std::size_t NUM_EPOCHS = 10;
 constexpr std::size_t BATCH_SIZE = 5;
-const double lr = 1e-3;
+constexpr double LEARNING_RATE = 1e-3;
 
 namespace {
 
@@ -81,7 +81,7 @@ auto main() -> int {
   auto params = engine->parameters();
   auto dec_params = decoder->parameters();
   params.insert(params.end(), dec_params.begin(), dec_params.end());
-  torch::optim::Adam opt(params, torch::optim::AdamOptions(lr));
+  torch::optim::Adam opt(params, torch::optim::AdamOptions(LEARNING_RATE));
 
   for (std::size_t epoch = 1; epoch <= NUM_EPOCHS; ++epoch) {
     auto loss = train(engine, decoder, opt, store);
