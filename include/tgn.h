@@ -286,14 +286,14 @@ struct TGNMemoryImpl : torch::nn::Module {
     // Aggregate messages.
     const auto idx = torch::cat({src_s, src_d}, 0);
     const auto msg = torch::cat({msg_s, msg_d}, 0);
-    const auto tt = torch::cat({t_s, t_d}, 0);
+    const auto t = torch::cat({t_s, t_d}, 0);
 
     const auto aggr =
-        last_aggr(msg, assoc_.index_select(0, idx), tt, n_id.size(0));
+        last_aggr(msg, assoc_.index_select(0, idx), t, n_id.size(0));
 
     // Get local copy of updated memory, and then last_update.
     auto updated_memory = gru_->forward(aggr, memory_.index_select(0, n_id));
-    auto updated_last_update = scatter_max(tt, idx, last_update_.size(0));
+    auto updated_last_update = scatter_max(t, idx, last_update_.size(0));
 
     updated_last_update = updated_last_update.index_select(0, n_id);
     return {updated_memory, updated_last_update};
