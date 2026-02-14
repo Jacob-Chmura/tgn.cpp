@@ -138,46 +138,45 @@ struct TransformerConvImpl : torch::nn::Module {
 
   torch::Tensor forward(const torch::Tensor& x, const torch::Tensor& edge_index,
                         const torch::Tensor& edge_attr) {
-    const auto num_nodes = x.size(0);
-    const auto num_edges = edge_index.size(1);
-    const auto q = w_q->forward(x).view({num_nodes, heads_, out_channels_});
-    const auto k = w_k->forward(x).view({num_nodes, heads_, out_channels_});
-    const auto v = w_v->forward(x).view({num_nodes, heads_, out_channels_});
-    const auto e =
-        w_e->forward(edge_attr).view({num_edges, heads_, out_channels_});
-
-    // Attention
-    const auto j = edge_index[0];  // j is the sender
-    const auto i = edge_index[1];  // i is the receiver
-
-    const auto k_j = k.index_select(0, j) + e;
-    const auto q_i = q.index_select(0, i);
-
-    auto a =
-        (q_i * k_j).sum(-1) / std::sqrt(static_cast<double>(out_channels_));
-    auto a_flat = a.view(-1);
-    auto i_flat = i.repeat_interleave(heads_);
-    auto head_offset = torch::arange(heads_, i.options()).repeat({num_edges});
-    i_flat += (head_offset * num_nodes);
-
-    a_flat = scatter_softmax(a_flat, i_flat, /* dim_size */ num_nodes * heads_);
-    a_flat = torch::dropout(a_flat, dropout_, is_training());
-
-    a = a_flat.view({num_edges, heads_});
-
     // TODO(kuba): implement 2d scatter ops to avoid these huge flatten ops
-    auto msgs = (v.index_select(0, j) + e) * a.view({num_edges, heads_, 1});
-    auto m_flat = msgs.view(-1);
-    auto i_super_flat = i_flat.repeat_interleave(out_channels_);
-    auto chan_offset =
-        torch::arange(out_channels_, i.options()).repeat({num_edges * heads_});
-    i_super_flat += (chan_offset * (num_nodes * heads_));
+    const auto B = x.size(0);
+    const auto E = edge_index.size(1);
+    const auto H = heads_;
+    const auto C = out_channels_;
+    const auto opts = edge_index.options();  // torch::LongTensor
 
-    auto out_flat =
-        scatter_add(m_flat, i_super_flat,
-                    /*dim_size*/ num_nodes * heads_ * out_channels_);
+    // Projections
+    const auto q = w_q->forward(x).view({B, H, C});
+    const auto k = w_k->forward(x).view({B, H, C});
+    const auto v = w_v->forward(x).view({B, H, C});
+    const auto e = w_e->forward(edge_attr).view({E, H, C});
 
-    auto out = out_flat.view({num_nodes, heads_ * out_channels_});
+    // Attention scores
+    const auto src = edge_index[0];  // src is the sender
+    const auto dst = edge_index[1];  // dst is the receiver
+
+    const auto k_src = k.index_select(0, src) + e;
+    const auto q_dst = q.index_select(0, dst);
+    auto alpha = (q_dst * k_src).sum(-1) / std::sqrt(static_cast<double>(C));
+    alpha = alpha.view(-1);  // flatten for 2-d scatter [E * H]
+
+    // Scatter-softmax attention
+    const auto H_offset = torch::arange(H, opts).repeat({E});
+    auto scatter_idx = (dst.repeat_interleave(H) * H) + H_offset;
+
+    alpha = scatter_softmax(alpha, scatter_idx, B * H);
+    alpha = torch::dropout(alpha, dropout_, is_training());
+
+    // Scatter-add message aggregation
+    auto msgs = (v.index_select(0, src) + e) * alpha.view({E, H, 1});
+    msgs = msgs.view(-1);  // flatten for 3-d scatter [E * H * C]
+
+    const auto C_offset = torch::arange(C, opts).repeat({E * H});
+    scatter_idx = (scatter_idx.repeat_interleave(C) * C) + C_offset;
+
+    auto out = scatter_add(msgs, scatter_idx, B * H * C);
+    out = out.view({B, H * C});
+
     return out + w_skip->forward(x);
   }
 
