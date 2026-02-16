@@ -1,11 +1,4 @@
-#include <ATen/ops/_unique.h>
-#include <ATen/ops/rand.h>
-#include <ATen/ops/unique_consecutive.h>
-#include <c10/core/TensorOptions.h>
-#include <torch/csrc/autograd/generated/variable_factories.h>
-#include <torch/nn/module.h>
 #include <torch/nn/modules/rnn.h>
-#include <torch/nn/options/linear.h>
 #include <torch/torch.h>
 
 #include <algorithm>
@@ -249,7 +242,7 @@ struct TGNMemoryImpl : torch::nn::Module {
   auto train(bool mode = true) -> void override {
     if (is_training() && !mode) {
       // Flush message store in case we just entered eval mode.
-      update_memory(torch::arange(num_nodes_));
+      update_memory(torch::arange(static_cast<std::int64_t>(num_nodes_)));
       reset_msg_store();
     }
     torch::nn::Module::train(mode);
@@ -258,10 +251,8 @@ struct TGNMemoryImpl : torch::nn::Module {
  private:
   auto reset_msg_store() -> void {
     // Message store format: (src, dst, t, msg)
-    const auto i =
-        memory_.new_empty(0, torch::TensorOptions().dtype(torch::kLong));
-    const auto msg =
-        memory_.new_empty({0, static_cast<std::int64_t>(msg_dim_)});
+    const auto i = torch::empty(0, torch::TensorOptions().dtype(torch::kLong));
+    const auto msg = torch::empty({0, static_cast<std::int64_t>(msg_dim_)});
     const auto empty_entry = std::make_tuple(i, i, i, msg);
 
     std::fill(src_store_.begin(), src_store_.end(), empty_entry);
@@ -367,7 +358,7 @@ struct TGNMemoryImpl : torch::nn::Module {
 
   auto last_aggr(const torch::Tensor& msg, const torch::Tensor& index,
                  const torch::Tensor& t, int dim_size) -> const torch::Tensor {
-    auto out = msg.new_zeros({dim_size, msg.size(-1)});
+    auto out = torch::zeros({dim_size, msg.size(-1)});
 
     // Number of messages is t.numel();
     if (t.numel()) {

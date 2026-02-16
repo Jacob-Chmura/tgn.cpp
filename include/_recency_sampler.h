@@ -115,7 +115,7 @@ struct LastNeighborLoader {
   }
 
   std::int64_t buffer_size_{};
-  std::size_t cur_e_id_{0};
+  std::int64_t cur_e_id_{0};
 
   torch::Tensor buffer_nbrs_;
   torch::Tensor buffer_e_id_;

@@ -25,7 +25,15 @@ add_compile_options(
     #-O3 -march=native -ffast-math #-flto
 )
 
-# TODO(kuba): ensure we get a good version of libtorch
+include(FetchContent)
+FetchContent_Declare(
+    libtorch
+    URL https://download.pytorch.org/libtorch/cpu/libtorch-shared-with-deps-2.10.0%2Bcpu.zip
+    DOWNLOAD_EXTRACT_TIMESTAMP ON
+)
+FetchContent_MakeAvailable(libtorch)
+
+set(CMAKE_PREFIX_PATH ${libtorch_SOURCE_DIR})
 find_package(Torch REQUIRED)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
 
