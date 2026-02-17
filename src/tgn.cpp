@@ -138,8 +138,8 @@ struct TGNMemoryImpl : torch::nn::Module {
   auto forward(const torch::Tensor& n_id)
       -> std::tuple<torch::Tensor, torch::Tensor> {
     return is_training() ? get_updated_memory(n_id)
-                         : std::make_pair(memory_.index_select(0, n_id),
-                                          last_update_.index_select(0, n_id));
+                         : std::make_tuple(memory_.index_select(0, n_id),
+                                           last_update_.index_select(0, n_id));
   }
 
   auto update_state(const torch::Tensor& src, const torch::Tensor& dst,
