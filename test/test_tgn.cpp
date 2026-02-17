@@ -8,7 +8,7 @@
 #include <utility>
 #include <vector>
 
-#include "tgn.h"
+#include "lib.h"
 
 // Learning params
 constexpr std::size_t NUM_EPOCHS = 10;
@@ -45,7 +45,7 @@ auto train(tgn::TGN& encoder, LinkPredictor& decoder, torch::optim::Adam& opt,
   float total_loss{0};
   std::size_t e_id = 0;
 
-  for (; e_id < store->size(); e_id += BATCH_SIZE) {
+  for (; e_id < store->num_edges(); e_id += BATCH_SIZE) {
     opt.zero_grad();
 
     const auto batch = store->get_batch(e_id, BATCH_SIZE);
@@ -67,14 +67,14 @@ auto train(tgn::TGN& encoder, LinkPredictor& decoder, torch::optim::Adam& opt,
 
     total_loss += loss.item<float>();
   }
-
   return total_loss / static_cast<float>(e_id);
 }
 }  // namespace
 
 auto main() -> int {
   const auto cfg = tgn::TGNConfig{};
-  const auto store = std::make_shared<tgn::SimpleTGStore>("foo");
+  const std::shared_ptr<tgn::TGStore> store =
+      std::move(tgn::make_store(tgn::DummyTGStoreOptions{}));
 
   tgn::TGN encoder(cfg, store);
   LinkPredictor decoder{cfg.embedding_dim};

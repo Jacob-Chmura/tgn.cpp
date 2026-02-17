@@ -1,7 +1,12 @@
+#pragma once
+#include <torch/torch.h>
+
 #include <cstdint>
 #include <tuple>
 
-namespace tgn::detail {
+#include "lib.h"
+
+namespace tgn {
 
 struct LastNeighborLoader {
   LastNeighborLoader(std::size_t num_nbrs, std::size_t num_nodes)
@@ -115,11 +120,11 @@ struct LastNeighborLoader {
   }
 
   std::int64_t buffer_size_{};
-  std::size_t cur_e_id_{0};
+  std::int64_t cur_e_id_{0};
 
   torch::Tensor buffer_nbrs_;
   torch::Tensor buffer_e_id_;
   torch::Tensor assoc_;
 };
 
-}  // namespace tgn::detail
+}  // namespace tgn
