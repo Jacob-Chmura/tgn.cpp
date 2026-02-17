@@ -4,9 +4,9 @@ name: CI
 on: # yamllint disable-line rule:truthy
   # TODO(kuba): Need to resolve libtorch properly in ci
   push:
-    branches: ["_"]
+    branches: ["master"]
   pull_request:
-    branches: ["_"]
+    branches: ["master"]
 
 jobs:
   build_tgn:
