@@ -367,8 +367,8 @@ auto TGNImpl::forward_internal(const std::vector<torch::Tensor>& input_list)
 
   torch::Tensor z;
   if (edge_index.size(1) > 0) {
-    const auto t_edges = impl_->store_->get_t(e_id);
-    const auto msg_edges = impl_->store_->get_msg(e_id);
+    const auto t_edges = impl_->store_->gather_timestamps(e_id);
+    const auto msg_edges = impl_->store_->gather_msgs(e_id);
 
     const auto rel_t = last_update.index_select(0, edge_index[0]) - t_edges;
     const auto rel_t_z = impl_->time_encoder_->forward(rel_t);

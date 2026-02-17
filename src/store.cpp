@@ -38,12 +38,12 @@ class DummyTGStore final : public TGStore {
     };
   }
 
-  [[nodiscard]] auto get_t(const torch::Tensor& e_id) const
+  [[nodiscard]] auto gather_timestamps(const torch::Tensor& e_id) const
       -> torch::Tensor override {
     return torch::rand({e_id.size(0)});
   }
 
-  [[nodiscard]] auto get_msg(const torch::Tensor& e_id) const
+  [[nodiscard]] auto gather_msgs(const torch::Tensor& e_id) const
       -> torch::Tensor override {
     return torch::rand({e_id.size(0), msg_dim_});
   }

@@ -38,9 +38,9 @@ class TGStore {
 
   [[nodiscard]] virtual auto get_batch(std::size_t start,
                                        std::size_t size) const -> Batch = 0;
-  [[nodiscard]] virtual auto get_t(const torch::Tensor& e_id) const
+  [[nodiscard]] virtual auto gather_timestamps(const torch::Tensor& e_id) const
       -> torch::Tensor = 0;
-  [[nodiscard]] virtual auto get_msg(const torch::Tensor& e_id) const
+  [[nodiscard]] virtual auto gather_msgs(const torch::Tensor& e_id) const
       -> torch::Tensor = 0;
 };
 
