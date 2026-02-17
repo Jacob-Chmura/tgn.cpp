@@ -54,7 +54,8 @@ class DummyTGStore final : public TGStore {
   torch::Tensor src_{}, dst_{}, t_{}, neg_dst_{};
 };
 
-auto make_store(const DummyTGStoreOptions& opts) -> std::unique_ptr<TGStore> {
+auto make_store([[maybe_unused]] const DummyTGStoreOptions& opts)
+    -> std::unique_ptr<TGStore> {
   return std::make_unique<DummyTGStore>();
 }
 

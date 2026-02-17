@@ -310,8 +310,8 @@ struct TGNImpl::Impl {
       : cfg_(cfg),
         store_(store),
         nbr_loader_(cfg.num_nbrs, store->num_nodes()),
-        assoc_(
-            torch::full({store->num_nodes()}, -1, torch::dtype(torch::kLong))) {
+        assoc_(torch::full({static_cast<std::int64_t>(store->num_nodes())}, -1,
+                           torch::dtype(torch::kLong))) {
     time_encoder_ = TimeEncoder(cfg.time_dim);
     memory_ =
         TGNMemory(cfg, time_encoder_, store->msg_dim(), store->num_nodes());

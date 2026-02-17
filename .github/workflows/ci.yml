@@ -2,7 +2,6 @@
 name: CI
 
 on: # yamllint disable-line rule:truthy
-  # TODO(kuba): Need to resolve libtorch properly in ci
   push:
     branches: ["master"]
   pull_request:
