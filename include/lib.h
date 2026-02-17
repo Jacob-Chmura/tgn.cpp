@@ -31,19 +31,17 @@ struct Batch {
 class TGStore {
  public:
   virtual ~TGStore() = default;
-  virtual auto size() const -> std::size_t = 0;
+
+  [[nodiscard]] virtual auto num_edges() const -> std::size_t = 0;
+  [[nodiscard]] virtual auto num_nodes() const -> std::size_t = 0;
+  [[nodiscard]] virtual auto msg_dim() const -> std::size_t = 0;
 
   [[nodiscard]] virtual auto get_batch(std::size_t start,
-                                       std::size_t batch_size) const
-      -> Batch = 0;
-
-  [[nodiscard]] virtual auto fetch_t(const torch::Tensor e_id) const
+                                       std::size_t size) const -> Batch = 0;
+  [[nodiscard]] virtual auto get_t(const torch::Tensor& e_id) const
       -> torch::Tensor = 0;
-  [[nodiscard]] virtual auto fetch_msg(const torch::Tensor e_id) const
+  [[nodiscard]] virtual auto get_msg(const torch::Tensor& e_id) const
       -> torch::Tensor = 0;
-
-  [[nodiscard]] virtual auto get_num_nodes() -> std::size_t = 0;
-  [[nodiscard]] virtual auto get_msg_dim() -> std::size_t = 0;
 };
 
 struct DummyTGStoreOptions {};

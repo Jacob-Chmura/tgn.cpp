@@ -309,14 +309,14 @@ struct TGNImpl::Impl {
   Impl(const TGNConfig& cfg, const std::shared_ptr<TGStore>& store)
       : cfg_(cfg),
         store_(store),
-        nbr_loader_(cfg.num_nbrs, store->get_num_nodes()),
-        assoc_(torch::full({store->get_num_nodes()}, -1,
-                           torch::dtype(torch::kLong))) {
+        nbr_loader_(cfg.num_nbrs, store->num_nodes()),
+        assoc_(
+            torch::full({store->num_nodes()}, -1, torch::dtype(torch::kLong))) {
     time_encoder_ = TimeEncoder(cfg.time_dim);
-    memory_ = TGNMemory(cfg, time_encoder_, store->get_msg_dim(),
-                        store->get_num_nodes());
+    memory_ =
+        TGNMemory(cfg, time_encoder_, store->msg_dim(), store->num_nodes());
     conv_ = TransformerConv(cfg.memory_dim, cfg.embedding_dim / 2,
-                            store->get_msg_dim() + cfg.time_dim, cfg.num_heads,
+                            store->msg_dim() + cfg.time_dim, cfg.num_heads,
                             cfg.dropout);
   }
 
@@ -367,8 +367,8 @@ auto TGNImpl::forward_internal(const std::vector<torch::Tensor>& input_list)
 
   torch::Tensor z;
   if (edge_index.size(1) > 0) {
-    const auto t_edges = impl_->store_->fetch_t(e_id);
-    const auto msg_edges = impl_->store_->fetch_msg(e_id);
+    const auto t_edges = impl_->store_->get_t(e_id);
+    const auto msg_edges = impl_->store_->get_msg(e_id);
 
     const auto rel_t = last_update.index_select(0, edge_index[0]) - t_edges;
     const auto rel_t_z = impl_->time_encoder_->forward(rel_t);

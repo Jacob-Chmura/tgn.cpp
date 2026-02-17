@@ -45,7 +45,7 @@ auto train(tgn::TGN& encoder, LinkPredictor& decoder, torch::optim::Adam& opt,
   float total_loss{0};
   std::size_t e_id = 0;
 
-  for (; e_id < store->size(); e_id += BATCH_SIZE) {
+  for (; e_id < store->num_edges(); e_id += BATCH_SIZE) {
     opt.zero_grad();
 
     const auto batch = store->get_batch(e_id, BATCH_SIZE);
