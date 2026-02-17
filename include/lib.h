@@ -6,6 +6,8 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <utility>
+#include <vector>
 
 namespace tgn {
 
@@ -39,6 +41,9 @@ class TGStore {
       -> torch::Tensor = 0;
   [[nodiscard]] virtual auto fetch_msg(const torch::Tensor e_id) const
       -> torch::Tensor = 0;
+
+  [[nodiscard]] virtual auto get_num_nodes() -> std::size_t = 0;
+  [[nodiscard]] virtual auto get_msg_dim() -> std::size_t = 0;
 };
 
 struct DummyTGStoreOptions {};
@@ -57,6 +62,7 @@ auto make_store(const InMemoryTGStoreOptions& opts) -> std::unique_ptr<TGStore>;
 class TGNImpl : public torch::nn::Module {
  public:
   TGNImpl(const TGNConfig& cfg, const std::shared_ptr<TGStore>& store);
+  ~TGNImpl();
 
   auto detach_memory() -> void;
   auto reset_state() -> void;
@@ -64,9 +70,27 @@ class TGNImpl : public torch::nn::Module {
                     const torch::Tensor& t, const torch::Tensor& msg) -> void;
 
   template <typename... Ts>
-  auto forward(const Ts&... inputs);
+  auto forward(const Ts&... inputs) {
+    if constexpr (sizeof...(inputs) == 0) {
+      throw std::invalid_argument(
+          "TGN::forward requires at least one input ID tensor.");
+    }
+    std::vector<torch::Tensor> input_list = {inputs...};
+    auto results = forward_internal(input_list);
+    return vec_to_tuple<sizeof...(inputs)>(
+        results, std::make_index_sequence<sizeof...(inputs)>{});
+  }
 
  private:
+  auto forward_internal(const std::vector<torch::Tensor>& input_list)
+      -> std::vector<torch::Tensor>;
+
+  template <std::size_t N, std::size_t... Is>
+  auto vec_to_tuple(const std::vector<torch::Tensor>& v,
+                    std::index_sequence<Is...>) {
+    return std::make_tuple(v[Is]...);
+  }
+
   struct Impl;
   std::unique_ptr<Impl> impl_;
 };

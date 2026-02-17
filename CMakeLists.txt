@@ -43,11 +43,21 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_link_options(-fsanitize=address -fsanitize=undefined)
 endif()
 
-add_library(${PROJECT_NAME} INTERFACE)
-target_include_directories(${PROJECT_NAME} INTERFACE
-        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-        $<INSTALL_INTERFACE:include>
+add_library(${PROJECT_NAME} SHARED
+    src/tgn.cpp
+    src/store.cpp
 )
+
+target_link_libraries(${PROJECT_NAME} PUBLIC "${TORCH_LIBRARIES}")
+
+target_include_directories(${PROJECT_NAME}
+    PUBLIC
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+set_target_properties(${PROJECT_NAME} PROPERTIES COMPILE_FLAGS "${TORCH_CXX_FLAGS}")
 
 if (TGN_BUILD_TESTS)
     enable_testing()
