@@ -6,7 +6,8 @@ project(
     LANGUAGES CXX
 )
 
-option(TGN_BUILD_TESTS "Build test binaries" ON)
+option(TGN_BUILD_TESTS "Build test binaries" OFF)
+option(TGN_BUILD_EXAMPLES "Build example binaries" OFF)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_CXX_STANDARD 20)
@@ -20,9 +21,6 @@ add_compile_options(
     -Wold-style-cast         # Encourages static_cast over C-style casts
     -Woverloaded-virtual     # Warns if you accidentally hide virtual functions
     -Wnull-dereference       # Warns if a null dereference is detected
-
-    # TODO(kuba): ensure these are broadly compatible
-    #-O3 -march=native -ffast-math #-flto
 )
 
 include(FetchContent)
@@ -43,6 +41,11 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_link_options(-fsanitize=address -fsanitize=undefined)
 endif()
 
+if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    message(STATUS "Release build: Enabling some Cmpiler Optimizations")
+    add_compile_options(-O3 -march=native -ffast-math)
+endif()
+
 add_library(${PROJECT_NAME} SHARED
     src/tgn.cpp
     src/store.cpp
@@ -59,6 +62,11 @@ target_include_directories(${PROJECT_NAME}
 
 set_target_properties(${PROJECT_NAME} PROPERTIES COMPILE_FLAGS "${TORCH_CXX_FLAGS}")
 
+if (TGN_BUILD_EXAMPLES)
+    add_subdirectory(examples)
+endif()
+
+
 if (TGN_BUILD_TESTS)
     enable_testing()
 
@@ -72,13 +80,16 @@ if (TGN_BUILD_TESTS)
     FetchContent_MakeAvailable(googletest)
 
     add_executable(test_tgn
+        test/test_recency_sampler.cpp
+        test/test_scatter_ops.cpp
+        test/test_store.cpp
         test/test_tgn.cpp
     )
     target_link_libraries(test_tgn PRIVATE
         ${PROJECT_NAME}
         "${TORCH_LIBRARIES}"
-    #    GTest::gtest_main
+        GTest::gtest_main
     )
-    #include(GoogleTest)
-    #gtest_discover_tests(test_tgn)
+    include(GoogleTest)
+    gtest_discover_tests(test_tgn)
 endif()
