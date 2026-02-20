@@ -6,7 +6,6 @@
 #include <iostream>
 #include <memory>
 #include <utility>
-#include <vector>
 
 #include "lib.h"
 
@@ -73,8 +72,14 @@ auto train(tgn::TGN& encoder, LinkPredictor& decoder, torch::optim::Adam& opt,
 
 auto main() -> int {
   const auto cfg = tgn::TGNConfig{};
-  const std::shared_ptr<tgn::TGStore> store =
-      std::move(tgn::make_store(tgn::DummyTGStoreOptions{}));
+  const auto store_opts =
+      tgn::InMemoryTGStoreOptions{.src = torch::randint(0, 1000, {100}),
+                                  .dst = torch::randint(0, 1000, {100}),
+                                  .t = torch::arange(100).to(torch::kFloat),
+                                  .msg = torch::rand({100, 7}),
+                                  .neg_dst = torch::randint(0, 1000, {100})};
+
+  const auto store = tgn::make_store(store_opts);
 
   tgn::TGN encoder(cfg, store);
   LinkPredictor decoder{cfg.embedding_dim};

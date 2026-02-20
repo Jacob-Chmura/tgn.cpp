@@ -44,8 +44,6 @@ class TGStore {
       -> torch::Tensor = 0;
 };
 
-struct DummyTGStoreOptions {};
-
 struct InMemoryTGStoreOptions {
   torch::Tensor src;
   torch::Tensor dst;
@@ -54,8 +52,7 @@ struct InMemoryTGStoreOptions {
   torch::Tensor neg_dst;
 };
 
-auto make_store(const DummyTGStoreOptions& opts) -> std::unique_ptr<TGStore>;
-auto make_store(const InMemoryTGStoreOptions& opts) -> std::unique_ptr<TGStore>;
+auto make_store(const InMemoryTGStoreOptions& opts) -> std::shared_ptr<TGStore>;
 
 class TGNImpl : public torch::nn::Module {
  public:
