@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -25,7 +26,7 @@ struct Batch {
   torch::Tensor dst;
   torch::Tensor t;
   torch::Tensor msg;
-  torch::Tensor neg_dst;  // TODO(kuba): use std::optional<>
+  std::optional<torch::Tensor> neg_dst;
 };
 
 class TGStore {
@@ -49,7 +50,7 @@ struct InMemoryTGStoreOptions {
   torch::Tensor dst;
   torch::Tensor t;
   torch::Tensor msg;
-  torch::Tensor neg_dst;
+  std::optional<torch::Tensor> neg_dst;
 };
 
 auto make_store(const InMemoryTGStoreOptions& opts) -> std::shared_ptr<TGStore>;

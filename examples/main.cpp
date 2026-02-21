@@ -48,7 +48,7 @@ auto train(tgn::TGN& encoder, LinkPredictor& decoder, torch::optim::Adam& opt,
 
     const auto batch = store->get_batch(e_id, batch_size);
     const auto [z_src, z_dst, z_neg] =
-        encoder->forward(batch.src, batch.dst, batch.neg_dst);
+        encoder->forward(batch.src, batch.dst, *batch.neg_dst);
 
     const auto pos_out = decoder->forward(z_src, z_dst);
     const auto neg_out = decoder->forward(z_src, z_neg);
