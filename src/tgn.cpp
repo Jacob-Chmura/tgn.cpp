@@ -358,7 +358,6 @@ auto TGNImpl::forward_internal(const std::vector<torch::Tensor>& input_list)
     -> std::vector<torch::Tensor> {
   const auto all_global_ids = torch::cat(input_list).view({-1});
   const auto [unique_global_ids, _] = at::_unique(all_global_ids);
-
   const auto [n_id, edge_index, e_id] = impl_->nbr_loader_(unique_global_ids);
   const auto [x, last_update] = impl_->memory_->forward(n_id);
 
@@ -368,11 +367,10 @@ auto TGNImpl::forward_internal(const std::vector<torch::Tensor>& input_list)
   torch::Tensor z;
   if (edge_index.size(1) > 0) {
     const auto t_edges = impl_->store_->gather_timestamps(e_id);
-    const auto msg_edges = impl_->store_->gather_msgs(e_id);
-
+    const auto raw_msgs = impl_->store_->gather_msgs(e_id);
     const auto rel_t = last_update.index_select(0, edge_index[0]) - t_edges;
-    const auto rel_t_z = impl_->time_encoder_->forward(rel_t);
-    const auto edge_attr = torch::cat({rel_t_z, msg_edges}, -1);
+    const auto rel_t_z = impl_->time_encoder_->forward(rel_t.to(raw_msgs.dtype()));
+    const auto edge_attr = torch::cat({rel_t_z, raw_msgs}, -1);
     z = impl_->conv_->forward(x, edge_index, edge_attr);
   } else {
     z = x;

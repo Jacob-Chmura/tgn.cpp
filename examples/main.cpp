@@ -9,10 +9,9 @@
 
 #include "lib.h"
 
-// Learning params
-constexpr std::size_t NUM_EPOCHS = 10;
-constexpr std::size_t BATCH_SIZE = 5;
-constexpr double LEARNING_RATE = 1e-3;
+constexpr std::size_t num_epochs = 10;
+constexpr std::size_t batch_size = 5;
+constexpr double learning_rate = 1e-3;
 
 namespace {
 
@@ -44,10 +43,10 @@ auto train(tgn::TGN& encoder, LinkPredictor& decoder, torch::optim::Adam& opt,
   float total_loss{0};
   std::size_t e_id = 0;
 
-  for (; e_id < store->num_edges(); e_id += BATCH_SIZE) {
+  for (; e_id < store->num_edges(); e_id += batch_size) {
     opt.zero_grad();
 
-    const auto batch = store->get_batch(e_id, BATCH_SIZE);
+    const auto batch = store->get_batch(e_id, batch_size);
     const auto [z_src, z_dst, z_neg] =
         encoder->forward(batch.src, batch.dst, batch.neg_dst);
 
@@ -75,9 +74,9 @@ auto main() -> int {
   const auto store_opts =
       tgn::InMemoryTGStoreOptions{.src = torch::randint(0, 1000, {100}),
                                   .dst = torch::randint(0, 1000, {100}),
-                                  .t = torch::arange(100).to(torch::kFloat),
+                                  .t = torch::arange(100, torch::kLong),
                                   .msg = torch::rand({100, 7}),
-                                  .neg_dst = torch::randint(0, 1000, {100})};
+                                  .neg_dst = torch::randint(0, 1, {100})};
 
   const auto store = tgn::make_store(store_opts);
 
@@ -87,9 +86,9 @@ auto main() -> int {
   auto params = encoder->parameters();
   auto dec_params = decoder->parameters();
   params.insert(params.end(), dec_params.begin(), dec_params.end());
-  torch::optim::Adam opt(params, torch::optim::AdamOptions(LEARNING_RATE));
+  torch::optim::Adam opt(params, torch::optim::AdamOptions(learning_rate));
 
-  for (std::size_t epoch = 1; epoch <= NUM_EPOCHS; ++epoch) {
+  for (std::size_t epoch = 1; epoch <= num_epochs; ++epoch) {
     auto loss = train(encoder, decoder, opt, store);
     std::cout << "Epoch " << epoch << " Loss: " << loss << std::endl;
   }
