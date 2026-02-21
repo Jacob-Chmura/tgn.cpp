@@ -49,6 +49,11 @@ struct TransformerConvImpl : torch::nn::Module {
 
   torch::Tensor forward(const torch::Tensor& x, const torch::Tensor& edge_index,
                         const torch::Tensor& edge_attr) {
+    // Cold Start short-circuit (no edges sampled for this batch)
+    if (edge_index.size(1) == 0) {
+      return w_skip->forward(x);
+    }
+
     // TODO(kuba): implement 2d scatter ops to avoid these huge flatten ops
     const auto B = x.size(0);
     const auto E = edge_index.size(1);
@@ -365,18 +370,13 @@ auto TGNImpl::forward_internal(const std::vector<torch::Tensor>& input_list)
       {n_id}, torch::arange(n_id.size(0), impl_->assoc_.options()));
 
   // Transformer conv with relative time encoding
-  torch::Tensor z;
-  if (edge_index.size(1) > 0) {
-    const auto t_edges = impl_->store_->gather_timestamps(e_id);
-    const auto raw_msgs = impl_->store_->gather_msgs(e_id);
-    const auto rel_t = last_update.index_select(0, edge_index[0]) - t_edges;
-    const auto rel_t_z =
-        impl_->time_encoder_->forward(rel_t.to(raw_msgs.dtype()));
-    const auto edge_attr = torch::cat({rel_t_z, raw_msgs}, -1);
-    z = impl_->conv_->forward(x, edge_index, edge_attr);
-  } else {
-    z = x;
-  }
+  const auto t_edges = impl_->store_->gather_timestamps(e_id);
+  const auto raw_msgs = impl_->store_->gather_msgs(e_id);
+  const auto rel_t = last_update.index_select(0, edge_index[0]) - t_edges;
+  const auto rel_t_z =
+      impl_->time_encoder_->forward(rel_t.to(raw_msgs.dtype()));
+  const auto edge_attr = torch::cat({rel_t_z, raw_msgs}, -1);
+  const auto z = impl_->conv_->forward(x, edge_index, edge_attr);
 
   // Map computed local embeddings back to global id input_list
   std::vector<torch::Tensor> outputs;

@@ -16,4 +16,4 @@ cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
 
 cmake --build . --parallel "$(nproc)"
 
-ctest --output-on-failure
+ctest --output-on-failure -j "$(nproc)"
