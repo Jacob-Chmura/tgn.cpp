@@ -56,9 +56,9 @@ class InMemoryTGStore final : public TGStore {
     return msg_dim_;
   }
 
-  [[nodiscard]] auto get_batch(std::size_t start, std::size_t size) const
+  [[nodiscard]] auto get_batch(std::size_t start, std::size_t batch_size) const
       -> Batch override {
-    const auto end = std::min(start + size, num_edges_);
+    const auto end = std::min(start + batch_size, num_edges_);
     const auto s = static_cast<std::int64_t>(start);
     const auto e = static_cast<std::int64_t>(end);
 
