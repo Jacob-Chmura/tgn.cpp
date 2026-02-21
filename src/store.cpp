@@ -29,7 +29,7 @@ class InMemoryTGStore final : public TGStore {
     TORCH_CHECK(!dst_.is_floating_point(), "dst must be integral");
 
     num_edges_ = static_cast<std::size_t>(src_.size(0));
-    msg_dim_ = msg_.size(1);
+    msg_dim_ = static_cast<std::size_t>(msg_.size(1));
     num_nodes_ = num_edges_ > 0 ? 1 + std::max(src_.max().item<std::int64_t>(),
                                                dst_.max().item<std::int64_t>())
                                 : 0;
@@ -84,7 +84,7 @@ class InMemoryTGStore final : public TGStore {
  private:
   std::size_t num_nodes_{0};
   std::size_t num_edges_{0};
-  std::int64_t msg_dim_{0};
+  std::size_t msg_dim_{0};
   torch::Tensor src_, dst_, t_, msg_;
   std::optional<torch::Tensor> neg_dst_;
 };
