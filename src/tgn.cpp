@@ -355,12 +355,16 @@ auto TGNImpl::forward_internal(const std::vector<torch::Tensor>& input_list)
     -> std::vector<torch::Tensor> {
   const auto all_global_ids = torch::cat(input_list).view({-1});
   const auto [unique_global_ids, _] = at::_unique(all_global_ids);
+
+  // Load neighbors and fetch memory
   const auto [n_id, edge_index, e_id] = impl_->nbr_loader_(unique_global_ids);
   const auto [x, last_update] = impl_->memory_->forward(n_id);
 
+  // Update global-to-local buffer
   impl_->assoc_.index_put_(
       {n_id}, torch::arange(n_id.size(0), impl_->assoc_.options()));
 
+  // Transformer conv with relative time encoding
   torch::Tensor z;
   if (edge_index.size(1) > 0) {
     const auto t_edges = impl_->store_->gather_timestamps(e_id);
@@ -374,6 +378,7 @@ auto TGNImpl::forward_internal(const std::vector<torch::Tensor>& input_list)
     z = x;
   }
 
+  // Map computed local embeddings back to global id input_list
   std::vector<torch::Tensor> outputs;
   outputs.reserve(input_list.size());
   for (const auto& inp : input_list) {

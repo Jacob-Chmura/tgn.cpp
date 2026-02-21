@@ -48,10 +48,19 @@ auto train(tgn::TGN& encoder, LinkPredictor& decoder, torch::optim::Adam& opt,
 
     const auto batch = store->get_batch(e_id, batch_size);
     const auto [z_src, z_dst, z_neg] =
-        encoder->forward(batch.src, batch.dst, *batch.neg_dst);
+        encoder->forward(batch.src, batch.dst, batch.neg_dst->flatten());
 
     const auto pos_out = decoder->forward(z_src, z_dst);
-    const auto neg_out = decoder->forward(z_src, z_neg);
+
+    // Pair each src with its M negatives for decoding
+    // Expand src [N, D] -> [N, M, D] then flatten both to [N*M, D]
+    const auto N = z_src.size(0);
+    const auto D = z_src.size(1);
+    const auto M = batch.neg_dst->size(1);
+    const auto z_src_expanded =
+        z_src.unsqueeze(1).expand({N, M, D}).reshape({-1, D});
+    const auto neg_out =
+        decoder->forward(z_src_expanded, z_neg.reshape({-1, D}));
 
     auto loss = torch::nn::functional::binary_cross_entropy_with_logits(
                     pos_out, torch::ones_like(pos_out)) +
@@ -76,7 +85,7 @@ auto main() -> int {
                                   .dst = torch::randint(0, 1000, {100}),
                                   .t = torch::arange(100, torch::kLong),
                                   .msg = torch::rand({100, 7}),
-                                  .neg_dst = torch::randint(0, 1, {100})};
+                                  .neg_dst = torch::randint(0, 1, {100, 2})};
 
   const auto store = tgn::make_store(store_opts);
 
