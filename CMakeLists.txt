@@ -90,6 +90,10 @@ if (TGN_BUILD_TESTS)
         "${TORCH_LIBRARIES}"
         GTest::gtest_main
     )
+    target_include_directories(test_tgn PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+
     include(GoogleTest)
     gtest_discover_tests(test_tgn)
 endif()

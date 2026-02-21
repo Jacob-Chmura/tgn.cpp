@@ -217,11 +217,9 @@ struct TGNMemoryImpl : torch::nn::Module {
         n_id_sorted, /*return_inverse=*/true, /*return_counts=*/true);
 
     // Convert count tensor to a C++ vector for split_with_sizes
-    std::vector<std::int64_t> sizes(count.numel());
-    auto count_acc = count.accessor<int64_t, 1>();
-    for (std::int64_t i = 0; i < count.numel(); ++i) {
-      sizes[i] = count_acc[i];
-    }
+    auto count_data_ptr = count.data_ptr<std::int64_t>();
+    std::vector<std::int64_t> sizes(count_data_ptr,
+                                    count_data_ptr + count.numel());
 
     // Reorder all data based on the sorted node IDs and split them
     const auto src_s = src.index_select(0, perm).split_with_sizes(sizes);
@@ -247,11 +245,10 @@ struct TGNMemoryImpl : torch::nn::Module {
     std::vector<torch::Tensor> raw_msg_list;
 
     const auto& store = is_src_store ? src_store_ : dst_store_;
-    auto n_acc = n_id.accessor<std::int64_t, 1>();
     for (std::int64_t i = 0; i < n_id.numel(); ++i) {
-      auto node = n_acc[i];
-
+      auto node = n_id[i].item<std::int64_t>();
       const auto& data = store[node];
+
       src_list.push_back(std::get<0>(data));
       dst_list.push_back(std::get<1>(data));
       t_list.push_back(std::get<2>(data));
@@ -369,7 +366,8 @@ auto TGNImpl::forward_internal(const std::vector<torch::Tensor>& input_list)
     const auto t_edges = impl_->store_->gather_timestamps(e_id);
     const auto raw_msgs = impl_->store_->gather_msgs(e_id);
     const auto rel_t = last_update.index_select(0, edge_index[0]) - t_edges;
-    const auto rel_t_z = impl_->time_encoder_->forward(rel_t.to(raw_msgs.dtype()));
+    const auto rel_t_z =
+        impl_->time_encoder_->forward(rel_t.to(raw_msgs.dtype()));
     const auto edge_attr = torch::cat({rel_t_z, raw_msgs}, -1);
     z = impl_->conv_->forward(x, edge_index, edge_attr);
   } else {
