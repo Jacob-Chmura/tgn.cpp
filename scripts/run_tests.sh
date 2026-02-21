@@ -11,10 +11,9 @@ mkdir -p "$BUILD_DIR" && cd "$BUILD_DIR"
 
 cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
       -DTGN_BUILD_TESTS=ON \
-      -DCMAKE_PREFIX_PATH=/home/kuba/repo/tgn.cpp/libtorch/ \
       -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
       ..
 
 cmake --build . --parallel "$(nproc)"
 
-ctest --output-on-failure
+ctest --output-on-failure -j "$(nproc)"
