@@ -5,7 +5,8 @@
 
 TEST(RecencySampler, CallOnEmpty) {
   auto loader = tgn::LastNeighborLoader(10, 100);
-  const auto [unique_id, edge_index, e_id] = loader(torch::tensor({1, 2, 3}));
+  const auto [unique_id, edge_index, e_id] =
+      loader(torch::tensor({2, 2, 1, 3}));
 
   // Should return the unique IDs provided (sorted), but empty edges
   EXPECT_TRUE(unique_id.equal(torch::tensor({1, 2, 3}, torch::kLong)));
