@@ -3,22 +3,20 @@
 #include <torch/torch.h>
 
 #include <cstddef>
-#include <cstdint>
 #include <memory>
 #include <optional>
-#include <string>
 #include <utility>
 #include <vector>
 
 namespace tgn {
 
 struct TGNConfig {
-  std::size_t embedding_dim = 100;
-  std::size_t memory_dim = 100;
-  std::size_t time_dim = 100;
-  std::size_t num_heads = 2;
-  std::size_t num_nbrs = 10;
-  float dropout = 0.1;
+  const std::size_t embedding_dim = 100;
+  const std::size_t memory_dim = 100;
+  const std::size_t time_dim = 100;
+  const std::size_t num_heads = 2;
+  const std::size_t num_nbrs = 10;
+  const float dropout = 0.1;
 };
 
 struct Batch {

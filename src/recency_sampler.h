@@ -4,11 +4,10 @@
 #include <cstdint>
 #include <tuple>
 
-#include "lib.h"
-
 namespace tgn {
 
-struct LastNeighborLoader {
+class LastNeighborLoader {
+ public:
   LastNeighborLoader(std::size_t num_nbrs, std::size_t num_nodes)
       : buffer_size_(static_cast<std::int64_t>(num_nbrs)),
         buffer_nbrs_(torch::empty({static_cast<std::int64_t>(num_nodes),
@@ -119,6 +118,7 @@ struct LastNeighborLoader {
     buffer_e_id_.fill_(-1);
   }
 
+ private:
   std::int64_t buffer_size_{};
   std::int64_t cur_e_id_{0};
 

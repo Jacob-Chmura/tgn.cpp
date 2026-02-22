@@ -7,7 +7,9 @@
 #include "lib.h"
 
 TEST(TGStoreTest, MakeStoreInit) {
-  const std::int64_t n = 10, d = 8, m = 3;
+  const std::int64_t n = 10;
+  const std::int64_t d = 8;
+  const std::int64_t m = 3;
   const auto opts = tgn::InMemoryTGStoreOptions{
       .src = torch::zeros({n}, torch::kLong),
       .dst = torch::full({n}, 5, torch::kLong),
@@ -90,7 +92,8 @@ TEST(TGStoreTest, GetBatchWithoutNegatives) {
 }
 
 TEST(TGStoreTest, GetBatchWithMultiNegatives) {
-  const std::int64_t n = 100, m = 3;
+  const std::int64_t n = 100;
+  const std::int64_t m = 3;
 
   auto negs = torch::zeros({n, m}, torch::kLong);
   for (int i = 0; i < n; ++i) {

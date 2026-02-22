@@ -89,7 +89,7 @@ repos:
             -legal/copyright,\
             -build/include_subdir,\
             -build/header_guard,\
-            -build/c++17,\
+            -build/c++20,\
             -build/include_order"
 
   - repo: local

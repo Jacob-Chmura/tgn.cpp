@@ -5,24 +5,25 @@
 
 namespace tgn {
 
-auto scatter_max(const torch::Tensor& src, const torch::Tensor& index,
-                 std::int64_t dim_size) -> torch::Tensor {
+inline auto scatter_max(const torch::Tensor& src, const torch::Tensor& index,
+                        std::int64_t dim_size) -> torch::Tensor {
   return torch::zeros({dim_size}, src.options())
       .scatter_reduce_(/*dim*/ 0, index, src,
                        /* reduce */ "amax",
                        /* include_self*/ false);
 }
 
-auto scatter_add(const torch::Tensor& src, const torch::Tensor& index,
-                 std::int64_t dim_size) -> torch::Tensor {
+inline auto scatter_add(const torch::Tensor& src, const torch::Tensor& index,
+                        std::int64_t dim_size) -> torch::Tensor {
   return torch::zeros({dim_size}, src.options())
       .scatter_reduce_(/*dim*/ 0, index, src,
                        /* reduce */ "sum",
                        /* include_self*/ false);
 }
 
-auto scatter_softmax(const torch::Tensor& src, const torch::Tensor& index,
-                     std::int64_t dim_size) -> torch::Tensor {
+inline auto scatter_softmax(const torch::Tensor& src,
+                            const torch::Tensor& index, std::int64_t dim_size)
+    -> torch::Tensor {
   const auto src_max = scatter_max(src.detach(), index, dim_size);
   auto out = src - src_max.index_select(0, index);
   out = out.exp();
@@ -32,8 +33,8 @@ auto scatter_softmax(const torch::Tensor& src, const torch::Tensor& index,
   return out / out_sum;
 }
 
-auto scatter_argmax(const torch::Tensor& src, const torch::Tensor& index,
-                    std::int64_t dim_size) -> torch::Tensor {
+inline auto scatter_argmax(const torch::Tensor& src, const torch::Tensor& index,
+                           std::int64_t dim_size) -> torch::Tensor {
   auto res = scatter_max(src, index, dim_size);
   auto out = torch::full({dim_size}, /*fill_value*/ dim_size - 1);
 

@@ -39,10 +39,6 @@ class TGNTest : public ::testing::Test {
         .msg = torch::randn({n, d}),
         .neg_dst = std::nullopt};
     store = make_store(opts);
-
-    cfg.embedding_dim = 32;
-    cfg.memory_dim = 16;
-    cfg.time_dim = 8;
   }
 
   tgn::TGNConfig cfg;
