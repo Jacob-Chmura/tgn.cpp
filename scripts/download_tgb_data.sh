@@ -39,12 +39,16 @@ ns = NegativeEdgeSampler(dataset_name=name) if is_link else None
 
 for split, mask in masks.items():
     s_src, s_dst, s_time = data['sources'][mask], data['destinations'][mask], data['timestamps'][mask]
+
     cols = [s_src, s_dst, s_time]
     header = "src,dst,time"
+    formats = ['%d', '%d', '%d']
 
     if data['edge_feat'] is not None:
         cols.append(data['edge_feat'][mask])
-        header += "," + ",".join(f"msg_{i}" for i in range(data['edge_feat'].shape[1]))
+        msg_dim = data['edge_feat'].shape[1]
+        header += "," + ",".join(f"msg_{i}" for i in range(msg_dim))
+        formats += ['%g'] * msg_dim
 
     if ns and split in ['val', 'test']:
         print(f"Extracting negatives for {split}")
@@ -60,9 +64,10 @@ for split, mask in masks.items():
 
         cols.append(neg_array)
         header += "," + ",".join(f"neg_{i}" for i in range(n_neg))
+        formats += ['%d'] * n_neg
 
     out_path = f"{dest}/{split}.csv"
-    np.savetxt(out_path, np.column_stack(cols), delimiter=",", header=header, comments='', fmt='%g')
+    np.savetxt(out_path, np.column_stack(cols), delimiter=",", header=header, comments='', fmt=formats)
     print(f"Saved {split} split ({len(s_src)} edges) to {out_path}")
 
 print("Done.")
