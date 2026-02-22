@@ -264,3 +264,6 @@ conan_cache_*.tgz
 
 # Libtorch
 libtorch/
+
+# Custom data
+data/
