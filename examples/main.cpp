@@ -17,20 +17,21 @@ namespace {
 
 struct LinkPredictorImpl : torch::nn::Module {
   explicit LinkPredictorImpl(std::size_t in_channels) {
-    w_src =
-        register_module("w_src", torch::nn::Linear(in_channels, in_channels));
-    w_dst =
-        register_module("w_dst", torch::nn::Linear(in_channels, in_channels));
-    w_final = register_module("w_final", torch::nn::Linear(in_channels, 1));
+    w_src_ =
+        register_module("w_src_", torch::nn::Linear(in_channels, in_channels));
+    w_dst_ =
+        register_module("w_dst_", torch::nn::Linear(in_channels, in_channels));
+    w_final_ = register_module("w_final_", torch::nn::Linear(in_channels, 1));
   }
 
-  torch::Tensor forward(torch::Tensor z_src, torch::Tensor z_dst) {
-    const auto z = torch::relu(w_src->forward(z_src) + w_dst->forward(z_dst));
-    return w_final->forward(z);
+  auto forward(const torch::Tensor& z_src, const torch::Tensor& z_dst)
+      -> torch::Tensor {
+    const auto z = torch::relu(w_src_->forward(z_src) + w_dst_->forward(z_dst));
+    return w_final_->forward(z);
   }
 
  private:
-  torch::nn::Linear w_src{nullptr}, w_dst{nullptr}, w_final{nullptr};
+  torch::nn::Linear w_src_{nullptr}, w_dst_{nullptr}, w_final_{nullptr};
 };
 TORCH_MODULE(LinkPredictor);
 
