@@ -26,51 +26,45 @@ from tgb.linkproppred.negative_sampler import NegativeEdgeSampler
 from tgb.nodeproppred.dataset import NodePropPredDataset
 from tgb.utils.info import DATA_VERSION_DICT, PROJ_DIR
 
-name = "$DATASET_NAME"
-out_path = f"$DEST_DATA_DIR/{name}.csv"
-print(f"Downloading TGB dataset: '{name}'...")
+name, dest = "$DATASET_NAME", "$DEST_DATA_DIR"
 
-is_link = name.startswith('tgbl-')
-ds = NodePropPredDataset(name=name) if name.startswith('tgbn-') else LinkPropPredDataset(name=name)
-data = ds.full_data
+print(f"Downloading {name}...")
+ds = (NodePropPredDataset if name.startswith('tgbn-') else LinkPropPredDataset)(name=name)
+data, masks = ds.full_data, {'train': ds.train_mask, 'val': ds.val_mask, 'test': ds.test_mask}
+src, dst, ts = data['sources'], data['destinations'], data['timestamps']
 
-src, dst, time = data['sources'], data['destinations'], data['timestamps']
-cols = [src, dst, time]
-header = "src,dst,time"
-formats = ['%d', '%d', '%d']
+cols, header, fmts = [src, dst, ts], "src,dst,time", ['%d']*3
 
 if data['edge_feat'] is not None:
-    msg_dim = data['edge_feat'].shape[1]
     cols.append(data['edge_feat'])
-    header += "," + ",".join(f"msg_{i}" for i in range(msg_dim))
-    formats += ['%g'] * msg_dim
+    header += "," + ",".join(f"msg_{i}" for i in range(data['edge_feat'].shape[1]))
+    fmts += ['%g'] * data['edge_feat'].shape[1]
 
-if is_link:
+if name.startswith('tgbl-'):
+    max_neg = n_neg = 1000
     ns = NegativeEdgeSampler(dataset_name=name)
-    v_suffix = f'_v{DATA_VERSION_DICT[name]}' if DATA_VERSION_DICT.get(name, 1) > 1 else ''
+    v = f'_v{DATA_VERSION_DICT[name]}' if DATA_VERSION_DICT.get(name, 1) > 1 else ''
+    full_negs = np.full((len(src), max_neg), -1, dtype=np.int32)
 
-    queries = {}
-    n_neg = float('inf')
-    splits = {'val': ds.val_mask, 'test': ds.test_mask}
-
-    for split, mask in splits.items():
-        print(f"Loading and querying {split} negatives...")
-        ns_path = f"{PROJ_DIR}datasets/{name.replace('-', '_')}/{name}_{split}_ns{v_suffix}.pkl"
+    for split in ['val', 'test']:
+        print(f"Processing negatives for {split}...")
+        ns_path = f"{PROJ_DIR}datasets/{name.replace('-', '_')}/{name}_{split}_ns{v}.pkl"
         ns.load_eval_set(fname=ns_path, split_mode=split)
 
-        queries[split] = ns.query_batch(src[mask], dst[mask], time[mask], split_mode=split)
-        n_neg = min(n_neg, *(len(x) for x in queries[split]))
+        negs = ns.query_batch(src[masks[split]], dst[masks[split]], ts[masks[split]], split_mode=split)
+        cur_n_neg = min(len(x) for x in negs)
+        if cur_n_neg > max_neg:
+            print(f"Found {cur_n_neg} negatives per positive in {split} split, truncating to {max_neg}")
 
-    print(f"Global minimum negatives found: {n_neg}.")
-    negs = np.full((len(src), n_neg), -1, dtype=np.int32)
-    for split, mask in splits.items():
-        negs[mask] = np.array([x[:n_neg] for x in queries.pop(split)], dtype=np.int32)
+        n_neg = min(n_neg, cur_n_neg)
+        full_negs[masks[split], :n_neg] = [x[:n_neg] for x in negs]
 
-    cols.append(negs)
+    cols.append(full_negs[:, :n_neg])
     header += "," + ",".join(f"neg_{i}" for i in range(n_neg))
-    formats += ['%d'] * n_neg
+    fmts += ['%d'] * n_neg
 
-print(f"Saving data ({len(src)} edges) to '{out_path}'...")
-np.savetxt(out_path, np.column_stack(cols), delimiter=",", header=header, comments='', fmt=formats)
+out_path = f"{dest}/{name}.csv"
+print(f"Saving {name} ({len(src)} edges) to {out_path}...")
+np.savetxt(out_path, np.column_stack(cols), delimiter=",", header=header, comments='', fmt=fmts)
 print("Done.")
 EOF

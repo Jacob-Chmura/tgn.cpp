@@ -164,12 +164,8 @@ auto load_csv(const std::string& path) -> tgn::InMemoryTGStoreOptions {
 
 auto main() -> int {
   const auto cfg = tgn::TGNConfig{};
-  const auto train_opts = load_csv("data/tgbl-wiki/train.csv");
-  const auto val_opts = load_csv("data/tgbl-wiki/val.csv");
-  const auto test_opts = load_csv("data/tgbl-wiki/test.csv");
-
-  // TODO(kuba): Should have a single store, and define val/test cutoff
-  const auto store = tgn::make_store(train_opts);
+  const auto opts = load_csv("data/tgbl-wiki.csv");
+  const auto store = tgn::make_store(opts);
 
   tgn::TGN encoder(cfg, store);
   LinkPredictor decoder{cfg.embedding_dim};
