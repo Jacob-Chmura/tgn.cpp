@@ -53,8 +53,9 @@ class TGStore {
   [[nodiscard]] virtual auto val_split() const -> Split = 0;
   [[nodiscard]] virtual auto test_split() const -> Split = 0;
 
-  [[nodiscard]] virtual auto get_batch(std::size_t start, std::size_t size,
-                                       NegStrategy strategy) const -> Batch = 0;
+  [[nodiscard]] virtual auto get_batch(
+      std::size_t start, std::size_t size,
+      NegStrategy strategy = NegStrategy::None) const -> Batch = 0;
   [[nodiscard]] virtual auto gather_timestamps(const torch::Tensor& e_id) const
       -> torch::Tensor = 0;
   [[nodiscard]] virtual auto gather_msgs(const torch::Tensor& e_id) const
@@ -66,10 +67,9 @@ struct InMemoryTGStoreOptions {
   torch::Tensor dst;
   torch::Tensor t;
   torch::Tensor msg;
-  std::optional<torch::Tensor> neg_dst;
-
-  std::optional<std::size_t> val_start;
-  std::optional<std::size_t> test_start;
+  std::optional<torch::Tensor> neg_dst = std::nullopt;
+  std::optional<std::size_t> val_start = std::nullopt;
+  std::optional<std::size_t> test_start = std::nullopt;
 };
 
 auto make_store(const InMemoryTGStoreOptions& opts) -> std::shared_ptr<TGStore>;

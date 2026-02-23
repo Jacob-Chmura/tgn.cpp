@@ -110,7 +110,8 @@ TEST(TGStoreTest, GetBatchWithMultiNegatives) {
 
   const std::size_t start = 10;
   const std::size_t batch_size = 20;
-  const auto batch = store->get_batch(start, batch_size);
+  const auto batch =
+      store->get_batch(start, batch_size, tgn::NegStrategy::Fixed);
 
   ASSERT_EQ(batch.src.size(0), 20);
   ASSERT_TRUE(batch.neg_dst.has_value());

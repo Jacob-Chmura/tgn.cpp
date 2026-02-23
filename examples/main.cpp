@@ -1,7 +1,9 @@
+#include <ATen/Parallel.h>
 #include <torch/nn/module.h>
 #include <torch/optim/adam.h>
 #include <torch/torch.h>
 
+#include <chrono>
 #include <cstddef>
 #include <fstream>
 #include <iostream>
@@ -14,8 +16,8 @@
 #include "lib.h"
 
 constexpr std::size_t num_epochs = 10;
-constexpr std::size_t batch_size = 5;
-constexpr double learning_rate = 1e-3;
+constexpr std::size_t batch_size = 200;
+constexpr double learning_rate = 1e-5;
 
 namespace {
 
@@ -39,19 +41,91 @@ struct LinkPredictorImpl : torch::nn::Module {
 };
 TORCH_MODULE(LinkPredictor);
 
+auto progress_bar = [](std::size_t current, std::size_t total,
+                       const std::string& prefix,
+                       std::chrono::steady_clock::time_point start_time) {
+  float progress = static_cast<float>(current) / total;
+  int bar_width = 30;
+  int pos = bar_width * progress;
+
+  // Calculate elapsed time
+  auto now = std::chrono::steady_clock::now();
+  auto elapsed =
+      std::chrono::duration_cast<std::chrono::seconds>(now - start_time)
+          .count();
+  int minutes = elapsed / 60;
+  int seconds = elapsed % 60;
+
+  std::cout << "\r" << prefix << " [";
+  for (int i = 0; i < bar_width; ++i) {
+    if (i < pos) {
+      std::cout << "=";
+    } else if (i == pos) {
+      std::cout << ">";
+    } else {
+      std::cout << " ";
+    }
+  }
+  std::cout << "] " << std::setw(3) << static_cast<int>(progress * 100.0)
+            << "% | " << std::setfill('0') << std::setw(2) << minutes << ":"
+            << std::setfill('0') << std::setw(2) << seconds << std::flush;
+};
+
 auto train(tgn::TGN& encoder, LinkPredictor& decoder, torch::optim::Adam& opt,
            const std::shared_ptr<tgn::TGStore>& store) -> float {
+  auto start_time = std::chrono::steady_clock::now();
   encoder->train();
   decoder->train();
   encoder->reset_state();
 
   float total_loss{0};
-  std::size_t e_id = 0;
+  auto e_id = store->train_split().start;
 
-  for (; e_id < store->num_edges(); e_id += batch_size) {
+  for (; e_id < store->train_split().end; e_id += batch_size) {
     opt.zero_grad();
 
-    const auto batch = store->get_batch(e_id, batch_size);
+    const auto batch =
+        store->get_batch(e_id, batch_size, tgn::NegStrategy::Random);
+    const auto [z_src, z_dst, z_neg] =
+        encoder->forward(batch.src, batch.dst, batch.neg_dst->flatten());
+
+    // Assumes training negatives are 1:1 with positives
+    const auto pos_out = decoder->forward(z_src, z_dst);
+    const auto neg_out = decoder->forward(z_src, z_neg);
+
+    auto loss = torch::nn::functional::binary_cross_entropy_with_logits(
+                    pos_out, torch::ones_like(pos_out)) +
+                torch::nn::functional::binary_cross_entropy_with_logits(
+                    neg_out, torch::zeros_like(neg_out));
+
+    encoder->update_state(batch.src, batch.dst, batch.t, batch.msg);
+    loss.backward();
+    opt.step();
+    encoder->detach_memory();
+
+    total_loss += loss.item<float>();
+
+    progress_bar(e_id - store->train_split().start, store->train_split().size(),
+                 "Train", start_time);
+  }
+  std::cout << std::endl;
+  return total_loss / static_cast<float>(store->train_split().size());
+}
+
+auto eval(tgn::TGN& encoder, LinkPredictor& decoder,
+          const std::shared_ptr<tgn::TGStore>& store) -> float {
+  auto start_time = std::chrono::steady_clock::now();
+  encoder->eval();
+  decoder->eval();
+
+  float mrr{0};
+  auto e_id = store->val_split().start;
+
+  torch::NoGradGuard no_grad;
+
+  for (; e_id < store->val_split().end; e_id += batch_size) {
+    const auto batch =
+        store->get_batch(e_id, batch_size, tgn::NegStrategy::Fixed);
     const auto [z_src, z_dst, z_neg] =
         encoder->forward(batch.src, batch.dst, batch.neg_dst->flatten());
 
@@ -67,19 +141,15 @@ auto train(tgn::TGN& encoder, LinkPredictor& decoder, torch::optim::Adam& opt,
     const auto neg_out =
         decoder->forward(z_src_expanded, z_neg.reshape({-1, D}));
 
-    auto loss = torch::nn::functional::binary_cross_entropy_with_logits(
-                    pos_out, torch::ones_like(pos_out)) +
-                torch::nn::functional::binary_cross_entropy_with_logits(
-                    neg_out, torch::zeros_like(neg_out));
+    // TODO(kuba): mrr implementation
 
     encoder->update_state(batch.src, batch.dst, batch.t, batch.msg);
-    loss.backward();
-    opt.step();
-    encoder->detach_memory();
 
-    total_loss += loss.item<float>();
+    progress_bar(e_id - store->val_split().start, store->val_split().size(),
+                 "Valid", start_time);
   }
-  return total_loss / static_cast<float>(e_id);
+  std::cout << std::endl;
+  return mrr;
 }
 
 auto load_csv(const std::string& path) -> tgn::InMemoryTGStoreOptions {
@@ -89,10 +159,46 @@ auto load_csv(const std::string& path) -> tgn::InMemoryTGStoreOptions {
   }
 
   std::string line{};
-  std::string col_name{};
-  std::getline(file, line);
-  std::stringstream header_ss(line);
+  std::size_t val_start_idx = 0;
+  std::size_t test_start_idx = 0;
+  bool found_metadata = false;
 
+  // Parse Metadata Line (e.g., # val_start:123,test_start:456)
+  if (std::getline(file, line)) {
+    if (line.size() > 1 && line[0] == '#') {
+      try {
+        auto v_pos = line.find("val_start:");
+        auto comma_pos = line.find(",");
+        auto t_pos = line.find("test_start:");
+
+        if (v_pos != std::string::npos && t_pos != std::string::npos) {
+          auto v_val_start = v_pos + 10;  // length of "val_start:"
+          auto t_val_start = t_pos + 11;  // length of "test_start:"
+
+          val_start_idx =
+              std::stoull(line.substr(v_val_start, comma_pos - v_val_start));
+          test_start_idx = std::stoull(line.substr(t_val_start));
+          found_metadata = true;
+        }
+      } catch (const std::exception& e) {
+        throw std::runtime_error("Malformed metadata header in CSV: " +
+                                 std::string(e.what()));
+      }
+    }
+  }
+
+  if (!found_metadata) {
+    throw std::runtime_error(
+        "CSV missing required split metadata header (# "
+        "val_start:...,test_start:...)");
+  }
+
+  if (!std::getline(file, line)) {
+    throw std::runtime_error("CSV file is empty or missing column headers");
+  }
+
+  std::stringstream header_ss(line);
+  std::string col_name{};
   std::vector<std::string> headers;
   std::size_t msg_start_idx = 0;
   std::size_t neg_start_idx = 0;
@@ -109,11 +215,13 @@ auto load_csv(const std::string& path) -> tgn::InMemoryTGStoreOptions {
     idx++;
   }
 
+  // If no negatives are found, set index to end of headers
   if (neg_start_idx == 0) {
     neg_start_idx = headers.size();
   }
 
-  const std::size_t msg_dim = neg_start_idx - msg_start_idx;
+  const std::size_t msg_dim =
+      (msg_start_idx == 0) ? 0 : (neg_start_idx - msg_start_idx);
   const std::size_t neg_dim = headers.size() - neg_start_idx;
 
   std::vector<std::int64_t> src_vec;
@@ -123,6 +231,9 @@ auto load_csv(const std::string& path) -> tgn::InMemoryTGStoreOptions {
   std::vector<float> msg_vec;
 
   while (std::getline(file, line)) {
+    if (line.empty()) {
+      continue;
+    }
     std::stringstream ss(line);
     std::string cell{};
     std::size_t curr_col{0};
@@ -134,9 +245,10 @@ auto load_csv(const std::string& path) -> tgn::InMemoryTGStoreOptions {
         dst_vec.push_back(std::stoll(cell));
       } else if (curr_col == 2) {
         t_vec.push_back(std::stoll(cell));
-      } else if (curr_col >= msg_start_idx && curr_col < neg_start_idx) {
+      } else if (msg_dim > 0 && curr_col >= msg_start_idx &&
+                 curr_col < neg_start_idx) {
         msg_vec.push_back(std::stof(cell));
-      } else if (curr_col >= neg_start_idx) {
+      } else if (neg_dim > 0 && curr_col >= neg_start_idx) {
         neg_vec.push_back(std::stoll(cell));
       }
       curr_col++;
@@ -144,25 +256,31 @@ auto load_csv(const std::string& path) -> tgn::InMemoryTGStoreOptions {
   }
 
   auto n = static_cast<std::int64_t>(src_vec.size());
-  std::cout << "Loaded " << n << " edges from " << path
-            << " (msg_dim: " << msg_dim << ", num_negatives: " << neg_dim << ")"
-            << std::endl;
+
+  std::cout << "Loaded " << n << " edges (val_start: " << val_start_idx
+            << ", test_start: " << test_start_idx << ")" << std::endl;
 
   return tgn::InMemoryTGStoreOptions{
       .src = torch::tensor(src_vec, torch::kLong),
       .dst = torch::tensor(dst_vec, torch::kLong),
       .t = torch::tensor(t_vec, torch::kLong),
-      .msg =
-          torch::tensor(msg_vec).view({n, static_cast<std::int64_t>(msg_dim)}),
-      .neg_dst = neg_dim > 0
+      .msg = (msg_dim > 0) ? torch::tensor(msg_vec).view(
+                                 {n, static_cast<std::int64_t>(msg_dim)})
+                           : torch::empty({n, 0}),
+      .neg_dst = (neg_dim > 0)
                      ? std::optional<torch::Tensor>(
                            torch::tensor(neg_vec, torch::kLong).view({n, -1}))
-                     : std::nullopt};
+                     : std::nullopt,
+      .val_start = val_start_idx,
+      .test_start = test_start_idx,
+  };
 }
 
 }  // namespace
 
 auto main() -> int {
+  std::cout << at::get_parallel_info() << std::endl;
+
   const auto cfg = tgn::TGNConfig{};
   const auto opts = load_csv("data/tgbl-wiki.csv");
   const auto store = tgn::make_store(opts);
@@ -178,5 +296,7 @@ auto main() -> int {
   for (std::size_t epoch = 1; epoch <= num_epochs; ++epoch) {
     auto loss = train(encoder, decoder, opt, store);
     std::cout << "Epoch " << epoch << " Loss: " << loss << std::endl;
+    auto mrr = eval(encoder, decoder, store);
+    std::cout << "Epoch " << epoch << " MRR: " << mrr << std::endl;
   }
 }

@@ -65,6 +65,12 @@ if name.startswith('tgbl-'):
 
 out_path = f"{dest}/{name}.csv"
 print(f"Saving {name} ({len(src)} edges) to {out_path}...")
-np.savetxt(out_path, np.column_stack(cols), delimiter=",", header=header, comments='', fmt=fmts)
+
+val_start = int(np.argmax(masks['val']))
+test_start = int(np.argmax(masks['test']))
+
+with open(out_path, 'w') as f:
+    f.write(f"# val_start:{val_start},test_start:{test_start}\n")
+    np.savetxt(f, np.column_stack(cols), delimiter=",", header=header, comments='', fmt=fmts)
 print("Done.")
 EOF
