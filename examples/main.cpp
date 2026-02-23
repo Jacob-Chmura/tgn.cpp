@@ -3,9 +3,13 @@
 #include <torch/torch.h>
 
 #include <cstddef>
+#include <fstream>
 #include <iostream>
 #include <memory>
+#include <sstream>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "lib.h"
 
@@ -77,18 +81,95 @@ auto train(tgn::TGN& encoder, LinkPredictor& decoder, torch::optim::Adam& opt,
   }
   return total_loss / static_cast<float>(e_id);
 }
+
+auto load_csv(const std::string& path) -> tgn::InMemoryTGStoreOptions {
+  std::ifstream file(path);
+  if (!file.is_open()) {
+    throw std::runtime_error("Could not open file: " + path);
+  }
+
+  std::string line{};
+  std::string col_name{};
+  std::getline(file, line);
+  std::stringstream header_ss(line);
+
+  std::vector<std::string> headers;
+  std::size_t msg_start_idx = 0;
+  std::size_t neg_start_idx = 0;
+  std::size_t idx = 0;
+
+  while (std::getline(header_ss, col_name, ',')) {
+    headers.push_back(col_name);
+    if (msg_start_idx == 0 && col_name.find("msg") != std::string::npos) {
+      msg_start_idx = idx;
+    }
+    if (neg_start_idx == 0 && col_name.find("neg") != std::string::npos) {
+      neg_start_idx = idx;
+    }
+    idx++;
+  }
+
+  if (neg_start_idx == 0) {
+    neg_start_idx = headers.size();
+  }
+
+  const std::size_t msg_dim = neg_start_idx - msg_start_idx;
+  const std::size_t neg_dim = headers.size() - neg_start_idx;
+
+  std::vector<std::int64_t> src_vec;
+  std::vector<std::int64_t> dst_vec;
+  std::vector<std::int64_t> t_vec;
+  std::vector<std::int64_t> neg_vec;
+  std::vector<float> msg_vec;
+
+  while (std::getline(file, line)) {
+    std::stringstream ss(line);
+    std::string cell{};
+    std::size_t curr_col{0};
+
+    while (std::getline(ss, cell, ',')) {
+      if (curr_col == 0) {
+        src_vec.push_back(std::stoll(cell));
+      } else if (curr_col == 1) {
+        dst_vec.push_back(std::stoll(cell));
+      } else if (curr_col == 2) {
+        t_vec.push_back(std::stoll(cell));
+      } else if (curr_col >= msg_start_idx && curr_col < neg_start_idx) {
+        msg_vec.push_back(std::stof(cell));
+      } else if (curr_col >= neg_start_idx) {
+        neg_vec.push_back(std::stoll(cell));
+      }
+      curr_col++;
+    }
+  }
+
+  auto n = static_cast<std::int64_t>(src_vec.size());
+  std::cout << "Loaded " << n << " edges from " << path
+            << " (msg_dim: " << msg_dim << ", num_negatives: " << neg_dim << ")"
+            << std::endl;
+
+  return tgn::InMemoryTGStoreOptions{
+      .src = torch::tensor(src_vec, torch::kLong),
+      .dst = torch::tensor(dst_vec, torch::kLong),
+      .t = torch::tensor(t_vec, torch::kLong),
+      .msg =
+          torch::tensor(msg_vec).view({n, static_cast<std::int64_t>(msg_dim)}),
+      .neg_dst = neg_dim > 0
+                     ? std::optional<torch::Tensor>(
+                           torch::tensor(neg_vec, torch::kLong).view({n, -1}))
+                     : std::nullopt};
+}
+
 }  // namespace
 
 auto main() -> int {
   const auto cfg = tgn::TGNConfig{};
-  const auto store_opts =
-      tgn::InMemoryTGStoreOptions{.src = torch::randint(0, 1000, {100}),
-                                  .dst = torch::randint(0, 1000, {100}),
-                                  .t = torch::arange(100, torch::kLong),
-                                  .msg = torch::rand({100, 7}),
-                                  .neg_dst = torch::randint(0, 1, {100, 2})};
+  const auto train_opts = load_csv("data/tgbl-wiki/train.csv");
+  const auto val_opts = load_csv("data/tgbl-wiki/val.csv");
+  const auto test_opts = load_csv("data/tgbl-wiki/test.csv");
 
-  const auto store = tgn::make_store(store_opts);
+  // TODO(kuba): Should have a single store, and define val/test cutoff
+  const auto store = tgn::make_store(train_opts);
 
   tgn::TGN encoder(cfg, store);
   LinkPredictor decoder{cfg.embedding_dim};

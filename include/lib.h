@@ -27,6 +27,20 @@ struct Batch {
   std::optional<torch::Tensor> neg_dst;
 };
 
+enum class NegStrategy {
+  None,    // Node Prop or Inference
+  Random,  // Link Prop Training (1:1 random negatives)
+  Fixed,   // Link Prop Eval (Uses pre-defined negatives)
+};
+
+struct Split {
+  std::size_t start;
+  std::size_t end;
+
+  [[nodiscard]] auto size() const -> std::size_t { return end - start; }
+  [[nodiscard]] auto is_empty() const -> bool { return end <= start; }
+};
+
 class TGStore {
  public:
   virtual ~TGStore() = default;
@@ -35,8 +49,12 @@ class TGStore {
   [[nodiscard]] virtual auto num_nodes() const -> std::size_t = 0;
   [[nodiscard]] virtual auto msg_dim() const -> std::size_t = 0;
 
-  [[nodiscard]] virtual auto get_batch(std::size_t start,
-                                       std::size_t size) const -> Batch = 0;
+  [[nodiscard]] virtual auto train_split() const -> Split = 0;
+  [[nodiscard]] virtual auto val_split() const -> Split = 0;
+  [[nodiscard]] virtual auto test_split() const -> Split = 0;
+
+  [[nodiscard]] virtual auto get_batch(std::size_t start, std::size_t size,
+                                       NegStrategy strategy) const -> Batch = 0;
   [[nodiscard]] virtual auto gather_timestamps(const torch::Tensor& e_id) const
       -> torch::Tensor = 0;
   [[nodiscard]] virtual auto gather_msgs(const torch::Tensor& e_id) const
@@ -49,6 +67,9 @@ struct InMemoryTGStoreOptions {
   torch::Tensor t;
   torch::Tensor msg;
   std::optional<torch::Tensor> neg_dst;
+
+  std::optional<std::size_t> val_start;
+  std::optional<std::size_t> test_start;
 };
 
 auto make_store(const InMemoryTGStoreOptions& opts) -> std::shared_ptr<TGStore>;
