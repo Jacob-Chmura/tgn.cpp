@@ -1,9 +1,9 @@
-add_executable(tgn_example
-    main.cpp
+add_executable(tgn_link_pred
+    link_pred.cpp
 )
-target_link_libraries(tgn_example PRIVATE
+target_link_libraries(tgn_link_pred PRIVATE
     ${PROJECT_NAME}
 )
-target_include_directories(tgn_example PRIVATE
+target_include_directories(tgn_link_pred PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}
 )
