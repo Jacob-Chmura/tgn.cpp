@@ -28,17 +28,26 @@ struct Batch {
 };
 
 enum class NegStrategy {
-  None,    // Node Prop or Inference
-  Random,  // Link Prop Training (1:1 random negatives)
-  Fixed,   // Link Prop Eval (Uses pre-defined negatives)
+  None,         // Node Prop or Inference
+  Random,       // Link Prop Training (1:1 random negatives)
+  PreComputed,  // Link Prop Eval (Uses pre-comptued negatives)
 };
 
 struct Split {
-  std::size_t start;
-  std::size_t end;
+  Split() = default;
 
-  [[nodiscard]] auto size() const -> std::size_t { return end - start; }
-  [[nodiscard]] auto is_empty() const -> bool { return end <= start; }
+  Split(std::size_t s, std::size_t e) : start_(s), end_(e) {
+    if (end_ < start_) {
+      throw std::out_of_range("Invalid split");
+    }
+  }
+
+  [[nodiscard]] auto start() const -> std::size_t { return start_; }
+  [[nodiscard]] auto end() const -> std::size_t { return end_; }
+  [[nodiscard]] auto size() const -> std::size_t { return end_ - start_; }
+
+  std::size_t start_{0};
+  std::size_t end_{0};
 };
 
 class TGStore {

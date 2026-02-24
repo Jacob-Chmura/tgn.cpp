@@ -26,7 +26,18 @@ class InMemoryTGStore final : public TGStore {
         dst_(opts.dst),
         t_(opts.t),
         msg_(opts.msg),
-        neg_dst_(opts.neg_dst) {
+        neg_dst_(opts.neg_dst),
+        num_edges_(static_cast<std::size_t>(src_.size(0))),
+        num_nodes_(num_edges_ > 0
+                       ? 1 + std::max(src_.max().item<std::int64_t>(),
+                                      dst_.max().item<std::int64_t>())
+                       : 0),
+        msg_dim_(static_cast<std::size_t>(msg_.size(1))),
+        train_(0,
+               opts.val_start.value_or(opts.test_start.value_or(num_edges_))),
+        val_(opts.val_start.value_or(opts.test_start.value_or(num_edges_)),
+             opts.test_start.value_or(num_edges_)),
+        test_(opts.test_start.value_or(num_edges_), num_edges_) {
     TORCH_CHECK(src_.dim() == 1, "src must be 1D [n]");
     TORCH_CHECK(dst_.dim() == 1 && dst_.size(0) == src_.size(0),
                 "dst must be 1D [n]");
@@ -37,26 +48,9 @@ class InMemoryTGStore final : public TGStore {
     TORCH_CHECK(!src_.is_floating_point(), "src must be integral");
     TORCH_CHECK(!dst_.is_floating_point(), "dst must be integral");
 
-    num_edges_ = static_cast<std::size_t>(src_.size(0));
-    msg_dim_ = static_cast<std::size_t>(msg_.size(1));
-    num_nodes_ = num_edges_ > 0 ? 1 + std::max(src_.max().item<std::int64_t>(),
-                                               dst_.max().item<std::int64_t>())
-                                : 0;
-
-    const std::size_t v_idx =
-        opts.val_start.value_or(opts.test_start.value_or(num_edges_));
-    const std::size_t t_idx = opts.test_start.value_or(num_edges_);
-
-    TORCH_CHECK(v_idx <= t_idx && t_idx <= num_edges_,
-                "Invalid split indices provided");
-
-    train_ = Split{.start = 0, .end = v_idx};
-    val_ = Split{.start = v_idx, .end = t_idx};
-    test_ = Split{.start = t_idx, .end = num_edges_};
-
-    if (!train_.is_empty()) {
+    if (train_.size() > 0) {
       const auto train_dst =
-          dst_.slice(0, 0, static_cast<std::int64_t>(train_.end));
+          dst_.slice(0, 0, static_cast<std::int64_t>(train_.end()));
       sampler_ = RandomNegSampler{
           .min_id = train_dst.min().item<std::int64_t>(),
           .max_id = train_dst.max().item<std::int64_t>(),
@@ -99,10 +93,10 @@ class InMemoryTGStore final : public TGStore {
 
     if (strategy == NegStrategy::Random) {  // TODO(kuba): fix rng
       batch_neg = sampler_->sample(e - s);
-    } else if (strategy == NegStrategy::Fixed) {
+    } else if (strategy == NegStrategy::PreComputed) {
       TORCH_CHECK(
           neg_dst_.has_value(),
-          "NegStrategy::Fixed requested but no neg_dst tensor available");
+          "NegStrategy::PreComputed requested but no neg_dst tensor available");
       batch_neg = neg_dst_->slice(0, s, e);
     }
 
@@ -124,13 +118,14 @@ class InMemoryTGStore final : public TGStore {
   }
 
  private:
-  std::size_t num_nodes_{0};
-  std::size_t num_edges_{0};
-  std::size_t msg_dim_{0};
   torch::Tensor src_, dst_, t_, msg_;
+  std::optional<torch::Tensor> neg_dst_;
+
+  std::size_t num_edges_{0};
+  std::size_t num_nodes_{0};
+  std::size_t msg_dim_{0};
   Split train_, val_, test_;
 
-  std::optional<torch::Tensor> neg_dst_;
   std::optional<RandomNegSampler> sampler_;
 };
 
