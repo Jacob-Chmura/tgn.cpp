@@ -74,9 +74,7 @@ auto train(tgn::TGN& encoder, NodePredictor& decoder, torch::optim::Adam& opt,
 
   while (e_id < split.end() || event_idx < num_events) {
     // Determine the next event idx until which we can update model state
-    const auto stop_e_id = (event_idx < num_events)
-                               ? store->get_label_checkpoint(split, event_idx)
-                               : split.end();
+    const auto stop_e_id = store->get_label_checkpoint(split, event_idx);
 
     // Consume edges until we hit stop_e_id
     if (e_id < stop_e_id) {
@@ -117,7 +115,7 @@ auto eval(tgn::TGN& encoder, NodePredictor& decoder,
   decoder->eval();
 
   std::vector<float> perf_list;
-  const auto split = store->train_split();
+  const auto split = store->val_split();
   auto e_id = split.start();
 
   std::size_t event_idx = 0;
@@ -125,9 +123,7 @@ auto eval(tgn::TGN& encoder, NodePredictor& decoder,
 
   while (e_id < split.end() || event_idx < num_events) {
     // Determine the next event idx until which we can update model state
-    const auto stop_e_id = (event_idx < num_events)
-                               ? store->get_label_checkpoint(split, event_idx)
-                               : split.end();
+    const auto stop_e_id = store->get_label_checkpoint(split, event_idx);
 
     // Consume edges until we hit that stop_e_id
     if (e_id < stop_e_id) {

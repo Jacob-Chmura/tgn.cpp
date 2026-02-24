@@ -121,6 +121,13 @@ class InMemoryTGStore final : public TGStore {
     return msg_.index_select(0, e_id.flatten());
   }
 
+  // get_label_checkpoint
+  //
+  // Determine the next event idx until which we can update model state
+  //  const auto stop_e_id = (event_idx < num_events)
+  //                             ? store->get_label_checkpoint(split, event_idx)
+  //                             : split.end();
+
  private:
   torch::Tensor src_, dst_, t_, msg_;
   std::optional<torch::Tensor> neg_dst_;
