@@ -35,6 +35,8 @@ set(CMAKE_PREFIX_PATH ${libtorch_SOURCE_DIR})
 find_package(Torch REQUIRED)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
 
+find_package(OpenMP REQUIRED)
+
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
     message(STATUS "Debug build: Enabling Address and UndefinedBehavior Sanitizers")
     add_compile_options(-fsanitize=address -fsanitize=undefined -fno-omit-frame-pointer)
@@ -42,8 +44,8 @@ if(CMAKE_BUILD_TYPE STREQUAL "Debug")
 endif()
 
 if(CMAKE_BUILD_TYPE STREQUAL "Release")
-    message(STATUS "Release build: Enabling some Cmpiler Optimizations")
-    add_compile_options(-O3 -march=native -ffast-math)
+    message(STATUS "Release build: Enabling some Compiler Optimizations")
+    add_compile_options(-O3 -march=native -ffast-math -pthread)
 endif()
 
 add_library(${PROJECT_NAME} SHARED
@@ -51,7 +53,10 @@ add_library(${PROJECT_NAME} SHARED
     src/store.cpp
 )
 
-target_link_libraries(${PROJECT_NAME} PUBLIC "${TORCH_LIBRARIES}")
+target_link_libraries(${PROJECT_NAME} PUBLIC
+    "${TORCH_LIBRARIES}"
+    OpenMP::OpenMP_CXX
+)
 
 target_include_directories(${PROJECT_NAME}
     PUBLIC

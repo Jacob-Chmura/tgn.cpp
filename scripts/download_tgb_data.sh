@@ -16,8 +16,7 @@ if ! command -v uv >/dev/null 2>&1; then
 fi
 
 DATASET_NAME="$1"
-DEST_DATA_DIR="$PROJECT_ROOT/data/$DATASET_NAME"
-
+DEST_DATA_DIR="$PROJECT_ROOT/data"
 mkdir -p "$DEST_DATA_DIR"
 
 uv run --no-project --with py-tgb --with numpy python - <<EOF
@@ -28,48 +27,50 @@ from tgb.nodeproppred.dataset import NodePropPredDataset
 from tgb.utils.info import DATA_VERSION_DICT, PROJ_DIR
 
 name, dest = "$DATASET_NAME", "$DEST_DATA_DIR"
-print(f"Downloading TGB dataset: '{name}'...", flush=True)
 
-is_link = name.startswith('tgbl-')
-ds = NodePropPredDataset(name=name) if name.startswith('tgbn-') else LinkPropPredDataset(name=name)
-data = ds.full_data
+print(f"Downloading {name}...")
+ds = (NodePropPredDataset if name.startswith('tgbn-') else LinkPropPredDataset)(name=name)
+data, masks = ds.full_data, {'train': ds.train_mask, 'val': ds.val_mask, 'test': ds.test_mask}
+src, dst, ts = data['sources'], data['destinations'], data['timestamps']
 
-masks = {'train': ds.train_mask, 'val': ds.val_mask, 'test': ds.test_mask}
-ns = NegativeEdgeSampler(dataset_name=name) if is_link else None
+cols, header, fmts = [src, dst, ts], "src,dst,time", ['%d']*3
 
-for split, mask in masks.items():
-    print(f"Parsing '{split}' data... ", flush=True)
-    src, dst, time = data['sources'][mask], data['destinations'][mask], data['timestamps'][mask]
+if data['edge_feat'] is not None:
+    cols.append(data['edge_feat'])
+    header += "," + ",".join(f"msg_{i}" for i in range(data['edge_feat'].shape[1]))
+    fmts += ['%g'] * data['edge_feat'].shape[1]
 
-    cols = [src, dst, time]
-    header = "src,dst,time"
-    formats = ['%d', '%d', '%d']
+if name.startswith('tgbl-'):
+    max_neg = n_neg = 1000
+    ns = NegativeEdgeSampler(dataset_name=name)
+    v = f'_v{DATA_VERSION_DICT[name]}' if DATA_VERSION_DICT.get(name, 1) > 1 else ''
+    full_negs = np.full((len(src), max_neg), -1, dtype=np.int32)
 
-    if data['edge_feat'] is not None:
-        cols.append(data['edge_feat'][mask])
-        msg_dim = data['edge_feat'].shape[1]
-        header += "," + ",".join(f"msg_{i}" for i in range(msg_dim))
-        formats += ['%g'] * msg_dim
-
-    if ns and split in ['val', 'test']:
-        print(f"  - Querying and aligning negatives for {split}...", flush=True)
-        v_suffix = f'_v{DATA_VERSION_DICT[name]}' if DATA_VERSION_DICT.get(name, 1) > 1 else ''
-        ns_path = f"{PROJ_DIR}datasets/{name.replace('-', '_')}/{name}_{split}_ns{v_suffix}.pkl"
+    for split in ['val', 'test']:
+        print(f"Processing negatives for {split}...")
+        ns_path = f"{PROJ_DIR}datasets/{name.replace('-', '_')}/{name}_{split}_ns{v}.pkl"
         ns.load_eval_set(fname=ns_path, split_mode=split)
 
-        # TODO(kuba) We only work with homogenous number of negatives per positive, for now
-        negs = ns.query_batch(src, dst, time, split_mode=split)
-        n_neg = min(len(x) for x in negs)
-        print(f"  - Found {n_neg} negatives per positive edge.", flush=True)
+        negs = ns.query_batch(src[masks[split]], dst[masks[split]], ts[masks[split]], split_mode=split)
+        cur_n_neg = min(len(x) for x in negs)
+        if cur_n_neg > max_neg:
+            print(f"Found {cur_n_neg} negatives per positive in {split} split, truncating to {max_neg}")
 
-        negs = np.array([x[:n_neg] for x in negs], dtype=np.int32)
-        cols.append(negs)
-        header += "," + ",".join(f"neg_{i}" for i in range(n_neg))
-        formats += ['%d'] * n_neg
+        n_neg = min(n_neg, cur_n_neg)
+        full_negs[masks[split], :n_neg] = [x[:n_neg] for x in negs]
 
-    out_path = f"{dest}/{split}.csv"
-    np.savetxt(out_path, np.column_stack(cols), delimiter=",", header=header, comments='', fmt=formats)
-    print(f"Saved '{split}' split ({len(src)} edges) to '{out_path}'.", flush=True)
+    cols.append(full_negs[:, :n_neg])
+    header += "," + ",".join(f"neg_{i}" for i in range(n_neg))
+    fmts += ['%d'] * n_neg
 
+out_path = f"{dest}/{name}.csv"
+print(f"Saving {name} ({len(src)} edges) to {out_path}...")
+
+val_start = int(np.argmax(masks['val']))
+test_start = int(np.argmax(masks['test']))
+
+with open(out_path, 'w') as f:
+    f.write(f"# val_start:{val_start},test_start:{test_start}\n")
+    np.savetxt(f, np.column_stack(cols), delimiter=",", header=header, comments='', fmt=fmts)
 print("Done.")
 EOF
