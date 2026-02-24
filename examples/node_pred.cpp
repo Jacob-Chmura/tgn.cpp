@@ -70,26 +70,25 @@ auto train(tgn::TGN& encoder, NodePredictor& decoder, torch::optim::Adam& opt,
   auto e_id = split.start();
 
   std::size_t event_idx = 0;
-  const auto num_label_events = store->num_label_events(split);
+  const auto num_events = store->num_label_events(split);
 
-  while (e_id < split.end()) {
+  while (e_id < split.end() || event_idx < num_events) {
     // Determine the next event idx until which we can update model state
-    const auto stop_sign = (event_idx < num_label_events)
+    const auto stop_e_id = (event_idx < num_events)
                                ? store->get_label_checkpoint(split, event_idx)
                                : split.end();
 
-    // Consume edges until we hit that stop_sign
-    while (e_id < stop_sign) {
-      const auto step = std::min(batch_size, stop_sign - e_id);
+    // Consume edges until we hit stop_e_id
+    if (e_id < stop_e_id) {
+      const auto step = std::min(batch_size, stop_e_id - e_id);
       const auto batch = store->get_batch(e_id, step);
 
       encoder->update_state(batch.src, batch.dst, batch.t, batch.msg);
       e_id += step;
       encoder->detach_memory();
     }
-
-    // If we are exactly at a stop_sign, do the Node Property Prediction
-    if (event_idx < num_label_events && e_id == stop_sign) {
+    // We are exactly at a stop_e_id, do Node Property Prediction
+    else if (event_idx < num_events) {
       opt.zero_grad();
 
       const auto [n_id, y_true] = store->get_node_labels(split, event_idx++);
@@ -106,7 +105,7 @@ auto train(tgn::TGN& encoder, NodePredictor& decoder, torch::optim::Adam& opt,
   }
 
   std::cout << std::endl;
-  return total_loss / static_cast<float>(num_label_events);
+  return total_loss / static_cast<float>(num_events);
 }
 
 auto eval(tgn::TGN& encoder, NodePredictor& decoder,
@@ -122,25 +121,24 @@ auto eval(tgn::TGN& encoder, NodePredictor& decoder,
   auto e_id = split.start();
 
   std::size_t event_idx = 0;
-  const auto num_label_events = store->num_label_events(split);
+  const auto num_events = store->num_label_events(split);
 
-  while (e_id < split.end()) {
+  while (e_id < split.end() || event_idx < num_events) {
     // Determine the next event idx until which we can update model state
-    const auto stop_sign = (event_idx < num_label_events)
+    const auto stop_e_id = (event_idx < num_events)
                                ? store->get_label_checkpoint(split, event_idx)
                                : split.end();
 
-    // Consume edges until we hit that stop_sign
-    while (e_id < stop_sign) {
-      const auto step = std::min(batch_size, stop_sign - e_id);
+    // Consume edges until we hit that stop_e_id
+    if (e_id < stop_e_id) {
+      const auto step = std::min(batch_size, stop_e_id - e_id);
       const auto batch = store->get_batch(e_id, step);
 
       encoder->update_state(batch.src, batch.dst, batch.t, batch.msg);
       e_id += step;
     }
-
-    // If we are exactly at a stop_sign, do the Node Property Prediction
-    if (event_idx < num_label_events && e_id == stop_sign) {
+    // We are exactly at a stop_e_id, do Node Property Prediction
+    else if (event_idx < num_events) {
       const auto [n_id, y_true] = store->get_node_batch(split, event_idx++);
       const auto [z] = encoder->forward(n_id);
       const auto y_pred = decoder->forward(z);
