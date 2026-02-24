@@ -10,16 +10,17 @@
 
 namespace tgn {
 
-struct RandomNegSampler {
-  std::int64_t min_id;
-  std::int64_t max_id;
-
-  [[nodiscard]] auto sample(std::int64_t n) const -> torch::Tensor {
-    return torch::randint(min_id, max_id, {n, 1}, torch::kLong);
-  }
-};
-
 class InMemoryTGStore final : public TGStore {
+ private:
+  struct RandomNegSampler {
+    std::int64_t min_id;
+    std::int64_t max_id;
+
+    [[nodiscard]] auto sample(std::int64_t n) const -> torch::Tensor {
+      return torch::randint(min_id, max_id, {n, 1}, torch::kLong);
+    }
+  };
+
  public:
   explicit InMemoryTGStore(const InMemoryTGStoreOptions& opts)
       : src_(opts.src),
@@ -38,7 +39,7 @@ class InMemoryTGStore final : public TGStore {
         val_(opts.val_start.value_or(opts.test_start.value_or(num_edges_)),
              opts.test_start.value_or(num_edges_)),
         test_(opts.test_start.value_or(num_edges_), num_edges_) {
-    TORCH_CHECK(src_.dim() == 1, "src must be 1D [n]");
+    TORCH_CHECK(src_.dim() == 1, "src must be 1D");
     TORCH_CHECK(dst_.dim() == 1 && dst_.size(0) == src_.size(0),
                 "dst must be 1D [n]");
     TORCH_CHECK(t_.dim() == 1 && t_.size(0) == src_.size(0),
@@ -92,6 +93,9 @@ class InMemoryTGStore final : public TGStore {
     std::optional<torch::Tensor> batch_neg = std::nullopt;
 
     if (strategy == NegStrategy::Random) {  // TODO(kuba): fix rng
+      TORCH_CHECK(sampler_.has_value(),
+                  "Random sampling requested but sampler not initialized "
+                  "(train split is empty)");
       batch_neg = sampler_->sample(e - s);
     } else if (strategy == NegStrategy::PreComputed) {
       TORCH_CHECK(
@@ -124,8 +128,8 @@ class InMemoryTGStore final : public TGStore {
   std::size_t num_edges_{0};
   std::size_t num_nodes_{0};
   std::size_t msg_dim_{0};
-  Split train_, val_, test_;
 
+  Split train_, val_, test_;
   std::optional<RandomNegSampler> sampler_;
 };
 

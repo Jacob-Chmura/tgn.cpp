@@ -71,7 +71,7 @@ TEST(TGStoreTest, RejectsFloatingPointIDs) {
   EXPECT_THROW(tgn::make_store(opts), c10::Error);
 }
 
-TEST(TGStoreTest, GetBatchWithoutNegatives) {
+TEST(TGStoreTest, GetBatchNegStrategyNone) {
   const std::int64_t n = 100;
   const auto opts =
       tgn::InMemoryTGStoreOptions{.src = torch::arange(n, torch::kLong),
@@ -91,7 +91,7 @@ TEST(TGStoreTest, GetBatchWithoutNegatives) {
   EXPECT_FALSE(batch.neg_dst.has_value());
 }
 
-TEST(TGStoreTest, GetBatchWithMultiNegatives) {
+TEST(TGStoreTest, GetBatchNegStrategyPreComputed) {
   const std::int64_t n = 100;
   const std::int64_t m = 3;
 
@@ -121,6 +121,58 @@ TEST(TGStoreTest, GetBatchWithMultiNegatives) {
   // Verify slicing: first row of batch should be row 10 of original
   EXPECT_EQ((*batch.neg_dst)[0][0].item<std::int64_t>(), 10);
   EXPECT_EQ((*batch.neg_dst)[19][0].item<std::int64_t>(), 29);
+}
+
+TEST(TGStoreTest, GetBatchNegStrategyPreComputedThrowsIfNull) {
+  const auto opts =
+      tgn::InMemoryTGStoreOptions{.src = torch::zeros({10}, torch::kLong),
+                                  .dst = torch::zeros({10}, torch::kLong),
+                                  .t = torch::zeros({10}),
+                                  .msg = torch::zeros({10, 1}),
+                                  .neg_dst = std::nullopt};
+
+  const auto store = tgn::make_store(opts);
+
+  // Should throw because strategy is PreComputed but neg_dst is missing
+  EXPECT_THROW(store->get_batch(0, 5, tgn::NegStrategy::PreComputed),
+               c10::Error);
+}
+
+TEST(TGStoreTest, GetBatchNegStrategyRandom) {
+  const auto opts = tgn::InMemoryTGStoreOptions{
+      .src = torch::tensor({0, 1}, torch::kLong),
+      .dst = torch::tensor({10, 20}, torch::kLong),  // IDs in train are 10, 20
+      .t = torch::zeros({2}),
+      .msg = torch::zeros({2, 1}),
+      .val_start = 2};
+
+  const auto store = tgn::make_store(opts);
+  const auto batch = store->get_batch(0, 10, tgn::NegStrategy::Random);
+
+  ASSERT_TRUE(batch.neg_dst.has_value());
+
+  // Sampler should stay within [min_id, max_id] of training destinations
+  const auto neg_data = batch.neg_dst->flatten();
+  for (int i = 0; i < neg_data.size(0); ++i) {
+    const auto val = neg_data[i].item<std::int64_t>();
+    EXPECT_GE(val, 10);
+    EXPECT_LE(val, 20);
+  }
+}
+
+TEST(TGStoreTest, GetBatchNegStrategyRandomThrowsIfTrainEmpty) {
+  const auto opts =
+      tgn::InMemoryTGStoreOptions{.src = torch::zeros({10}, torch::kLong),
+                                  .dst = torch::zeros({10}, torch::kLong),
+                                  .t = torch::zeros({10}),
+                                  .msg = torch::zeros({10, 1}),
+                                  .val_start = 0};
+
+  const auto store = tgn::make_store(opts);
+
+  // TODO(kuba): There might be a use case for factoring out negatives
+  // into a more general API (e.g. you want random negatives in validation?)
+  EXPECT_THROW(store->get_batch(0, 5, tgn::NegStrategy::Random), c10::Error);
 }
 
 TEST(TGStoreTest, GetBatchPartialTail) {
@@ -201,6 +253,44 @@ TEST(TGStoreTest, HandlesEmptyInputs) {
   const auto store = tgn::make_store(opts);
   EXPECT_EQ(store->num_edges(), 0);
   EXPECT_EQ(store->num_nodes(), 0);
+}
+
+TEST(TGStoreTest, SplitsWithCustomBoundaries) {
+  const std::int64_t n = 10;
+  const auto opts =
+      tgn::InMemoryTGStoreOptions{.src = torch::zeros({n}, torch::kLong),
+                                  .dst = torch::zeros({n}, torch::kLong),
+                                  .t = torch::zeros({n}),
+                                  .msg = torch::zeros({n, 1}),
+                                  .val_start = 6,
+                                  .test_start = 8};
+
+  const auto store = tgn::make_store(opts);
+
+  EXPECT_EQ(store->train_split().start(), 0);
+  EXPECT_EQ(store->train_split().end(), 6);
+
+  EXPECT_EQ(store->val_split().start(), 6);
+  EXPECT_EQ(store->val_split().end(), 8);
+
+  EXPECT_EQ(store->test_split().start(), 8);
+  EXPECT_EQ(store->test_split().end(), 10);
+}
+
+TEST(TGStoreTest, SplitsWithNoBoundaries) {
+  const std::int64_t n = 10;
+  const auto opts =
+      tgn::InMemoryTGStoreOptions{.src = torch::zeros({n}, torch::kLong),
+                                  .dst = torch::zeros({n}, torch::kLong),
+                                  .t = torch::zeros({n}),
+                                  .msg = torch::zeros({n, 1})};
+
+  const auto store = tgn::make_store(opts);
+
+  // Default behavior should put everything in train
+  EXPECT_EQ(store->train_split().size(), 10);
+  EXPECT_EQ(store->val_split().size(), 0);
+  EXPECT_EQ(store->test_split().size(), 0);
 }
 
 TEST(TGSplit, ValidSplit) {
