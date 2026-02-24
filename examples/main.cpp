@@ -44,17 +44,16 @@ TORCH_MODULE(LinkPredictor);
 auto progress_bar = [](std::size_t current, std::size_t total,
                        const std::string& prefix,
                        std::chrono::steady_clock::time_point start_time) {
-  float progress = static_cast<float>(current) / total;
-  int bar_width = 30;
-  int pos = bar_width * progress;
+  const auto progress = static_cast<float>(current) / static_cast<float>(total);
+  const auto bar_width = 30;
+  const int pos = bar_width * progress;
 
-  // Calculate elapsed time
-  auto now = std::chrono::steady_clock::now();
-  auto elapsed =
+  const auto now = std::chrono::steady_clock::now();
+  const auto elapsed =
       std::chrono::duration_cast<std::chrono::seconds>(now - start_time)
           .count();
-  int minutes = elapsed / 60;
-  int seconds = elapsed % 60;
+  const auto minutes = elapsed / 60;
+  const auto seconds = elapsed % 60;
 
   std::cout << "\r" << prefix << " [";
   for (int i = 0; i < bar_width; ++i) {
@@ -159,25 +158,25 @@ auto load_csv(const std::string& path) -> tgn::InMemoryTGStoreOptions {
   }
 
   std::string line{};
-  std::size_t val_start_idx = 0;
-  std::size_t test_start_idx = 0;
-  bool found_metadata = false;
+  std::size_t val_start = 0;
+  std::size_t test_start = 0;
+  auto found_metadata{false};
 
-  // Parse Metadata Line (e.g., # val_start:123,test_start:456)
+  // Parse Metadata Line (# val_start:123,test_start:456)
   if (std::getline(file, line)) {
     if (line.size() > 1 && line[0] == '#') {
       try {
-        auto v_pos = line.find("val_start:");
-        auto comma_pos = line.find(",");
-        auto t_pos = line.find("test_start:");
+        const auto v_pos = line.find("val_start:");
+        const auto comma_pos = line.find(",");
+        const auto t_pos = line.find("test_start:");
 
         if (v_pos != std::string::npos && t_pos != std::string::npos) {
-          auto v_val_start = v_pos + 10;  // length of "val_start:"
-          auto t_val_start = t_pos + 11;  // length of "test_start:"
+          const auto v_val_start = v_pos + 10;  // length of "val_start:"
+          const auto t_val_start = t_pos + 11;  // length of "test_start:"
 
-          val_start_idx =
+          val_start =
               std::stoull(line.substr(v_val_start, comma_pos - v_val_start));
-          test_start_idx = std::stoull(line.substr(t_val_start));
+          test_start = std::stoull(line.substr(t_val_start));
           found_metadata = true;
         }
       } catch (const std::exception& e) {
@@ -188,11 +187,8 @@ auto load_csv(const std::string& path) -> tgn::InMemoryTGStoreOptions {
   }
 
   if (!found_metadata) {
-    throw std::runtime_error(
-        "CSV missing required split metadata header (# "
-        "val_start:...,test_start:...)");
+    throw std::runtime_error("CSV missing required split metadata header");
   }
-
   if (!std::getline(file, line)) {
     throw std::runtime_error("CSV file is empty or missing column headers");
   }
@@ -200,9 +196,9 @@ auto load_csv(const std::string& path) -> tgn::InMemoryTGStoreOptions {
   std::stringstream header_ss(line);
   std::string col_name{};
   std::vector<std::string> headers;
-  std::size_t msg_start_idx = 0;
-  std::size_t neg_start_idx = 0;
-  std::size_t idx = 0;
+  std::size_t msg_start_idx{0};
+  std::size_t neg_start_idx{0};
+  std::size_t idx{0};
 
   while (std::getline(header_ss, col_name, ',')) {
     headers.push_back(col_name);
@@ -255,10 +251,10 @@ auto load_csv(const std::string& path) -> tgn::InMemoryTGStoreOptions {
     }
   }
 
-  auto n = static_cast<std::int64_t>(src_vec.size());
+  const auto n = static_cast<std::int64_t>(src_vec.size());
 
-  std::cout << "Loaded " << n << " edges (val_start: " << val_start_idx
-            << ", test_start: " << test_start_idx << ")" << std::endl;
+  std::cout << "Loaded " << n << " edges (val_start: " << val_start
+            << ", test_start: " << test_start << ")" << std::endl;
 
   return tgn::InMemoryTGStoreOptions{
       .src = torch::tensor(src_vec, torch::kLong),
@@ -271,16 +267,14 @@ auto load_csv(const std::string& path) -> tgn::InMemoryTGStoreOptions {
                      ? std::optional<torch::Tensor>(
                            torch::tensor(neg_vec, torch::kLong).view({n, -1}))
                      : std::nullopt,
-      .val_start = val_start_idx,
-      .test_start = test_start_idx,
+      .val_start = val_start,
+      .test_start = test_start,
   };
 }
 
 }  // namespace
 
 auto main() -> int {
-  std::cout << at::get_parallel_info() << std::endl;
-
   const auto cfg = tgn::TGNConfig{};
   const auto opts = load_csv("data/tgbl-wiki.csv");
   const auto store = tgn::make_store(opts);
@@ -295,8 +289,8 @@ auto main() -> int {
 
   for (std::size_t epoch = 1; epoch <= num_epochs; ++epoch) {
     auto loss = train(encoder, decoder, opt, store);
-    std::cout << "Epoch " << epoch << " Loss: " << loss << std::endl;
     auto mrr = eval(encoder, decoder, store);
-    std::cout << "Epoch " << epoch << " MRR: " << mrr << std::endl;
+    std::cout << "Epoch " << epoch << " Loss: " << loss << " MRR: " << mrr
+              << std::endl;
   }
 }
