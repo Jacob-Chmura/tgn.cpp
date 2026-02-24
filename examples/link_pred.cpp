@@ -42,16 +42,16 @@ TORCH_MODULE(LinkPredictor);
 
 auto compute_mrr(const torch::Tensor& pred_pos, const torch::Tensor& pred_neg)
     -> float {
-  auto n = pred_pos.size(0);
-  auto m = pred_neg.size(0) / n;
+  const auto n = pred_pos.size(0);
+  const auto m = pred_neg.size(0) / n;
 
-  auto y_pred_pos = pred_pos.view({n, 1});
-  auto y_pred_neg = pred_neg.view({n, m});
+  const auto y_pred_pos = pred_pos.view({n, 1});
+  const auto y_pred_neg = pred_neg.view({n, m});
 
-  auto optimistic_rank = (y_pred_neg > y_pred_pos).sum(1);
-  auto pessimistic_rank = (y_pred_neg >= y_pred_pos).sum(1);
-  auto ranking_list = 0.5 * (optimistic_rank + pessimistic_rank) + 1.0;
-  auto mrr_list = 1.0 / ranking_list.to(torch::kFloat32);
+  const auto optimistic_rank = (y_pred_neg > y_pred_pos).sum(1);
+  const auto pessimistic_rank = (y_pred_neg >= y_pred_pos).sum(1);
+  const auto ranking_list = 0.5 * (optimistic_rank + pessimistic_rank) + 1.0;
+  const auto mrr_list = 1.0 / ranking_list.to(torch::kFloat32);
   return mrr_list.mean().item<float>();
 }
 
