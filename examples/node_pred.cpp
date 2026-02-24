@@ -17,6 +17,7 @@
 
 constexpr std::size_t num_epochs = 10;
 constexpr std::size_t batch_size = 200;
+constexpr std::size_t node_batch_size = 200;
 constexpr double learning_rate = 1e-4;
 constexpr std::string dataset = "tgbn-genre";
 
@@ -89,16 +90,27 @@ auto train(tgn::TGN& encoder, NodePredictor& decoder, torch::optim::Adam& opt,
     }
     // We are exactly at a stop_e_id, do Node Property Prediction
     else if (l_idx < l_idx_end) {
-      opt.zero_grad();
-
       const auto [n_id, y_true] = store->get_label_event(l_idx++);
-      const auto [z] = encoder->forward(n_id);
-      const auto y_pred = decoder->forward(z);
+      const auto num_nodes = n_id.size(0);
+      float event_loss{0};
 
-      auto loss = torch::nn::functional::cross_entropy(y_pred, y_true);
-      loss.backward();
-      opt.step();
-      total_loss += loss.item<float>();
+      for (auto i = 0; i < num_nodes; i += node_batch_size) {
+        const auto end = std::min(i + node_batch_size, num_nodes);
+        const auto n_id_batch = n_id.slice(0, i, end);
+        const auto y_true_batch = n_id.slice(0, i, end);
+
+        opt.zero_grad();
+
+        const auto [z] = encoder->forward(n_id);
+        const auto y_pred = decoder->forward(z);
+
+        auto loss = torch::nn::functional::cross_entropy(y_pred, y_true);
+        loss.backward();
+        opt.step();
+        event_loss +=
+            loss.item<float>() * (static_cast<float>(end - i) / num_nodes);
+      }
+      total_loss += event_loss;
     }
 
     util::progress_bar(e_idx - e_idx_start, e_idx_end - e_idx_start, "Train",
@@ -125,28 +137,30 @@ auto eval(tgn::TGN& encoder, NodePredictor& decoder,
   auto l_idx = l_idx_start;
 
   while (e_idx < e_idx_end || l_idx < l_idx_end) {
-    // Determine the next e_idx until which we can update model state
     const auto stop_e_idx = (l_idx < l_idx_end)
                                 ? store->get_stop_e_idx_for_label_event(l_idx)
                                 : e_idx_end;
 
-    // Consume edges until we hit stop_e_id
     if (e_idx < stop_e_idx) {
       const auto step = std::min(batch_size, stop_e_idx - e_idx);
       const auto batch = store->get_batch(e_idx, step);
 
       encoder->update_state(batch.src, batch.dst, batch.t, batch.msg);
       e_idx += step;
-    }
-    // We are exactly at a stop_e_id, do Node Property Prediction
-    else if (l_idx < l_idx_end) {
-      // TODO(kuba): this materializes a batch of node labels that
-      // occur at the same timestamp. If the time is coarse-grained,
-      // this could end up being a huge allocation (need to mini-batch?)
+    } else if (l_idx < l_idx_end) {
       const auto [n_id, y_true] = store->get_label_event(l_idx++);
-      const auto [z] = encoder->forward(n_id);
-      const auto y_pred = decoder->forward(z);
+      const auto num_nodes = n_id.size(0);
+      std::vector<torch::Tensor> event_preds;
 
+      for (auto i = 0; i < num_nodes; i += node_batch_size) {
+        const auto end = std::min(i + node_batch_size, num_nodes);
+        const auto n_id_batch = n_id.slice(0, i, end);
+
+        const auto [z] = encoder->forward(n_id_batch);
+        event_preds.push_back(decoder->forward(z));
+      }
+
+      const auto y_pred = torch::cat(event_preds, 0);
       perf_list.push_back(compute_ndcg(y_pred, y_true));
     }
 
