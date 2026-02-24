@@ -14,7 +14,7 @@
 #include "lib.h"
 #include "util.h"
 
-constexpr std::size_t num_epochs = 30;
+constexpr std::size_t num_epochs = 10;
 constexpr std::size_t batch_size = 200;
 constexpr double learning_rate = 1e-4;
 
