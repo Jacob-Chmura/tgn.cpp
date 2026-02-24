@@ -68,28 +68,49 @@ auto train(tgn::TGN& encoder, NodePredictor& decoder, torch::optim::Adam& opt,
   float total_loss{0};
   auto e_id = store->train_split().start();
 
-  for (; e_id < store->train_split().end(); e_id += batch_size) {
-    opt.zero_grad();
+  // TODO(kuba): how do splits work with this
+  std::size_t curr_label_event = 0;
+  const auto num_label_events = store->num_label_events();
 
-    const auto batch = store->get_batch(e_id, batch_size);
-    const auto [z_src] = encoder->forward(batch.src);
+  while (e_id < store->train_split().end()) {
+    // Determine the next event idx until which we can update model state
+    // before doing a node prop prediction
+    const auto stop_sign = (curr_label_event < num_label_events)
+                               ? store->get_label_checkpoint(curr_label_event)
+                               : store->train_split().end();
 
-    const auto y_true = 0;  // batch.node_y
-    const auto y_pred = decoder->forward(z_src);
+    // Consume edges until we hit that stop_sign
+    while (e_id < stop_sign) {
+      const auto step = std::min(batch_size, stop_sign - e_id);
+      const auto batch = store->get_batch(e_id, step);
 
-    auto loss = torch::nn::functional::cross_entropy(y_pred, y_true);
-    loss.backward();
-    opt.step();
-    total_loss += loss.item<float>();
+      encoder->update_state(batch.src, batch.dst, batch.t, batch.msg);
+      e_id += step;
+      encoder->detach_memory();
+    }
 
-    encoder->update_state(batch.src, batch.dst, batch.t, batch.msg);
-    encoder->detach_memory();
+    // If we are exactly at a stop_sign, do the Node Property Prediction
+    if (curr_label_event < num_label_events && e_id == stop_sign) {
+      opt.zero_grad();
+
+      const auto [n_id, y_true] = store->get_node_batch(curr_label_event);
+      const auto [z] = encoder->forward(n_id);
+      const auto y_pred = decoder->forward(z);
+
+      auto loss = torch::nn::functional::cross_entropy(y_pred, y_true);
+      loss.backward();
+      opt.step();
+      total_loss += loss.item<float>();
+
+      curr_label_event++;  // Move to next checkpoint
+    }
 
     util::progress_bar(e_id - store->train_split().start(),
                        store->train_split().size(), "Train", start_time);
   }
+
   std::cout << std::endl;
-  return total_loss / static_cast<float>(store->train_split().size());
+  return total_loss / static_cast<float>(num_label_events);
 }
 
 auto eval(tgn::TGN& encoder, NodePredictor& decoder,
@@ -103,19 +124,39 @@ auto eval(tgn::TGN& encoder, NodePredictor& decoder,
   std::vector<float> perf_list;
   auto e_id = store->val_split().start();
 
-  for (; e_id < store->val_split().end(); e_id += batch_size) {
-    const auto batch = store->get_batch(e_id, batch_size);
-    const auto [z_src] = encoder->forward(batch.src);
+  std::size_t curr_label_event = 0;
+  const auto num_label_events = store->num_label_events();
 
-    const auto y_true = 0;  // batch.node_y
-    const auto y_pred = decoder->forward(z_src);
+  while (e_id < store->val_split().end()) {
+    // Determine the next event idx until which we can update model state
+    // before doing a node prop prediction
+    const auto stop_sign = (curr_label_event < num_label_events)
+                               ? store->get_label_checkpoint(curr_label_event)
+                               : store->val_split().end();
 
-    perf_list.push_back(compute_ndcg(y_pred, y_true));
-    encoder->update_state(batch.src, batch.dst, batch.t, batch.msg);
+    // Consume edges until we hit that stop_sign
+    while (e_id < stop_sign) {
+      const auto step = std::min(batch_size, stop_sign - e_id);
+      const auto batch = store->get_batch(e_id, step);
+
+      encoder->update_state(batch.src, batch.dst, batch.t, batch.msg);
+      e_id += step;
+    }
+
+    // If we are exactly at a stop_sign, do the Node Property Prediction
+    if (curr_label_event < num_label_events && e_id == stop_sign) {
+      const auto [n_id, y_true] = store->get_node_batch(curr_label_event);
+      const auto [z] = encoder->forward(n_id);
+      const auto y_pred = decoder->forward(z);
+
+      perf_list.push_back(compute_ndcg(y_pred, y_true));
+      curr_label_event++;  // Move to next checkpoint
+    }
 
     util::progress_bar(e_id - store->val_split().start(),
                        store->val_split().size(), "Valid", start_time);
   }
+
   std::cout << std::endl;
   return perf_list.empty()
              ? 0.0
