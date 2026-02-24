@@ -66,30 +66,32 @@ auto train(tgn::TGN& encoder, NodePredictor& decoder, torch::optim::Adam& opt,
   encoder->reset_state();
 
   float total_loss{0};
-  const auto split = store->train_split();
-  auto e_id = split.start();
 
-  std::size_t event_idx = 0;
-  const auto num_events = store->num_label_events(split);
+  const auto [e_idx_start, e_idx_end] = store->train_e_idx_range();
+  const auto [l_idx_start, l_idx_end] = store->train_label_event_range();
+  auto e_idx = e_idx_start;
+  auto l_idx = l_idx_start;
 
-  while (e_id < split.end() || event_idx < num_events) {
-    // Determine the next event idx until which we can update model state
-    const auto stop_e_id = store->get_label_checkpoint(split, event_idx);
+  while (e_idx < e_idx_end || l_idx < l_idx_end) {
+    // Determine the next e_idx until which we can update model state
+    const auto stop_e_idx = (l_idx < l_idx_end)
+                                ? store->get_stop_e_idx_for_label_event(l_idx)
+                                : e_idx_end;
 
     // Consume edges until we hit stop_e_id
-    if (e_id < stop_e_id) {
-      const auto step = std::min(batch_size, stop_e_id - e_id);
-      const auto batch = store->get_batch(e_id, step);
+    if (e_idx < stop_e_idx) {
+      const auto step = std::min(batch_size, stop_e_idx - e_idx);
+      const auto batch = store->get_batch(e_idx, step);
 
       encoder->update_state(batch.src, batch.dst, batch.t, batch.msg);
-      e_id += step;
+      e_idx += step;
       encoder->detach_memory();
     }
     // We are exactly at a stop_e_id, do Node Property Prediction
-    else if (event_idx < num_events) {
+    else if (l_idx < l_idx_end) {
       opt.zero_grad();
 
-      const auto [n_id, y_true] = store->get_node_labels(split, event_idx++);
+      const auto [n_id, y_true] = store->get_label_event(l_idx++);
       const auto [z] = encoder->forward(n_id);
       const auto y_pred = decoder->forward(z);
 
@@ -99,11 +101,12 @@ auto train(tgn::TGN& encoder, NodePredictor& decoder, torch::optim::Adam& opt,
       total_loss += loss.item<float>();
     }
 
-    util::progress_bar(e_id - split.start(), split.size(), "Train", start_time);
+    util::progress_bar(e_idx - e_idx_start, e_idx_end - e_idx_start, "Train",
+                       start_time);
   }
 
   std::cout << std::endl;
-  return total_loss / static_cast<float>(num_events);
+  return total_loss / static_cast<float>(l_idx_end - l_idx_start);
 }
 
 auto eval(tgn::TGN& encoder, NodePredictor& decoder,
@@ -115,34 +118,40 @@ auto eval(tgn::TGN& encoder, NodePredictor& decoder,
   decoder->eval();
 
   std::vector<float> perf_list;
-  const auto split = store->val_split();
-  auto e_id = split.start();
 
-  std::size_t event_idx = 0;
-  const auto num_events = store->num_label_events(split);
+  const auto [e_idx_start, e_idx_end] = store->val_e_idx_range();
+  const auto [l_idx_start, l_idx_end] = store->val_label_event_range();
+  auto e_idx = e_idx_start;
+  auto l_idx = l_idx_start;
 
-  while (e_id < split.end() || event_idx < num_events) {
-    // Determine the next event idx until which we can update model state
-    const auto stop_e_id = store->get_label_checkpoint(split, event_idx);
+  while (e_idx < e_idx_end || l_idx < l_idx_end) {
+    // Determine the next e_idx until which we can update model state
+    const auto stop_e_idx = (l_idx < l_idx_end)
+                                ? store->get_stop_e_idx_for_label_event(l_idx)
+                                : e_idx_end;
 
-    // Consume edges until we hit that stop_e_id
-    if (e_id < stop_e_id) {
-      const auto step = std::min(batch_size, stop_e_id - e_id);
-      const auto batch = store->get_batch(e_id, step);
+    // Consume edges until we hit stop_e_id
+    if (e_idx < stop_e_idx) {
+      const auto step = std::min(batch_size, stop_e_idx - e_idx);
+      const auto batch = store->get_batch(e_idx, step);
 
       encoder->update_state(batch.src, batch.dst, batch.t, batch.msg);
-      e_id += step;
+      e_idx += step;
     }
     // We are exactly at a stop_e_id, do Node Property Prediction
-    else if (event_idx < num_events) {
-      const auto [n_id, y_true] = store->get_node_batch(split, event_idx++);
+    else if (l_idx < l_idx_end) {
+      // TODO(kuba): this materializes a batch of node labels that
+      // occur at the same timestamp. If the time is coarse-grained,
+      // this could end up being a huge allocation (need to mini-batch?)
+      const auto [n_id, y_true] = store->get_label_event(l_idx++);
       const auto [z] = encoder->forward(n_id);
       const auto y_pred = decoder->forward(z);
 
       perf_list.push_back(compute_ndcg(y_pred, y_true));
     }
 
-    util::progress_bar(e_id - split.start(), split.size(), "Valid", start_time);
+    util::progress_bar(e_idx - e_idx_start, e_idx_end - e_idx_start, "Valid",
+                       start_time);
   }
 
   std::cout << std::endl;
