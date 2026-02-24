@@ -62,9 +62,9 @@ auto train(tgn::TGN& encoder, LinkPredictor& decoder, torch::optim::Adam& opt,
   encoder->reset_state();
 
   float total_loss{0};
-  auto e_id = store->train_split().start();
+  const auto split = store->train_split();
 
-  for (; e_id < store->train_split().end(); e_id += batch_size) {
+  for (auto e_id = split.start(); e_id < split.end(); e_id += batch_size) {
     opt.zero_grad();
 
     const auto batch =
@@ -87,11 +87,10 @@ auto train(tgn::TGN& encoder, LinkPredictor& decoder, torch::optim::Adam& opt,
     encoder->update_state(batch.src, batch.dst, batch.t, batch.msg);
     encoder->detach_memory();
 
-    util::progress_bar(e_id - store->train_split().start(),
-                       store->train_split().size(), "Train", start_time);
+    util::progress_bar(e_id - split.start(), split.size(), "Train", start_time);
   }
   std::cout << std::endl;
-  return total_loss / static_cast<float>(store->train_split().size());
+  return total_loss / static_cast<float>(split.size());
 }
 
 auto eval(tgn::TGN& encoder, LinkPredictor& decoder,
@@ -103,9 +102,9 @@ auto eval(tgn::TGN& encoder, LinkPredictor& decoder,
   decoder->eval();
 
   std::vector<float> perf_list;
-  auto e_id = store->val_split().start();
+  const auto split = store->val_split();
 
-  for (; e_id < store->val_split().end(); e_id += batch_size) {
+  for (auto e_id = split.start(); e_id < split.end(); e_id += batch_size) {
     const auto batch =
         store->get_batch(e_id, batch_size, tgn::NegStrategy::PreComputed);
     const auto [z_src, z_dst, z_neg] =
@@ -126,8 +125,7 @@ auto eval(tgn::TGN& encoder, LinkPredictor& decoder,
     perf_list.push_back(compute_mrr(pred_pos, pred_neg));
     encoder->update_state(batch.src, batch.dst, batch.t, batch.msg);
 
-    util::progress_bar(e_id - store->val_split().start(),
-                       store->val_split().size(), "Valid", start_time);
+    util::progress_bar(e_id - split.start(), split.size(), "Valid", start_time);
   }
   std::cout << std::endl;
   return perf_list.empty()

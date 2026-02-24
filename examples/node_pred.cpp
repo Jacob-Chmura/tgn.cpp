@@ -66,18 +66,17 @@ auto train(tgn::TGN& encoder, NodePredictor& decoder, torch::optim::Adam& opt,
   encoder->reset_state();
 
   float total_loss{0};
-  auto e_id = store->train_split().start();
+  const auto split = store->train_split();
+  auto e_id = split.start();
 
-  // TODO(kuba): how do splits work with this
-  std::size_t curr_label_event = 0;
-  const auto num_label_events = store->num_label_events();
+  std::size_t event_idx = 0;
+  const auto num_label_events = store->num_label_events(split);
 
-  while (e_id < store->train_split().end()) {
+  while (e_id < split.end()) {
     // Determine the next event idx until which we can update model state
-    // before doing a node prop prediction
-    const auto stop_sign = (curr_label_event < num_label_events)
-                               ? store->get_label_checkpoint(curr_label_event)
-                               : store->train_split().end();
+    const auto stop_sign = (event_idx < num_label_events)
+                               ? store->get_label_checkpoint(split, event_idx)
+                               : split.end();
 
     // Consume edges until we hit that stop_sign
     while (e_id < stop_sign) {
@@ -90,10 +89,10 @@ auto train(tgn::TGN& encoder, NodePredictor& decoder, torch::optim::Adam& opt,
     }
 
     // If we are exactly at a stop_sign, do the Node Property Prediction
-    if (curr_label_event < num_label_events && e_id == stop_sign) {
+    if (event_idx < num_label_events && e_id == stop_sign) {
       opt.zero_grad();
 
-      const auto [n_id, y_true] = store->get_node_batch(curr_label_event);
+      const auto [n_id, y_true] = store->get_node_labels(split, event_idx++);
       const auto [z] = encoder->forward(n_id);
       const auto y_pred = decoder->forward(z);
 
@@ -101,12 +100,9 @@ auto train(tgn::TGN& encoder, NodePredictor& decoder, torch::optim::Adam& opt,
       loss.backward();
       opt.step();
       total_loss += loss.item<float>();
-
-      curr_label_event++;  // Move to next checkpoint
     }
 
-    util::progress_bar(e_id - store->train_split().start(),
-                       store->train_split().size(), "Train", start_time);
+    util::progress_bar(e_id - split.start(), split.size(), "Train", start_time);
   }
 
   std::cout << std::endl;
@@ -122,17 +118,17 @@ auto eval(tgn::TGN& encoder, NodePredictor& decoder,
   decoder->eval();
 
   std::vector<float> perf_list;
-  auto e_id = store->val_split().start();
+  const auto split = store->train_split();
+  auto e_id = split.start();
 
-  std::size_t curr_label_event = 0;
-  const auto num_label_events = store->num_label_events();
+  std::size_t event_idx = 0;
+  const auto num_label_events = store->num_label_events(split);
 
-  while (e_id < store->val_split().end()) {
+  while (e_id < split.end()) {
     // Determine the next event idx until which we can update model state
-    // before doing a node prop prediction
-    const auto stop_sign = (curr_label_event < num_label_events)
-                               ? store->get_label_checkpoint(curr_label_event)
-                               : store->val_split().end();
+    const auto stop_sign = (event_idx < num_label_events)
+                               ? store->get_label_checkpoint(split, event_idx)
+                               : split.end();
 
     // Consume edges until we hit that stop_sign
     while (e_id < stop_sign) {
@@ -144,17 +140,15 @@ auto eval(tgn::TGN& encoder, NodePredictor& decoder,
     }
 
     // If we are exactly at a stop_sign, do the Node Property Prediction
-    if (curr_label_event < num_label_events && e_id == stop_sign) {
-      const auto [n_id, y_true] = store->get_node_batch(curr_label_event);
+    if (event_idx < num_label_events && e_id == stop_sign) {
+      const auto [n_id, y_true] = store->get_node_batch(split, event_idx++);
       const auto [z] = encoder->forward(n_id);
       const auto y_pred = decoder->forward(z);
 
       perf_list.push_back(compute_ndcg(y_pred, y_true));
-      curr_label_event++;  // Move to next checkpoint
     }
 
-    util::progress_bar(e_id - store->val_split().start(),
-                       store->val_split().size(), "Valid", start_time);
+    util::progress_bar(e_id - split.start(), split.size(), "Valid", start_time);
   }
 
   std::cout << std::endl;
