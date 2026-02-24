@@ -202,3 +202,21 @@ TEST(TGStoreTest, HandlesEmptyInputs) {
   EXPECT_EQ(store->num_edges(), 0);
   EXPECT_EQ(store->num_nodes(), 0);
 }
+
+TEST(TGSplit, ValidSplit) {
+  const auto split = tgn::Split(1, 5);
+  EXPECT_EQ(split.start(), 1);
+  EXPECT_EQ(split.end(), 5);
+  EXPECT_EQ(split.size(), 4);
+}
+
+TEST(TGSplit, ValidEmptySplit) {
+  const auto split = tgn::Split();
+  EXPECT_EQ(split.start(), 0);
+  EXPECT_EQ(split.end(), 0);
+  EXPECT_EQ(split.size(), 0);
+}
+
+TEST(TGSplit, RejectsInvalidSplit) {
+  EXPECT_THROW(tgn::Split(5, 3), std::out_of_range);
+}
