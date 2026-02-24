@@ -17,16 +17,15 @@
 constexpr std::size_t num_epochs = 10;
 constexpr std::size_t batch_size = 200;
 constexpr double learning_rate = 1e-4;
+constexpr std::string dataset = "tgbl-wiki";
 
 namespace {
 
 struct LinkPredictorImpl : torch::nn::Module {
-  explicit LinkPredictorImpl(std::size_t in_channels) {
-    w_src_ =
-        register_module("w_src_", torch::nn::Linear(in_channels, in_channels));
-    w_dst_ =
-        register_module("w_dst_", torch::nn::Linear(in_channels, in_channels));
-    w_final_ = register_module("w_final_", torch::nn::Linear(in_channels, 1));
+  explicit LinkPredictorImpl(std::size_t in_dim) {
+    w_src_ = register_module("w_src_", torch::nn::Linear(in_dim, in_dim));
+    w_dst_ = register_module("w_dst_", torch::nn::Linear(in_dim, in_dim));
+    w_final_ = register_module("w_final_", torch::nn::Linear(in_dim, 1));
   }
 
   auto forward(const torch::Tensor& z_src, const torch::Tensor& z_dst)
@@ -81,13 +80,12 @@ auto train(tgn::TGN& encoder, LinkPredictor& decoder, torch::optim::Adam& opt,
                     pos_out, torch::ones_like(pos_out)) +
                 torch::nn::functional::binary_cross_entropy_with_logits(
                     neg_out, torch::zeros_like(neg_out));
-
-    encoder->update_state(batch.src, batch.dst, batch.t, batch.msg);
     loss.backward();
     opt.step();
-    encoder->detach_memory();
-
     total_loss += loss.item<float>();
+
+    encoder->update_state(batch.src, batch.dst, batch.t, batch.msg);
+    encoder->detach_memory();
 
     util::progress_bar(e_id - store->train_split().start(),
                        store->train_split().size(), "Train", start_time);
@@ -104,7 +102,7 @@ auto eval(tgn::TGN& encoder, LinkPredictor& decoder,
   encoder->eval();
   decoder->eval();
 
-  std::vector<float> batch_mrrs;
+  std::vector<float> perf_list;
   auto e_id = store->val_split().start();
 
   for (; e_id < store->val_split().end(); e_id += batch_size) {
@@ -125,24 +123,24 @@ auto eval(tgn::TGN& encoder, LinkPredictor& decoder,
     const auto pred_neg =
         decoder->forward(z_src_expanded, z_neg.reshape({-1, D})).sigmoid();
 
-    batch_mrrs.push_back(compute_mrr(pred_pos, pred_neg));
+    perf_list.push_back(compute_mrr(pred_pos, pred_neg));
     encoder->update_state(batch.src, batch.dst, batch.t, batch.msg);
 
     util::progress_bar(e_id - store->val_split().start(),
                        store->val_split().size(), "Valid", start_time);
   }
   std::cout << std::endl;
-  return batch_mrrs.empty()
+  return perf_list.empty()
              ? 0.0
-             : std::accumulate(batch_mrrs.begin(), batch_mrrs.end(), 0.0) /
-                   batch_mrrs.size();
+             : std::accumulate(perf_list.begin(), perf_list.end(), 0.0) /
+                   perf_list.size();
 }
 
 }  // namespace
 
 auto main() -> int {
   const auto cfg = tgn::TGNConfig{};
-  const auto opts = util::load_csv("data/tgbl-wiki.csv");
+  const auto opts = util::load_csv("data/" + dataset + ".csv");
   const auto store = tgn::make_store(opts);
 
   tgn::TGN encoder(cfg, store);
