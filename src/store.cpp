@@ -70,7 +70,43 @@ class InMemoryTGStore final : public TGStore {
     }
 
     if (opts.label_n_id.has_value()) {
-      // TODO(kuba): parse and set up node label events
+      TORCH_CHECK(opts.label_t.has_value() && opts.label_y_true.has_value(),
+                  "Missing label tensors");
+
+      const auto l_t = opts.label_t.value();
+      const auto l_n = opts.label_n_id.value();
+      const auto l_y = opts.label_y_true.value();
+
+      // Find unique timestamps in label_t (assumed sorted)
+      const auto [unique_ts, inverse_indices, counts] =
+          torch::unique_consecutive(l_t, /*return_inverse=*/true,
+                                    /*return_counts=*/true);
+
+      std::int64_t offset = 0;
+      for (auto i = 0; i < unique_ts.size(0); ++i) {
+        const auto count = counts[i].item<int64_t>();
+
+        // Group the nodes/labels for this timestamp
+        label_events_.push_back(
+            LabelEvent{.n_id = l_n.slice(0, offset, offset + count),
+                       .y_true = l_y.slice(0, offset, offset + count)});
+
+        // Find the Edge Stop Index (first edge index where t >= label_time)
+        const auto event_time = unique_ts[i].item<float>();
+        auto it =
+            std::lower_bound(t_.data_ptr<float>(),
+                             t_.data_ptr<float>() + num_edges_, event_time);
+        stop_e_ids_.push_back(std::distance(t_.data_ptr<float>(), it));
+
+        offset += count;
+      }
+
+      // Determine Label Event Ranges (Interleave with Edge Splits)
+      train_label_ = calculate_label_range(0.0, get_edge_time(train_.end()));
+      val_label_ = calculate_label_range(get_edge_time(val_.start()),
+                                         get_edge_time(val_.end()));
+      test_label_ = calculate_label_range(get_edge_time(test_.start()),
+                                          get_edge_time(test_.end()));
     }
   }
 
@@ -159,6 +195,48 @@ class InMemoryTGStore final : public TGStore {
 
   std ::vector<LabelEvent> label_events_;
   std ::vector<std::size_t> stop_e_ids_;
+
+  auto calculate_label_range(std::int64_t start_t, std::int64_t end_t)
+      -> Range {
+    if (label_events_.empty() || start_t >= end_t) {
+      return {0, 0};
+    }
+
+    // This assumes we stored timestamps somewhere or we can infer them
+    // For now, use stop_e_ids_ to find labels that fall within edge window
+    std::size_t start_idx = 0;
+    std::size_t end_idx = 0;
+    auto found_start = false;
+
+    for (auto i = 0; i < stop_e_ids_.size(); ++i) {
+      auto e_pos = stop_e_ids_[i];
+      // If the stop_idx for this label event is within the edge split
+      // TODO(kuba): refine this
+      if (e_pos >= find_e_idx_at_time(start_t) &&
+          e_pos <= find_e_idx_at_time(end_t)) {
+        if (!found_start) {
+          start_idx = i;
+          found_start = true;
+        }
+        end_idx = i + 1;
+      }
+    }
+    return {start_idx, end_idx};
+  }
+
+  [[nodiscard]] auto get_edge_time(std::int64_t idx) const -> std::int64_t {
+    if (idx >= num_edges_) {
+      return (num_edges_ > 0) ? t_[num_edges_ - 1].item<std::int64_t>() + 1 : 0;
+    }
+    return t_[idx].item<std::int64_t>();
+  }
+
+  [[nodiscard]] auto find_e_idx_at_time(std::int64_t time) const
+      -> std::size_t {
+    auto* it = std::lower_bound(t_.data_ptr<std::int64_t>(),
+                                t_.data_ptr<std::int64_t>() + num_edges_, time);
+    return std::distance(t_.data_ptr<std::int64_t>(), it);
+  }
 };
 
 auto make_store(const InMemoryTGStoreOptions& opts)
