@@ -63,13 +63,13 @@ class TGStore {
   [[nodiscard]] virtual auto num_nodes() const -> std::size_t = 0;
   [[nodiscard]] virtual auto msg_dim() const -> std::size_t = 0;
 
-  [[nodiscard]] virtual auto train_e_idx_range() const -> Range = 0;
-  [[nodiscard]] virtual auto val_e_idx_range() const -> Range = 0;
-  [[nodiscard]] virtual auto test_e_idx_range() const -> Range = 0;
+  [[nodiscard]] virtual auto train_split() const -> Range = 0;
+  [[nodiscard]] virtual auto val_split() const -> Range = 0;
+  [[nodiscard]] virtual auto test_split() const -> Range = 0;
 
-  [[nodiscard]] virtual auto train_label_event_range() const -> Range = 0;
-  [[nodiscard]] virtual auto val_label_event_range() const -> Range = 0;
-  [[nodiscard]] virtual auto test_label_event_range() const -> Range = 0;
+  [[nodiscard]] virtual auto train_label_split() const -> Range = 0;
+  [[nodiscard]] virtual auto val_label_split() const -> Range = 0;
+  [[nodiscard]] virtual auto test_label_split() const -> Range = 0;
 
   [[nodiscard]] virtual auto get_batch(
       std::size_t start, std::size_t size,
@@ -91,9 +91,7 @@ struct InMemoryTGStoreOptions {
   torch::Tensor dst;
   torch::Tensor t;
   torch::Tensor msg;
-
   std::optional<torch::Tensor> neg_dst = std::nullopt;
-
   std::optional<std::size_t> val_start = std::nullopt;
   std::optional<std::size_t> test_start = std::nullopt;
 

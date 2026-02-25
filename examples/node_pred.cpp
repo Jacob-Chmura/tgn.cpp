@@ -19,7 +19,7 @@ constexpr std::size_t num_epochs = 10;
 constexpr std::size_t batch_size = 200;
 constexpr std::size_t node_batch_size = 200;
 constexpr double learning_rate = 1e-4;
-constexpr std::string dataset = "tgbn-genre";
+constexpr std::string dataset = "tgbn-trade";
 
 namespace {
 
@@ -45,14 +45,14 @@ auto compute_ndcg(const torch::Tensor& y_pred, const torch::Tensor& y_true,
                   std::int64_t k = 10) -> float {
   k = std::min(k, y_pred.size(-1));
 
-  const auto [_, top_indices] = y_pred.topk(k, -1);
-  const auto y_true_at_pred_topk = y_true.gather(-1, top_indices);
+  const auto [pred_labels, pred_indices] = y_pred.topk(k, -1);
+  const auto y_true_at_pred_topk = y_true.gather(-1, pred_indices);
 
   const auto ranks = torch::arange(1, k + 1).to(torch::kFloat32);
   const auto discounts = torch::log2(ranks + 1.0);
   const auto dcg = (y_true_at_pred_topk / discounts).sum(-1);
 
-  const auto [ideal_labels, _] = y_true.topk(k, -1);
+  const auto [ideal_labels, ideal_indices] = y_true.topk(k, -1);
   const auto idcg = (ideal_labels / discounts).sum(-1);
 
   const auto ndcg = dcg / (idcg + 1e-8);
@@ -68,8 +68,8 @@ auto train(tgn::TGN& encoder, NodePredictor& decoder, torch::optim::Adam& opt,
 
   float total_loss{0};
 
-  const auto e_range = store->train_e_idx_range();
-  const auto l_range = store->train_label_event_range();
+  const auto e_range = store->train_split();
+  const auto l_range = store->train_label_split();
   auto e_idx = e_range.start();
   auto l_idx = l_range.start();
 
@@ -131,8 +131,8 @@ auto eval(tgn::TGN& encoder, NodePredictor& decoder,
 
   std::vector<float> perf_list;
 
-  const auto e_range = store->val_e_idx_range();
-  const auto l_range = store->val_label_event_range();
+  const auto e_range = store->val_split();
+  const auto l_range = store->val_label_split();
   auto e_idx = e_range.start();
   auto l_idx = l_range.start();
 

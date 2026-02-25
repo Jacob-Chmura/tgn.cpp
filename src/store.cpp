@@ -79,9 +79,22 @@ class InMemoryTGStore final : public TGStore {
   [[nodiscard]] auto msg_dim() const -> std::size_t override {
     return msg_dim_;
   }
-  [[nodiscard]] auto train_split() const -> Split override { return train_; }
-  [[nodiscard]] auto val_split() const -> Split override { return val_; }
-  [[nodiscard]] auto test_split() const -> Split override { return test_; }
+  [[nodiscard]] auto train_split() const -> Range override { return train_; }
+  [[nodiscard]] auto val_split() const -> Range override { return val_; }
+  [[nodiscard]] auto test_split() const -> Range override { return test_; }
+
+  [[nodiscard]] auto train_label_split() const -> Range override {
+    // TODO
+    return train_;
+  }
+  [[nodiscard]] auto val_label_split() const -> Range override {
+    // TODO
+    return val_;
+  }
+  [[nodiscard]] auto test_label_split() const -> Range override {
+    // TODO
+    return test_;
+  }
 
   [[nodiscard]] auto get_batch(std::size_t start, std::size_t batch_size,
                                NegStrategy strategy = NegStrategy::None) const
@@ -121,12 +134,17 @@ class InMemoryTGStore final : public TGStore {
     return msg_.index_select(0, e_id.flatten());
   }
 
-  // get_label_checkpoint
-  //
-  // Determine the next event idx until which we can update model state
-  //  const auto stop_e_id = (event_idx < num_events)
-  //                             ? store->get_label_checkpoint(split, event_idx)
-  //                             : split.end();
+  [[nodiscard]] auto get_stop_e_idx_for_label_event(std::size_t l_idx) const
+      -> std::size_t override {
+    // TODO
+    return 0;
+  }
+
+  [[nodiscard]] auto get_label_event(std::size_t l_idx) const
+      -> LabelEvent override {
+    // TODO
+    return LabelEvent{.n_id = torch::empty(0), .y_true = torch::empty(0)};
+  }
 
  private:
   torch::Tensor src_, dst_, t_, msg_;
@@ -136,7 +154,7 @@ class InMemoryTGStore final : public TGStore {
   std::size_t num_nodes_{0};
   std::size_t msg_dim_{0};
 
-  Split train_, val_, test_;
+  Range train_, val_, test_;
   std::optional<RandomNegSampler> sampler_;
 };
 

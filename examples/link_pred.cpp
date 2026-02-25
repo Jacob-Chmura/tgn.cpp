@@ -62,7 +62,7 @@ auto train(tgn::TGN& encoder, LinkPredictor& decoder, torch::optim::Adam& opt,
   encoder->reset_state();
 
   float total_loss{0};
-  const auto e_range = store->train_e_idx_range();
+  const auto e_range = store->train_split();
 
   for (auto e_idx = e_range.start(); e_idx < e_range.end();
        e_idx += batch_size) {
@@ -105,7 +105,7 @@ auto eval(tgn::TGN& encoder, LinkPredictor& decoder,
   decoder->eval();
 
   std::vector<float> perf_list;
-  const auto e_range = store->val_e_idx_range();
+  const auto e_range = store->val_split();
 
   for (auto e_idx = e_range.start(); e_idx < e_range.end();
        e_idx += batch_size) {
