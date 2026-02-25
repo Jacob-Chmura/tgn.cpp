@@ -64,12 +64,11 @@ auto train(tgn::TGN& encoder, LinkPredictor& decoder, torch::optim::Adam& opt,
   float total_loss{0};
   const auto e_range = store->train_split();
 
-  for (auto e_idx = e_range.start(); e_idx < e_range.end();
-       e_idx += batch_size) {
+  for (auto e_id = e_range.start(); e_id < e_range.end(); e_id += batch_size) {
     opt.zero_grad();
 
     const auto batch =
-        store->get_batch(e_idx, batch_size, tgn::NegStrategy::Random);
+        store->get_batch(e_id, batch_size, tgn::NegStrategy::Random);
     const auto [z_src, z_dst, z_neg] =
         encoder->forward(batch.src, batch.dst, batch.neg_dst->flatten());
 
@@ -88,7 +87,7 @@ auto train(tgn::TGN& encoder, LinkPredictor& decoder, torch::optim::Adam& opt,
     encoder->update_state(batch.src, batch.dst, batch.t, batch.msg);
     encoder->detach_memory();
 
-    util::progress_bar(e_idx - e_range.start(), e_range.size(), "Train",
+    util::progress_bar(e_id - e_range.start(), e_range.size(), "Train",
                        start_time);
   }
 
@@ -107,10 +106,9 @@ auto eval(tgn::TGN& encoder, LinkPredictor& decoder,
   std::vector<float> perf_list;
   const auto e_range = store->val_split();
 
-  for (auto e_idx = e_range.start(); e_idx < e_range.end();
-       e_idx += batch_size) {
+  for (auto e_id = e_range.start(); e_id < e_range.end(); e_id += batch_size) {
     const auto batch =
-        store->get_batch(e_idx, batch_size, tgn::NegStrategy::PreComputed);
+        store->get_batch(e_id, batch_size, tgn::NegStrategy::PreComputed);
     const auto [z_src, z_dst, z_neg] =
         encoder->forward(batch.src, batch.dst, batch.neg_dst->flatten());
 
@@ -129,7 +127,7 @@ auto eval(tgn::TGN& encoder, LinkPredictor& decoder,
     perf_list.push_back(compute_mrr(pred_pos, pred_neg));
     encoder->update_state(batch.src, batch.dst, batch.t, batch.msg);
 
-    util::progress_bar(e_idx - e_range.start(), e_range.size(), "Valid",
+    util::progress_bar(e_id - e_range.start(), e_range.size(), "Valid",
                        start_time);
   }
 

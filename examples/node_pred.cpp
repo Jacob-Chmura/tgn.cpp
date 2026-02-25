@@ -70,27 +70,27 @@ auto train(tgn::TGN& encoder, NodePredictor& decoder, torch::optim::Adam& opt,
 
   const auto e_range = store->train_split();
   const auto l_range = store->train_label_split();
-  auto e_idx = e_range.start();
-  auto l_idx = l_range.start();
+  auto e_id = e_range.start();
+  auto l_id = l_range.start();
 
-  while (e_idx < e_range.end() || l_idx < l_range.end()) {
-    // Determine the next e_idx until which we can update model state
-    const auto stop_e_idx = (l_idx < l_range.end())
-                                ? store->get_stop_e_idx_for_label_event(l_idx)
+  while (e_id < e_range.end() || l_id < l_range.end()) {
+    // Determine the next e_id until which we can update model state
+    const auto stop_e_idx = (l_id < l_range.end())
+                                ? store->get_stop_e_id_for_label_event(l_id)
                                 : e_range.end();
 
     // Consume edges until we hit stop_e_id
-    if (e_idx < stop_e_idx) {
-      const auto step = std::min(batch_size, stop_e_idx - e_idx);
-      const auto batch = store->get_batch(e_idx, step);
+    if (e_id < stop_e_idx) {
+      const auto step = std::min(batch_size, stop_e_idx - e_id);
+      const auto batch = store->get_batch(e_id, step);
 
       encoder->update_state(batch.src, batch.dst, batch.t, batch.msg);
-      e_idx += step;
+      e_id += step;
       encoder->detach_memory();
     }
     // We are exactly at a stop_e_id, do Node Property Prediction
-    else if (l_idx < l_range.end()) {
-      const auto label_event = store->get_label_event(l_idx++);
+    else if (l_id < l_range.end()) {
+      const auto label_event = store->get_label_event(l_id++);
       const auto num_nodes = static_cast<std::size_t>(label_event.n_id.size(0));
       float event_loss{0};
 
@@ -113,7 +113,7 @@ auto train(tgn::TGN& encoder, NodePredictor& decoder, torch::optim::Adam& opt,
       total_loss += event_loss;
     }
 
-    util::progress_bar(e_idx - e_range.start(), e_range.size(), "Train",
+    util::progress_bar(e_id - e_range.start(), e_range.size(), "Train",
                        start_time);
   }
 
@@ -133,22 +133,22 @@ auto eval(tgn::TGN& encoder, NodePredictor& decoder,
 
   const auto e_range = store->val_split();
   const auto l_range = store->val_label_split();
-  auto e_idx = e_range.start();
-  auto l_idx = l_range.start();
+  auto e_id = e_range.start();
+  auto l_id = l_range.start();
 
-  while (e_idx < e_range.end() || l_idx < l_range.end()) {
-    const auto stop_e_idx = (l_idx < l_range.end())
-                                ? store->get_stop_e_idx_for_label_event(l_idx)
+  while (e_id < e_range.end() || l_id < l_range.end()) {
+    const auto stop_e_idx = (l_id < l_range.end())
+                                ? store->get_stop_e_id_for_label_event(l_id)
                                 : e_range.end();
 
-    if (e_idx < stop_e_idx) {
-      const auto step = std::min(batch_size, stop_e_idx - e_idx);
-      const auto batch = store->get_batch(e_idx, step);
+    if (e_id < stop_e_idx) {
+      const auto step = std::min(batch_size, stop_e_idx - e_id);
+      const auto batch = store->get_batch(e_id, step);
 
       encoder->update_state(batch.src, batch.dst, batch.t, batch.msg);
-      e_idx += step;
-    } else if (l_idx < l_range.end()) {
-      const auto label_event = store->get_label_event(l_idx++);
+      e_id += step;
+    } else if (l_id < l_range.end()) {
+      const auto label_event = store->get_label_event(l_id++);
       const auto num_nodes = static_cast<std::size_t>(label_event.n_id.size(0));
       std::vector<torch::Tensor> event_preds;
 
@@ -164,7 +164,7 @@ auto eval(tgn::TGN& encoder, NodePredictor& decoder,
       perf_list.push_back(compute_ndcg(y_pred, label_event.y_true));
     }
 
-    util::progress_bar(e_idx - e_range.start(), e_range.size(), "Valid",
+    util::progress_bar(e_id - e_range.start(), e_range.size(), "Valid",
                        start_time);
   }
 

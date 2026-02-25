@@ -134,7 +134,7 @@ class InMemoryTGStore final : public TGStore {
     return msg_.index_select(0, e_id.flatten());
   }
 
-  [[nodiscard]] auto get_stop_e_idx_for_label_event(std::size_t l_idx) const
+  [[nodiscard]] auto get_stop_e_id_for_label_event(std::size_t l_id) const
       -> std::size_t override {
     // TODO
     return 0;
