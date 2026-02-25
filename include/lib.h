@@ -33,12 +33,12 @@ enum class NegStrategy {
   PreComputed,  // Link Prop Eval (Uses pre-comptued negatives)
 };
 
-struct Split {
-  Split() = default;
+struct Range {
+  Range() = default;
 
-  Split(std::size_t s, std::size_t e) : start_(s), end_(e) {
+  Range(std::size_t s, std::size_t e) : start_(s), end_(e) {
     if (end_ < start_) {
-      throw std::out_of_range("Invalid split");
+      throw std::out_of_range("Invalid range");
     }
   }
 
@@ -50,6 +50,11 @@ struct Split {
   std::size_t end_{0};
 };
 
+struct LabelEvent {
+  torch::Tensor n_id;
+  torch::Tensor y_true;
+};
+
 class TGStore {
  public:
   virtual ~TGStore() = default;
@@ -58,9 +63,13 @@ class TGStore {
   [[nodiscard]] virtual auto num_nodes() const -> std::size_t = 0;
   [[nodiscard]] virtual auto msg_dim() const -> std::size_t = 0;
 
-  [[nodiscard]] virtual auto train_split() const -> Split = 0;
-  [[nodiscard]] virtual auto val_split() const -> Split = 0;
-  [[nodiscard]] virtual auto test_split() const -> Split = 0;
+  [[nodiscard]] virtual auto train_e_idx_range() const -> Range = 0;
+  [[nodiscard]] virtual auto val_e_idx_range() const -> Range = 0;
+  [[nodiscard]] virtual auto test_e_idx_range() const -> Range = 0;
+
+  [[nodiscard]] virtual auto train_label_event_range() const -> Range = 0;
+  [[nodiscard]] virtual auto val_label_event_range() const -> Range = 0;
+  [[nodiscard]] virtual auto test_label_event_range() const -> Range = 0;
 
   [[nodiscard]] virtual auto get_batch(
       std::size_t start, std::size_t size,
@@ -69,6 +78,12 @@ class TGStore {
       -> torch::Tensor = 0;
   [[nodiscard]] virtual auto gather_msgs(const torch::Tensor& e_id) const
       -> torch::Tensor = 0;
+
+  [[nodiscard]] virtual auto get_stop_e_idx_for_label_event(
+      std::size_t l_idx) const -> std::size_t = 0;
+
+  [[nodiscard]] virtual auto get_label_event(std::size_t l_idx) const
+      -> LabelEvent = 0;
 };
 
 struct InMemoryTGStoreOptions {
@@ -76,9 +91,15 @@ struct InMemoryTGStoreOptions {
   torch::Tensor dst;
   torch::Tensor t;
   torch::Tensor msg;
+
   std::optional<torch::Tensor> neg_dst = std::nullopt;
+
   std::optional<std::size_t> val_start = std::nullopt;
   std::optional<std::size_t> test_start = std::nullopt;
+
+  std::optional<torch::Tensor> label_n_id = std::nullopt;
+  std::optional<torch::Tensor> label_t = std::nullopt;
+  std::optional<torch::Tensor> label_y_true = std::nullopt;
 };
 
 auto make_store(const InMemoryTGStoreOptions& opts) -> std::shared_ptr<TGStore>;
