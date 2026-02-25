@@ -44,12 +44,11 @@ TORCH_MODULE(NodePredictor);
 auto compute_ndcg(const torch::Tensor& y_pred, const torch::Tensor& y_true,
                   std::int64_t k = 10) -> float {
   k = std::min(k, y_pred.size(-1));
+  const auto ranks = torch::arange(1, k + 1).to(torch::kFloat32);
+  const auto discounts = torch::log2(ranks + 1.0);
 
   const auto [pred_labels, pred_indices] = y_pred.topk(k, -1);
   const auto y_true_at_pred_topk = y_true.gather(-1, pred_indices);
-
-  const auto ranks = torch::arange(1, k + 1).to(torch::kFloat32);
-  const auto discounts = torch::log2(ranks + 1.0);
   const auto dcg = (y_true_at_pred_topk / discounts).sum(-1);
 
   const auto [ideal_labels, ideal_indices] = y_true.topk(k, -1);
