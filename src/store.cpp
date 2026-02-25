@@ -68,6 +68,10 @@ class InMemoryTGStore final : public TGStore {
                       static_cast<std::int64_t>(num_nodes_),
                   "neg_dst contains IDs outside the range of src/dst");
     }
+
+    if (opts.label_n_id.has_value()) {
+      // TODO(kuba): parse and set up node label events
+    }
   }
 
   [[nodiscard]] auto num_edges() const -> std::size_t override {
@@ -84,16 +88,13 @@ class InMemoryTGStore final : public TGStore {
   [[nodiscard]] auto test_split() const -> Range override { return test_; }
 
   [[nodiscard]] auto train_label_split() const -> Range override {
-    // TODO
-    return train_;
+    return train_label_;
   }
   [[nodiscard]] auto val_label_split() const -> Range override {
-    // TODO
-    return val_;
+    return val_label_;
   }
   [[nodiscard]] auto test_label_split() const -> Range override {
-    // TODO
-    return test_;
+    return test_label_;
   }
 
   [[nodiscard]] auto get_batch(std::size_t start, std::size_t batch_size,
@@ -136,14 +137,12 @@ class InMemoryTGStore final : public TGStore {
 
   [[nodiscard]] auto get_stop_e_id_for_label_event(std::size_t l_id) const
       -> std::size_t override {
-    // TODO
-    return 0;
+    return stop_e_ids_.at(l_id);
   }
 
-  [[nodiscard]] auto get_label_event(std::size_t l_idx) const
+  [[nodiscard]] auto get_label_event(std::size_t l_id) const
       -> LabelEvent override {
-    // TODO
-    return LabelEvent{.n_id = torch::empty(0), .y_true = torch::empty(0)};
+    return label_events_.at(l_id);
   }
 
  private:
@@ -155,7 +154,11 @@ class InMemoryTGStore final : public TGStore {
   std::size_t msg_dim_{0};
 
   Range train_, val_, test_;
+  Range train_label_, val_label_, test_label_;
   std::optional<RandomNegSampler> sampler_;
+
+  std ::vector<LabelEvent> label_events_;
+  std ::vector<std::size_t> stop_e_ids_;
 };
 
 auto make_store(const InMemoryTGStoreOptions& opts)
