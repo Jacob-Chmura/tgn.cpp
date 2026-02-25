@@ -82,7 +82,7 @@ class TGStore {
   [[nodiscard]] virtual auto get_stop_e_id_for_label_event(
       std::size_t l_id) const -> std::size_t = 0;
 
-  [[nodiscard]] virtual auto get_label_event(std::size_t l_idx) const
+  [[nodiscard]] virtual auto get_label_event(std::size_t l_id) const
       -> LabelEvent = 0;
 };
 
