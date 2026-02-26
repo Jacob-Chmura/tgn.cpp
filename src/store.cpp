@@ -73,40 +73,88 @@ class InMemoryTGStore final : public TGStore {
       TORCH_CHECK(opts.label_t.has_value() && opts.label_y_true.has_value(),
                   "Missing label tensors");
 
-      const auto l_t = opts.label_t.value();
-      const auto l_n = opts.label_n_id.value();
-      const auto l_y = opts.label_y_true.value();
+      const auto label_t = opts.label_t.value();
+      const auto label_n_id = opts.label_n_id.value();
+      const auto label_y_true = opts.label_y_true.value();
 
       // Find unique timestamps in label_t (assumed sorted)
       const auto [unique_ts, inverse_indices, counts] =
-          torch::unique_consecutive(l_t, /*return_inverse=*/true,
+          torch::unique_consecutive(label_t, /*return_inverse=*/true,
                                     /*return_counts=*/true);
+
+      auto find_e_id_at_time = [&](std::int64_t time) -> std::size_t {
+        auto* it =
+            std::lower_bound(t_.data_ptr<std::int64_t>(),
+                             t_.data_ptr<std::int64_t>() + num_edges_, time);
+        return std::distance(t_.data_ptr<std::int64_t>(), it);
+      };
 
       std::int64_t offset = 0;
       for (auto i = 0; i < unique_ts.size(0); ++i) {
-        const auto count = counts[i].item<int64_t>();
+        const auto count = counts[i].item<std::int64_t>();
+        const auto event_time = unique_ts[i].item<std::int64_t>();
 
         // Group the nodes/labels for this timestamp
-        label_events_.push_back(
-            LabelEvent{.n_id = l_n.slice(0, offset, offset + count),
-                       .y_true = l_y.slice(0, offset, offset + count)});
+        label_events_.push_back(LabelEvent{
+            .n_id = label_n_id.slice(0, offset, offset + count),
+            .y_true = label_y_true.slice(0, offset, offset + count)});
 
         // Find the Edge Stop Index (first edge index where t >= label_time)
-        const auto event_time = unique_ts[i].item<float>();
-        auto it =
-            std::lower_bound(t_.data_ptr<float>(),
-                             t_.data_ptr<float>() + num_edges_, event_time);
-        stop_e_ids_.push_back(std::distance(t_.data_ptr<float>(), it));
+        stop_e_ids_.push_back(find_e_id_at_time(event_time));
 
         offset += count;
       }
 
+      auto get_edge_time = [&](std::size_t e_id) -> std::int64_t {
+        if (e_id >= num_edges_) {
+          return (num_edges_ > 0) ? t_[-1].item<std::int64_t>() + 1 : 0;
+        }
+        return t_[static_cast<std::int64_t>(e_id)].item<std::int64_t>();
+      };
+
+      auto calculate_label_range = [&](std::int64_t start_t,
+                                       std::int64_t end_t) -> Range {
+        if (label_events_.empty() || start_t >= end_t) {
+          return Range{};
+        }
+
+        // The 'round-trip' from train split edge start/end indices to
+        // timestamps and then back to start/end e_pos is required since TGB
+        // split boundaries may occur on a 'single time unit'. In order to
+        // reproduce, node events must be processed as the same split.
+        //
+        // Ref:
+        // https://github.com/tgm-team/tgm/blob/72c8bf9/tgm/data/dg_data.py#L1034-L1036
+        // E.g. Handles TGB node label offset: tgbn-trade validation starts at
+        // 2010 while first node event batch starts at 2009.
+        const auto start_e_pos = find_e_id_at_time(start_t);
+        const auto end_e_pos = find_e_id_at_time(end_t);
+
+        // First label event that occurs at or after the start_e_pos
+        auto it_start = std::ranges::lower_bound(stop_e_ids_, start_e_pos);
+
+        // First label event that occurs after the end_e_pos
+        auto it_end = std::ranges::upper_bound(stop_e_ids_, end_e_pos);
+
+        auto start = static_cast<std::size_t>(
+            std::distance(stop_e_ids_.begin(), it_start));
+        auto end = static_cast<std::size_t>(
+            std::distance(stop_e_ids_.begin(), it_end));
+
+        return Range{start, end};
+      };
+
+      const auto train_start_time = 0;
+      const auto train_end_time = get_edge_time(train_.end());
+      const auto val_start = get_edge_time(val_.start());
+      const auto val_end_time = get_edge_time(val_.end());
+      const auto test_start = get_edge_time(test_.start());
+      const auto test_end_time = get_edge_time(test_.end());
+
       // Determine Label Event Ranges (Interleave with Edge Splits)
-      train_label_ = calculate_label_range(0.0, get_edge_time(train_.end()));
-      val_label_ = calculate_label_range(get_edge_time(val_.start()),
-                                         get_edge_time(val_.end()));
-      test_label_ = calculate_label_range(get_edge_time(test_.start()),
-                                          get_edge_time(test_.end()));
+      train_label_ = calculate_label_range(train_start_time, train_end_time);
+      val_label_ = calculate_label_range(val_start, val_end_time);
+      test_label_ = calculate_label_range(test_start, test_end_time);
     }
   }
 
@@ -195,48 +243,6 @@ class InMemoryTGStore final : public TGStore {
 
   std ::vector<LabelEvent> label_events_;
   std ::vector<std::size_t> stop_e_ids_;
-
-  auto calculate_label_range(std::int64_t start_t, std::int64_t end_t)
-      -> Range {
-    if (label_events_.empty() || start_t >= end_t) {
-      return {0, 0};
-    }
-
-    // This assumes we stored timestamps somewhere or we can infer them
-    // For now, use stop_e_ids_ to find labels that fall within edge window
-    std::size_t start_idx = 0;
-    std::size_t end_idx = 0;
-    auto found_start = false;
-
-    for (auto i = 0; i < stop_e_ids_.size(); ++i) {
-      auto e_pos = stop_e_ids_[i];
-      // If the stop_idx for this label event is within the edge split
-      // TODO(kuba): refine this
-      if (e_pos >= find_e_idx_at_time(start_t) &&
-          e_pos <= find_e_idx_at_time(end_t)) {
-        if (!found_start) {
-          start_idx = i;
-          found_start = true;
-        }
-        end_idx = i + 1;
-      }
-    }
-    return {start_idx, end_idx};
-  }
-
-  [[nodiscard]] auto get_edge_time(std::int64_t idx) const -> std::int64_t {
-    if (idx >= num_edges_) {
-      return (num_edges_ > 0) ? t_[num_edges_ - 1].item<std::int64_t>() + 1 : 0;
-    }
-    return t_[idx].item<std::int64_t>();
-  }
-
-  [[nodiscard]] auto find_e_idx_at_time(std::int64_t time) const
-      -> std::size_t {
-    auto* it = std::lower_bound(t_.data_ptr<std::int64_t>(),
-                                t_.data_ptr<std::int64_t>() + num_edges_, time);
-    return std::distance(t_.data_ptr<std::int64_t>(), it);
-  }
 };
 
 auto make_store(const InMemoryTGStoreOptions& opts)
