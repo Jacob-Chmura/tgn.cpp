@@ -17,7 +17,6 @@
 
 constexpr std::size_t num_epochs = 10;
 constexpr std::size_t batch_size = 200;
-constexpr std::size_t node_batch_size = 200;
 constexpr double learning_rate = 1e-4;
 constexpr std::string dataset = "tgbn-trade";
 
@@ -85,32 +84,23 @@ auto train(tgn::TGN& encoder, NodePredictor& decoder, torch::optim::Adam& opt,
 
       encoder->update_state(batch.src, batch.dst, batch.t, batch.msg);
       e_id += step;
-      encoder->detach_memory();
     }
     // We are exactly at a stop_e_id, do Node Property Prediction
     else if (l_id < l_range.end()) {
+      opt.zero_grad();
+
       const auto label_event = store->get_label_event(l_id++);
-      const auto num_nodes = static_cast<std::size_t>(label_event.n_id.size(0));
-      float event_loss{0};
+      const auto [z] = encoder->forward(label_event.n_id);
+      const auto y_pred = decoder->forward(z);
 
-      for (auto i = 0; i < num_nodes; i += node_batch_size) {
-        const auto end = std::min(i + node_batch_size, num_nodes);
-        const auto n_id_batch = label_event.n_id.slice(0, i, end);
-        const auto y_true_batch = label_event.n_id.slice(0, i, end);
-
-        opt.zero_grad();
-
-        const auto [z] = encoder->forward(label_event.n_id);
-        const auto y_pred = decoder->forward(z);
-
-        auto loss = torch::nn::functional::cross_entropy(y_pred, y_true_batch);
-        loss.backward();
-        opt.step();
-        event_loss +=
-            loss.item<float>() * (static_cast<float>(end - i) / num_nodes);
-      }
-      total_loss += event_loss;
+      auto loss =
+          torch::nn::functional::cross_entropy(y_pred, label_event.y_true);
+      loss.backward();
+      opt.step();
+      total_loss += loss.item<float>();
     }
+
+    encoder->detach_memory();
 
     util::progress_bar(e_id - e_range.start(), e_range.size(), "Train",
                        start_time);
@@ -148,18 +138,8 @@ auto eval(tgn::TGN& encoder, NodePredictor& decoder,
       e_id += step;
     } else if (l_id < l_range.end()) {
       const auto label_event = store->get_label_event(l_id++);
-      const auto num_nodes = static_cast<std::size_t>(label_event.n_id.size(0));
-      std::vector<torch::Tensor> event_preds;
-
-      for (auto i = 0; i < num_nodes; i += node_batch_size) {
-        const auto end = std::min(i + node_batch_size, num_nodes);
-        const auto n_id_batch = label_event.n_id.slice(0, i, end);
-
-        const auto [z] = encoder->forward(n_id_batch);
-        event_preds.push_back(decoder->forward(z));
-      }
-
-      const auto y_pred = torch::cat(event_preds, 0);
+      const auto [z] = encoder->forward(label_event.n_id);
+      const auto y_pred = decoder->forward(z);
       perf_list.push_back(compute_ndcg(y_pred, label_event.y_true));
     }
 
