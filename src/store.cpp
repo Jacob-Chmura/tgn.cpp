@@ -68,6 +68,94 @@ class InMemoryTGStore final : public TGStore {
                       static_cast<std::int64_t>(num_nodes_),
                   "neg_dst contains IDs outside the range of src/dst");
     }
+
+    if (opts.label_n_id.has_value()) {
+      TORCH_CHECK(opts.label_t.has_value() && opts.label_y_true.has_value(),
+                  "Missing label tensors");
+
+      const auto label_t = opts.label_t.value();
+      const auto label_n_id = opts.label_n_id.value();
+      const auto label_y_true = opts.label_y_true.value();
+
+      // Find unique timestamps in label_t (assumed sorted)
+      const auto [unique_ts, inverse_indices, counts] =
+          torch::unique_consecutive(label_t, /*return_inverse=*/true,
+                                    /*return_counts=*/true);
+
+      auto find_e_id_at_time = [&](std::int64_t time) -> std::size_t {
+        auto* it =
+            std::lower_bound(t_.data_ptr<std::int64_t>(),
+                             t_.data_ptr<std::int64_t>() + num_edges_, time);
+        return std::distance(t_.data_ptr<std::int64_t>(), it);
+      };
+
+      std::int64_t offset = 0;
+      for (auto i = 0; i < unique_ts.size(0); ++i) {
+        const auto count = counts[i].item<std::int64_t>();
+        const auto event_time = unique_ts[i].item<std::int64_t>();
+
+        // Group the nodes/labels for this timestamp
+        label_events_.push_back(LabelEvent{
+            .n_id = label_n_id.slice(0, offset, offset + count),
+            .y_true = label_y_true.slice(0, offset, offset + count)});
+
+        // Find the Edge Stop Index (first edge index where t >= label_time)
+        stop_e_ids_.push_back(find_e_id_at_time(event_time));
+
+        offset += count;
+      }
+
+      auto get_edge_time = [&](std::size_t e_id) -> std::int64_t {
+        if (e_id >= num_edges_) {
+          return (num_edges_ > 0) ? t_[-1].item<std::int64_t>() + 1 : 0;
+        }
+        return t_[static_cast<std::int64_t>(e_id)].item<std::int64_t>();
+      };
+
+      auto calculate_label_range = [&](std::int64_t start_t,
+                                       std::int64_t end_t) -> Range {
+        if (label_events_.empty() || start_t >= end_t) {
+          return Range{};
+        }
+
+        // The 'round-trip' from train split edge start/end indices to
+        // timestamps and then back to start/end e_pos is required since TGB
+        // split boundaries may occur on a 'single time unit'. In order to
+        // reproduce, node events must be processed as the same split.
+        //
+        // Ref:
+        // https://github.com/tgm-team/tgm/blob/72c8bf9/tgm/data/dg_data.py#L1034-L1036
+        // E.g. Handles TGB node label offset: tgbn-trade validation starts at
+        // 2010 while first node event batch starts at 2009.
+        const auto start_e_pos = find_e_id_at_time(start_t);
+        const auto end_e_pos = find_e_id_at_time(end_t);
+
+        // First label event that occurs at or after the start_e_pos
+        auto it_start = std::ranges::lower_bound(stop_e_ids_, start_e_pos);
+
+        // First label event that occurs after the end_e_pos
+        auto it_end = std::ranges::upper_bound(stop_e_ids_, end_e_pos);
+
+        auto start = static_cast<std::size_t>(
+            std::distance(stop_e_ids_.begin(), it_start));
+        auto end = static_cast<std::size_t>(
+            std::distance(stop_e_ids_.begin(), it_end));
+
+        return Range{start, end};
+      };
+
+      const auto train_start_time = 0;
+      const auto train_end_time = get_edge_time(train_.end());
+      const auto val_start = get_edge_time(val_.start());
+      const auto val_end_time = get_edge_time(val_.end());
+      const auto test_start = get_edge_time(test_.start());
+      const auto test_end_time = get_edge_time(test_.end());
+
+      // Determine Label Event Ranges (Interleave with Edge Splits)
+      train_label_ = calculate_label_range(train_start_time, train_end_time);
+      val_label_ = calculate_label_range(val_start, val_end_time);
+      test_label_ = calculate_label_range(test_start, test_end_time);
+    }
   }
 
   [[nodiscard]] auto num_edges() const -> std::size_t override {
@@ -79,9 +167,19 @@ class InMemoryTGStore final : public TGStore {
   [[nodiscard]] auto msg_dim() const -> std::size_t override {
     return msg_dim_;
   }
-  [[nodiscard]] auto train_split() const -> Split override { return train_; }
-  [[nodiscard]] auto val_split() const -> Split override { return val_; }
-  [[nodiscard]] auto test_split() const -> Split override { return test_; }
+  [[nodiscard]] auto train_split() const -> Range override { return train_; }
+  [[nodiscard]] auto val_split() const -> Range override { return val_; }
+  [[nodiscard]] auto test_split() const -> Range override { return test_; }
+
+  [[nodiscard]] auto train_label_split() const -> Range override {
+    return train_label_;
+  }
+  [[nodiscard]] auto val_label_split() const -> Range override {
+    return val_label_;
+  }
+  [[nodiscard]] auto test_label_split() const -> Range override {
+    return test_label_;
+  }
 
   [[nodiscard]] auto get_batch(std::size_t start, std::size_t batch_size,
                                NegStrategy strategy = NegStrategy::None) const
@@ -121,6 +219,16 @@ class InMemoryTGStore final : public TGStore {
     return msg_.index_select(0, e_id.flatten());
   }
 
+  [[nodiscard]] auto get_stop_e_id_for_label_event(std::size_t l_id) const
+      -> std::size_t override {
+    return stop_e_ids_.at(l_id);
+  }
+
+  [[nodiscard]] auto get_label_event(std::size_t l_id) const
+      -> LabelEvent override {
+    return label_events_.at(l_id);
+  }
+
  private:
   torch::Tensor src_, dst_, t_, msg_;
   std::optional<torch::Tensor> neg_dst_;
@@ -129,8 +237,12 @@ class InMemoryTGStore final : public TGStore {
   std::size_t num_nodes_{0};
   std::size_t msg_dim_{0};
 
-  Split train_, val_, test_;
+  Range train_, val_, test_;
+  Range train_label_, val_label_, test_label_;
   std::optional<RandomNegSampler> sampler_;
+
+  std ::vector<LabelEvent> label_events_;
+  std ::vector<std::size_t> stop_e_ids_;
 };
 
 auto make_store(const InMemoryTGStoreOptions& opts)

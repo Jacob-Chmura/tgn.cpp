@@ -41,8 +41,11 @@ inline auto progress_bar =
     };
 
 inline auto load_csv(const std::string& path) -> tgn::InMemoryTGStoreOptions {
-  std::cout << "Loading csv file: " << path << std::endl;
-  std::ifstream file(path);
+  const auto edges_path = path + "/edges.csv";
+  const auto labels_path = path + "/node_labels.csv";
+
+  std::cout << "Loading csv file: " << edges_path << std::endl;
+  std::ifstream file(edges_path);
   if (!file.is_open()) {
     throw std::runtime_error("Could not open file: " + path);
   }
@@ -140,11 +143,63 @@ inline auto load_csv(const std::string& path) -> tgn::InMemoryTGStoreOptions {
       curr_col++;
     }
   }
-
   const auto n = static_cast<std::int64_t>(src_vec.size());
 
   std::cout << "Loaded " << n << " edges (val_start: " << val_start
             << ", test_start: " << test_start << ")" << std::endl;
+
+  // Parse node labels if they exist
+  std::optional<torch::Tensor> label_n_id{};
+  std::optional<torch::Tensor> label_t{};
+  std::optional<torch::Tensor> label_y_true{};
+
+  std::ifstream label_file(labels_path);
+  if (label_file.is_open()) {
+    std::cout << "Loading csv file: " << labels_path << std::endl;
+
+    if (!std::getline(label_file, line)) {
+      throw std::runtime_error("Empty node_labels.csv");
+    }
+    std::stringstream label_header_ss(line);
+    std::vector<std::string> label_headers;
+
+    while (std::getline(label_header_ss, col_name, ',')) {
+      label_headers.push_back(col_name);
+    }
+    const std::size_t y_dim = label_headers.size() - 2;
+
+    std::vector<std::int64_t> label_t_vec;
+    std::vector<std::int64_t> label_n_id_vec;
+    std::vector<float> label_y_true_vec;
+
+    while (std::getline(label_file, line)) {
+      if (line.empty()) {
+        continue;
+      }
+      std::stringstream ss(line);
+      std::string cell{};
+      std::size_t curr_col = 0;
+
+      while (std::getline(ss, cell, ',')) {
+        if (curr_col == 0) {
+          label_t_vec.push_back(std::stoll(cell));
+        } else if (curr_col == 1) {
+          label_n_id_vec.push_back(std::stoll(cell));
+        } else {
+          label_y_true_vec.push_back(std::stof(cell));
+        }
+        curr_col++;
+      }
+    }
+
+    const auto label_n = static_cast<std::int64_t>(label_t_vec.size());
+    std::cout << "Loaded " << label_n << " node labels" << std::endl;
+
+    label_t = torch::tensor(label_t_vec, torch::kLong);
+    label_n_id = torch::tensor(label_n_id_vec, torch::kLong);
+    label_y_true = torch::tensor(label_y_true_vec)
+                       .view({label_n, static_cast<std::int64_t>(y_dim)});
+  }
 
   return tgn::InMemoryTGStoreOptions{
       .src = torch::tensor(src_vec, torch::kLong),
@@ -159,6 +214,9 @@ inline auto load_csv(const std::string& path) -> tgn::InMemoryTGStoreOptions {
                      : std::nullopt,
       .val_start = val_start,
       .test_start = test_start,
+      .label_n_id = label_n_id,
+      .label_t = label_t,
+      .label_y_true = label_y_true,
   };
 }
 }  // namespace util
