@@ -293,6 +293,197 @@ TEST(TGStoreTest, SplitsWithNoBoundaries) {
   EXPECT_EQ(store->test_split().size(), 0);
 }
 
+TEST(TGStoreTest, LabelSplitEmpty) {
+  const auto s = tgn::make_store({.src = torch::zeros({5}, torch::kLong),
+                                  .dst = torch::zeros({5}, torch::kLong),
+                                  .t = torch::arange(5),
+                                  .msg = torch::zeros({5, 1})});
+  EXPECT_EQ(s->train_label_split().size(), 0);
+  EXPECT_EQ(s->val_label_split().size(), 0);
+  EXPECT_EQ(s->test_label_split().size(), 0);
+}
+
+TEST(TGStoreTest, LabelSplitThreeDistinct) {
+  const auto s =
+      tgn::make_store({.src = torch::zeros({5}, torch::kLong),
+                       .dst = torch::zeros({5}, torch::kLong),
+                       .t = torch::tensor({10, 20, 30, 40, 50}, torch::kLong),
+                       .msg = torch::zeros({5, 1}),
+                       .label_n_id = torch::zeros({3}, torch::kLong),
+                       .label_t = torch::tensor({15, 25, 45}, torch::kLong),
+                       .label_y_true = torch::zeros({3})});
+  EXPECT_EQ(s->train_label_split().size(), 3);
+  EXPECT_EQ(s->val_label_split().size(), 0);
+  EXPECT_EQ(s->test_label_split().size(), 0);
+}
+
+TEST(TGStoreTest, LabelSplitThreeGrouped) {
+  const auto s =
+      tgn::make_store({.src = torch::zeros({5}, torch::kLong),
+                       .dst = torch::zeros({5}, torch::kLong),
+                       .t = torch::tensor({10, 20, 30, 40, 50}, torch::kLong),
+                       .msg = torch::zeros({5, 1}),
+                       .label_n_id = torch::zeros({3}, torch::kLong),
+                       .label_t = torch::tensor({15, 15, 25}, torch::kLong),
+                       .label_y_true = torch::zeros({3})});
+  EXPECT_EQ(s->train_label_split().size(), 2);  // 2 unique timestamps
+  EXPECT_EQ(s->val_label_split().size(), 0);
+  EXPECT_EQ(s->test_label_split().size(), 0);
+}
+
+TEST(TGStoreTest, LabelSplitSingle) {
+  const auto s =
+      tgn::make_store({.src = torch::zeros({5}, torch::kLong),
+                       .dst = torch::zeros({5}, torch::kLong),
+                       .t = torch::tensor({10, 20, 30, 40, 50}, torch::kLong),
+                       .msg = torch::zeros({5, 1}),
+                       .label_n_id = torch::zeros({1}, torch::kLong),
+                       .label_t = torch::tensor({15}, torch::kLong),
+                       .label_y_true = torch::zeros({1})});
+  EXPECT_EQ(s->train_label_split().size(), 1);
+  EXPECT_EQ(s->val_label_split().size(), 0);
+  EXPECT_EQ(s->test_label_split().size(), 0);
+}
+
+TEST(TGStoreTest, LabelSplitsWithCustomBoundaries) {
+  // Custom split: Train [0,6), Val [6,8), Test [8,10)
+  // Train ends at edge index 6 (t=70)
+  // Val ends at edge index 8 (t=90)
+  const auto opts = tgn::InMemoryTGStoreOptions{
+      .src = torch::zeros({10}, torch::kLong),
+      .dst = torch::zeros({10}, torch::kLong),
+      .t = torch::tensor({10, 20, 30, 40, 50, 60, 70, 80, 90, 100},
+                         torch::kLong),
+      .msg = torch::zeros({10, 1}),
+      .val_start = 6,
+      .test_start = 8,
+      // Labels:
+      // t=15 (Index 0) -> Train (15 < 70)
+      // t=75 (Index 1) -> Val   (70 <= 75 < 90)
+      // t=95 (Index 2) -> Test  (95 >= 90)
+      .label_n_id = torch::tensor({1, 2, 3}, torch::kLong),
+      .label_t = torch::tensor({15, 75, 95}, torch::kLong),
+      .label_y_true = torch::zeros({3})};
+
+  const auto store = tgn::make_store(opts);
+
+  EXPECT_EQ(store->train_label_split().start(), 0);
+  EXPECT_EQ(store->train_label_split().end(), 1);
+
+  EXPECT_EQ(store->val_label_split().start(), 1);
+  EXPECT_EQ(store->val_label_split().end(), 2);
+
+  EXPECT_EQ(store->test_label_split().start(), 2);
+  EXPECT_EQ(store->test_label_split().end(), 3);
+}
+
+TEST(TGStoreTest, GetStopEIdEmptyThrows) {
+  const auto s = tgn::make_store({.src = torch::zeros({5}, torch::kLong),
+                                  .dst = torch::zeros({5}, torch::kLong),
+                                  .t = torch::arange(5),
+                                  .msg = torch::zeros({5, 1})});
+  EXPECT_THROW(s->get_stop_e_id_for_label_event(0), std::out_of_range);
+}
+
+TEST(TGStoreTest, GetStopEIdThreeDistinct) {
+  const auto s =
+      tgn::make_store({.src = torch::zeros({5}, torch::kLong),
+                       .dst = torch::zeros({5}, torch::kLong),
+                       .t = torch::tensor({10, 20, 30, 40, 50}, torch::kLong),
+                       .msg = torch::zeros({5, 1}),
+                       .label_n_id = torch::zeros({3}, torch::kLong),
+                       .label_t = torch::tensor({15, 25, 45}, torch::kLong),
+                       .label_y_true = torch::zeros({3})});
+  EXPECT_EQ(s->get_stop_e_id_for_label_event(0), 1);  // Before t=20
+  EXPECT_EQ(s->get_stop_e_id_for_label_event(1), 2);  // Before t=30
+  EXPECT_EQ(s->get_stop_e_id_for_label_event(2), 4);  // Before t=50
+}
+
+TEST(TGStoreTest, GetStopEIdThreeGrouped) {
+  const auto s =
+      tgn::make_store({.src = torch::zeros({5}, torch::kLong),
+                       .dst = torch::zeros({5}, torch::kLong),
+                       .t = torch::tensor({10, 20, 30, 40, 50}, torch::kLong),
+                       .msg = torch::zeros({5, 1}),
+                       .label_n_id = torch::zeros({3}, torch::kLong),
+                       .label_t = torch::tensor({15, 15, 25}, torch::kLong),
+                       .label_y_true = torch::zeros({3})});
+
+  // Stop ID for the first group (t=15)
+  EXPECT_EQ(s->get_stop_e_id_for_label_event(0), 1);
+
+  // Stop ID for the second group (t=25)
+  EXPECT_EQ(s->get_stop_e_id_for_label_event(1), 2);
+}
+
+TEST(TGStoreTest, GetStopEIdSingle) {
+  const auto s = tgn::make_store({.src = torch::zeros({2}, torch::kLong),
+                                  .dst = torch::zeros({2}, torch::kLong),
+                                  .t = torch::tensor({10, 20}, torch::kLong),
+                                  .msg = torch::zeros({2, 1}),
+                                  .label_n_id = torch::zeros({1}, torch::kLong),
+                                  .label_t = torch::tensor({25}, torch::kLong),
+                                  .label_y_true = torch::zeros({1})});
+  EXPECT_EQ(s->get_stop_e_id_for_label_event(0), 2);  // Matches end of edges
+}
+TEST(TGStoreTest, GetLabelEventEmptyThrows) {
+  const auto s = tgn::make_store({.src = torch::zeros({5}, torch::kLong),
+                                  .dst = torch::zeros({5}, torch::kLong),
+                                  .t = torch::arange(5),
+                                  .msg = torch::zeros({5, 1})});
+  EXPECT_THROW(s->get_label_event(0), std::out_of_range);
+}
+
+TEST(TGStoreTest, GetLabelEventThreeDistinct) {
+  const auto s = tgn::make_store(
+      {.src = torch::zeros({5}, torch::kLong),
+       .dst = torch::zeros({5}, torch::kLong),
+       .t = torch::arange(5),
+       .msg = torch::zeros({5, 1}),
+       .label_n_id = torch::tensor({100, 200, 300}, torch::kLong),
+       .label_t = torch::tensor({1, 2, 3}, torch::kLong),
+       .label_y_true = torch::zeros({3})});
+  EXPECT_EQ(s->get_label_event(0).n_id[0].item<int64_t>(), 100);
+  EXPECT_EQ(s->get_label_event(1).n_id[0].item<int64_t>(), 200);
+  EXPECT_EQ(s->get_label_event(2).n_id[0].item<int64_t>(), 300);
+
+  EXPECT_EQ(s->get_label_event(0).y_true[0].item<float>(), 0);
+  EXPECT_EQ(s->get_label_event(1).y_true[0].item<float>(), 0);
+  EXPECT_EQ(s->get_label_event(2).y_true[0].item<float>(), 0);
+}
+
+TEST(TGStoreTest, GetLabelEventThreeGrouped) {
+  const auto s =
+      tgn::make_store({.src = torch::zeros({5}, torch::kLong),
+                       .dst = torch::zeros({5}, torch::kLong),
+                       .t = torch::arange(5),
+                       .msg = torch::zeros({5, 1}),
+                       .label_n_id = torch::tensor({1, 2, 3}, torch::kLong),
+                       .label_t = torch::tensor({10, 10, 20}, torch::kLong),
+                       .label_y_true = torch::zeros({3})});
+  auto event = s->get_label_event(0);
+  EXPECT_EQ(event.n_id.size(0), 2);  // Groups node 1 and 2
+  EXPECT_EQ(event.n_id[0].item<int64_t>(), 1);
+  EXPECT_EQ(event.n_id[1].item<int64_t>(), 2);
+
+  event = s->get_label_event(1);
+  EXPECT_EQ(event.n_id.size(0), 1);  // Groups node 1 and 2
+  EXPECT_EQ(event.n_id[0].item<int64_t>(), 3);
+}
+
+TEST(TGStoreTest, GetLabelEventSingle) {
+  const auto s =
+      tgn::make_store({.src = torch::zeros({5}, torch::kLong),
+                       .dst = torch::zeros({5}, torch::kLong),
+                       .t = torch::arange(5),
+                       .msg = torch::zeros({5, 1}),
+                       .label_n_id = torch::tensor({999}, torch::kLong),
+                       .label_t = torch::tensor({10}, torch::kLong),
+                       .label_y_true = torch::zeros({1})});
+  EXPECT_EQ(s->get_label_event(0).n_id[0].item<int64_t>(), 999);
+  EXPECT_EQ(s->get_label_event(0).y_true[0].item<float>(), 0);
+}
+
 TEST(TGRange, ValidRange) {
   const auto split = tgn::Range(1, 5);
   EXPECT_EQ(split.start(), 1);
