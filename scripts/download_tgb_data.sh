@@ -16,7 +16,7 @@ if ! command -v uv >/dev/null 2>&1; then
 fi
 
 DATASET_NAME="$1"
-DEST_DATA_DIR="$PROJECT_ROOT/data"
+DEST_DATA_DIR="$PROJECT_ROOT/data/$DATASET_NAME"
 mkdir -p "$DEST_DATA_DIR"
 
 uv run --no-project --with py-tgb --with numpy python - <<EOF
@@ -63,8 +63,8 @@ if name.startswith('tgbl-'):
     header += "," + ",".join(f"neg_{i}" for i in range(n_neg))
     fmts += ['%d'] * n_neg
 
-out_path = f"{dest}/{name}.csv"
-print(f"Saving {name} ({len(src)} edges) to {out_path}...")
+out_path = f"{dest}/edges.csv"
+print(f"Saving {name} edgelist ({len(src)} edges) to {out_path}...")
 
 val_start = int(np.argmax(masks['val']))
 test_start = int(np.argmax(masks['test']))
@@ -72,5 +72,28 @@ test_start = int(np.argmax(masks['test']))
 with open(out_path, 'w') as f:
     f.write(f"# val_start:{val_start},test_start:{test_start}\n")
     np.savetxt(f, np.column_stack(cols), delimiter=",", header=header, comments='', fmt=fmts)
+
+if name.startswith('tgbn'):
+    print("Processing node label events...")
+
+    rows = []
+    y_dim = None
+
+    for t, node_dict in data['node_label_dict'].items():
+        for node_id, y_true in node_dict.items():
+            rows.append([t, node_id, *y_true])
+            y_dim = len(y_true)
+
+    if y_dim is None:
+        raise ValueError('No labels found in the node_label_dict')
+
+    rows = np.array(rows)
+    header = "time,node_id," + ",".join((f"node_y{i}" for i in range(y_dim)))
+    fmts = ['%d', '%d'] + ['%g'] * y_dim
+
+    out_path = f"{dest}/node_labels.csv"
+    print(f"Saving {name} node labels ({len(rows)} rows) to {out_path}...")
+    np.savetxt(out_path, rows, delimiter=",", header=header, comments='', fmt=fmts)
+
 print("Done.")
 EOF

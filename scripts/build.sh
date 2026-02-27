@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$SCRIPT_DIR/.."
 BUILD_DIR="$PROJECT_ROOT/build"
 
-BUILD_TYPE="Release"
+BUILD_TYPE="RelWithDebInfo"
 BUILD_EXAMPLES="OFF"
 
 for arg in "$@"; do

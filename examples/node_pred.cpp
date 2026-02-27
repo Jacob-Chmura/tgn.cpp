@@ -23,12 +23,12 @@ constexpr std::string dataset = "tgbn-trade";
 namespace {
 
 struct NodePredictorImpl : torch::nn::Module {
-  explicit NodePredictorImpl(std::size_t in_dim, std::size_t hidden_dim = 64) {
-    model_->push_back(torch::nn::Linear(in_dim, hidden_dim));
-    model_->push_back(torch::nn::ReLU());
-    model_->push_back(torch::nn::Linear(hidden_dim, 1));
-
-    register_module("model", model_);
+  explicit NodePredictorImpl(std::size_t in_dim, std::size_t out_dim,
+                             std::size_t hidden_dim = 64) {
+    model_ = torch::nn::Sequential(torch::nn::Linear(in_dim, hidden_dim),
+                                   torch::nn::ReLU(),
+                                   torch::nn::Linear(hidden_dim, out_dim));
+    register_module("model_", model_);
   }
 
   auto forward(const torch::Tensor& z_node) -> torch::Tensor {
@@ -84,9 +84,7 @@ auto train(tgn::TGN& encoder, NodePredictor& decoder, torch::optim::Adam& opt,
 
       encoder->update_state(batch.src, batch.dst, batch.t, batch.msg);
       e_id += step;
-    }
-    // We are exactly at a stop_e_id, do Node Property Prediction
-    else if (l_id < l_range.end()) {
+    } else if (l_id < l_range.end()) {  // At stop_e_id, do Node Prop Pred
       opt.zero_grad();
 
       const auto label_event = store->get_label_event(l_id++);
@@ -158,11 +156,11 @@ auto eval(tgn::TGN& encoder, NodePredictor& decoder,
 
 auto main() -> int {
   const auto cfg = tgn::TGNConfig{};
-  const auto opts = util::load_csv("data/" + dataset + ".csv");
+  const auto opts = util::load_csv("data/" + dataset);
   const auto store = tgn::make_store(opts);
 
   tgn::TGN encoder(cfg, store);
-  NodePredictor decoder{cfg.embedding_dim};
+  NodePredictor decoder{cfg.embedding_dim, opts.label_y_true.value().size(1)};
 
   auto params = encoder->parameters();
   auto dec_params = decoder->parameters();
