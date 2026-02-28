@@ -1,4 +1,7 @@
+#include <fcntl.h>
+#include <sys/mman.h>
 #include <torch/torch.h>
+#include <unistd.h>
 
 #include <algorithm>
 #include <cstddef>
@@ -224,6 +227,64 @@ class StaticTGStoreImpl final : public TGStore {
 
 [[nodiscard]] auto TGStore::from_memory(TGData data)
     -> std::shared_ptr<TGStore> {
+  data.validate();
+  return std::make_shared<StaticTGStoreImpl>(std::move(data));
+}
+
+[[nodiscard]] static auto from_disk(const TGDiskOptions& opts)
+    -> std::shared_ptr<TGStore> {
+  auto fd = open(opts.path.c_str(), O_RDONLY);
+  if (fd == -1) {
+    throw std::runtime_error("Could not open file for reading: " + opts.path);
+  }
+
+  const auto file_size = std::filesystem::file_size(opts.path);
+  auto* addr = mmap(nullptr, file_size, PROT_READ, MAP_PRIVATE, fd, 0);
+  if (addr == MAP_FAILED) {
+    close(fd);
+    throw std::runtime_error("mmap read failed for: " + opts.path);
+  }
+
+  // Hint for the kernel for manages OS pages nicely
+  madvice(addr, file_size, MADV_SEQUENTIAL | MADV_WILLNEED);
+
+  // Custom deleter to unmap store when tensors go out of scope
+  auto mapping_guard = std::shared_ptr<void>(addr, [file_size, fd](void *p) {
+    munmap(p, file_size);
+    close(fd);
+  };
+
+  auto* header = static_cast<TGDiskHeader*>(addr);
+  auto* base = static_cast<char*>(addr);
+
+  auto mmap_tensor = [&](std::uint64_t offset, c10::IntArrayRef shape, torch::Dtype dtype){
+    return torch::from_blob(
+        base + offset, shape,
+        [mapping_guard](void*) { /* mapping_guard capture keeps it alive */ },
+        torch::TensorOptions().dtype(type));
+  };
+
+  TGData data{.val_start = opts.val_start, .test_start = opts.test_start};
+
+  data.src = mmap_tensor(header->src_offset, {header->num_edges}, torch::kLong);
+  data.dst = mmap_tensor(header->dst_offset, {header->num_edges}, torch::kLong);
+  data.t = mmap_tensor(header->t_offset, {header->num_edges}, torch::kLong);
+  data.msg = mmap_tensor(header->msg_offset, {header->num_edges, header->msg_dim}, torch::kFloat32);
+
+  if (header->neg_dst_offset > 0) {
+    data.neg_dst =
+        mmap_tensor(header->neg_dst_offset, {header->num_edges, header->n_neg},
+                    torch::kLong);
+  }
+
+  if (header->num_labels > 0) {
+    data.label_n_id = mmap_tensor(header->label_n_id_offset,
+                                  {header->num_labels}, torch::kLong);
+    data.label_t =
+        mmap_tensor(header->label_t_offset, {header->num_labels}, torch::kLong);
+    data.label_y_true = mmap_tensor(header->label_y_true_offset, {header->num_labels, header->label_dim)}, torch::kFloat32);
+  }
+
   data.validate();
   return std::make_shared<StaticTGStoreImpl>(std::move(data));
 }
