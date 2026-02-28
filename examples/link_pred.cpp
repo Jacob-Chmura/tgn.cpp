@@ -142,8 +142,8 @@ auto eval(tgn::TGN& encoder, LinkPredictor& decoder,
 
 auto main() -> int {
   const auto cfg = tgn::TGNConfig{};
-  const auto opts = util::load_csv("data/" + dataset);
-  const auto store = tgn::make_store(opts);
+  const auto data = util::load_csv("data/" + dataset);
+  const auto store = tgn::TGStore::from_memory(std::move(data));
 
   tgn::TGN encoder(cfg, store);
   LinkPredictor decoder{cfg.embedding_dim};

@@ -16,7 +16,6 @@
 #include "util.h"
 
 constexpr std::size_t num_epochs = 10;
-constexpr std::size_t batch_size = 200;
 constexpr double learning_rate = 1e-4;
 constexpr std::string dataset = "tgbn-trade";
 
@@ -149,11 +148,12 @@ auto eval(tgn::TGN& encoder, NodePredictor& decoder,
 
 auto main() -> int {
   const auto cfg = tgn::TGNConfig{};
-  const auto opts = util::load_csv("data/" + dataset);
-  const auto store = tgn::make_store(opts);
+  const auto data = util::load_csv("data/" + dataset);
+  const auto num_classes = data.label_y_true.value().size(1);
+  const auto store = tgn::TGStore::from_memory(std::move(data));
 
   tgn::TGN encoder(cfg, store);
-  NodePredictor decoder{cfg.embedding_dim, opts.label_y_true.value().size(1)};
+  NodePredictor decoder{cfg.embedding_dim, num_classes};
 
   auto params = encoder->parameters();
   auto dec_params = decoder->parameters();

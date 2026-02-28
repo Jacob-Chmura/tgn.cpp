@@ -32,13 +32,13 @@ class TGNTest : public ::testing::Test {
   void SetUp() override {
     const std::int64_t n = 10;
     const std::int64_t d = 8;
-    auto opts = tgn::InMemoryTGStoreOptions{
-        .src = torch::randint(0, 100, {n}, torch::kLong),
-        .dst = torch::randint(0, 100, {n}, torch::kLong),
-        .t = torch::linspace(0, 100, n).to(torch::kLong),
-        .msg = torch::randn({n, d}),
-        .neg_dst = std::nullopt};
-    store = make_store(opts);
+    const auto data =
+        tgn::TGData{.src = torch::randint(0, 100, {n}, torch::kLong),
+                    .dst = torch::randint(0, 100, {n}, torch::kLong),
+                    .t = torch::linspace(0, 100, n).to(torch::kLong),
+                    .msg = torch::randn({n, d}),
+                    .neg_dst = std::nullopt};
+    store = tgn::TGStore::from_memory(std::move(data));
   }
 
   tgn::TGNConfig cfg;

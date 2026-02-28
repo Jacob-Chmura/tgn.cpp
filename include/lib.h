@@ -55,9 +55,28 @@ struct LabelEvent {
   torch::Tensor y_true;
 };
 
+struct TGData {
+  torch::Tensor src;
+  torch::Tensor dst;
+  torch::Tensor t;
+  torch::Tensor msg;
+  std::optional<torch::Tensor> neg_dst = std::nullopt;
+  std::optional<std::size_t> val_start = std::nullopt;
+  std::optional<std::size_t> test_start = std::nullopt;
+
+  std::optional<torch::Tensor> label_n_id = std::nullopt;
+  std::optional<torch::Tensor> label_t = std::nullopt;
+  std::optional<torch::Tensor> label_y_true = std::nullopt;
+
+  auto validate() const -> void;
+};
+
 class TGStore {
  public:
   virtual ~TGStore() = default;
+
+  [[nodiscard]] static auto from_memory(TGData data)
+      -> std::shared_ptr<TGStore>;
 
   [[nodiscard]] virtual auto num_edges() const -> std::size_t = 0;
   [[nodiscard]] virtual auto num_nodes() const -> std::size_t = 0;
@@ -85,22 +104,6 @@ class TGStore {
   [[nodiscard]] virtual auto get_label_event(std::size_t l_id) const
       -> LabelEvent = 0;
 };
-
-struct InMemoryTGStoreOptions {
-  torch::Tensor src;
-  torch::Tensor dst;
-  torch::Tensor t;
-  torch::Tensor msg;
-  std::optional<torch::Tensor> neg_dst = std::nullopt;
-  std::optional<std::size_t> val_start = std::nullopt;
-  std::optional<std::size_t> test_start = std::nullopt;
-
-  std::optional<torch::Tensor> label_n_id = std::nullopt;
-  std::optional<torch::Tensor> label_t = std::nullopt;
-  std::optional<torch::Tensor> label_y_true = std::nullopt;
-};
-
-auto make_store(const InMemoryTGStoreOptions& opts) -> std::shared_ptr<TGStore>;
 
 class TGNImpl : public torch::nn::Module {
  public:

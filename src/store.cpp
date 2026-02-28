@@ -5,12 +5,13 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <utility>
 
 #include "lib.h"
 
 namespace tgn {
 
-class InMemoryTGStore final : public TGStore {
+class StaticTGStoreImpl final : public TGStore {
  private:
   struct RandomNegSampler {
     std::int64_t min_id;
@@ -22,12 +23,12 @@ class InMemoryTGStore final : public TGStore {
   };
 
  public:
-  explicit InMemoryTGStore(const InMemoryTGStoreOptions& opts)
-      : src_(opts.src),
-        dst_(opts.dst),
-        t_(opts.t),
-        msg_(opts.msg),
-        neg_dst_(opts.neg_dst),
+  explicit StaticTGStoreImpl(TGData data)
+      : src_(std::move(data.src)),
+        dst_(std::move(data.dst)),
+        t_(std::move(data.t)),
+        msg_(std::move(data.msg)),
+        neg_dst_(std::move(data.neg_dst)),
         num_edges_(static_cast<std::size_t>(src_.size(0))),
         num_nodes_(num_edges_ > 0
                        ? 1 + std::max(src_.max().item<std::int64_t>(),
@@ -35,20 +36,10 @@ class InMemoryTGStore final : public TGStore {
                        : 0),
         msg_dim_(static_cast<std::size_t>(msg_.size(1))),
         train_(0,
-               opts.val_start.value_or(opts.test_start.value_or(num_edges_))),
-        val_(opts.val_start.value_or(opts.test_start.value_or(num_edges_)),
-             opts.test_start.value_or(num_edges_)),
-        test_(opts.test_start.value_or(num_edges_), num_edges_) {
-    TORCH_CHECK(src_.dim() == 1, "src must be 1D");
-    TORCH_CHECK(dst_.dim() == 1 && dst_.size(0) == src_.size(0),
-                "dst must be 1D [n]");
-    TORCH_CHECK(t_.dim() == 1 && t_.size(0) == src_.size(0),
-                "t must be 1D [n]");
-    TORCH_CHECK(msg_.dim() == 2 && msg_.size(0) == src_.size(0),
-                "msg must be 2D [n, d]");
-    TORCH_CHECK(!src_.is_floating_point(), "src must be integral");
-    TORCH_CHECK(!dst_.is_floating_point(), "dst must be integral");
-
+               data.val_start.value_or(data.test_start.value_or(num_edges_))),
+        val_(data.val_start.value_or(data.test_start.value_or(num_edges_)),
+             data.test_start.value_or(num_edges_)),
+        test_(data.test_start.value_or(num_edges_), num_edges_) {
     if (train_.size() > 0) {
       const auto train_dst =
           dst_.slice(0, 0, static_cast<std::int64_t>(train_.end()));
@@ -58,24 +49,10 @@ class InMemoryTGStore final : public TGStore {
       };
     }
 
-    if (neg_dst_.has_value()) {
-      const auto& neg = neg_dst_.value();
-      TORCH_CHECK(neg.dim() == 2, "neg_dst must be 2D [n, m]");
-      TORCH_CHECK(neg.size(0) == static_cast<std::int64_t>(num_edges_),
-                  "neg_dst row count must match num_edges");
-      TORCH_CHECK(!neg.is_floating_point(), "neg_dst must be integral");
-      TORCH_CHECK(neg.max().item<std::int64_t>() <
-                      static_cast<std::int64_t>(num_nodes_),
-                  "neg_dst contains IDs outside the range of src/dst");
-    }
-
-    if (opts.label_n_id.has_value()) {
-      TORCH_CHECK(opts.label_t.has_value() && opts.label_y_true.has_value(),
-                  "Missing label tensors");
-
-      const auto label_t = opts.label_t.value();
-      const auto label_n_id = opts.label_n_id.value();
-      const auto label_y_true = opts.label_y_true.value();
+    if (data.label_n_id.has_value()) {
+      const auto label_t = std::move(data.label_t.value());
+      const auto label_n_id = std::move(data.label_n_id.value());
+      const auto label_y_true = std::move(data.label_y_true.value());
 
       // Find unique timestamps in label_t (assumed sorted)
       const auto [unique_ts, inverse_indices, counts] =
@@ -245,9 +222,46 @@ class InMemoryTGStore final : public TGStore {
   std ::vector<std::size_t> stop_e_ids_;
 };
 
-auto make_store(const InMemoryTGStoreOptions& opts)
+[[nodiscard]] auto TGStore::from_memory(TGData data)
     -> std::shared_ptr<TGStore> {
-  return std::make_shared<InMemoryTGStore>(opts);
+  data.validate();
+  return std::make_shared<StaticTGStoreImpl>(std::move(data));
+}
+
+auto TGData::validate() const -> void {
+  const auto n = src.size(0);
+
+  TORCH_CHECK(src.dim() == 1, "src must be 1D");
+  TORCH_CHECK(dst.dim() == 1 && dst.size(0) == n, "dst must be [num_edges]");
+  TORCH_CHECK(t.dim() == 1 && t.size(0) == n, "t must be [n]");
+  TORCH_CHECK(msg.dim() == 2 && msg.size(0) == n, "msg must be [num_edges, d]");
+
+  TORCH_CHECK(!src.is_floating_point(), "src must be integral");
+  TORCH_CHECK(!dst.is_floating_point(), "dst must be integral");
+  TORCH_CHECK(!t.is_floating_point(), "timestamps must be integral");
+
+  if (neg_dst.has_value()) {
+    const auto num_nodes = n > 0 ? 1 + std::max(src.max().item<std::int64_t>(),
+                                                dst.max().item<std::int64_t>())
+                                 : 0;
+    const auto& neg = neg_dst.value();
+    TORCH_CHECK(neg.dim() == 2 && neg.size(0) == n,
+                "neg_dst must be [num_edges, m]");
+    TORCH_CHECK(!neg.is_floating_point(), "neg_dst must be integral");
+    TORCH_CHECK(neg.max().item<std::int64_t>() < num_nodes,
+                "neg_dst contains IDs outside the range of src/dst");
+  }
+
+  if (label_n_id.has_value()) {
+    TORCH_CHECK(
+        label_t.has_value() && label_y_true.has_value(),
+        "If label_n_id is provided, label_t and label_y_true must exist");
+
+    const auto n_labels = label_n_id->size(0);
+    TORCH_CHECK(label_t->size(0) == n_labels, "label_t size mismatch");
+    TORCH_CHECK(label_y_true->size(0) == n_labels,
+                "label_y_true size mismatch");
+  }
 }
 
 }  // namespace tgn
