@@ -67,17 +67,15 @@ struct TGData {
   std::optional<torch::Tensor> label_n_id = std::nullopt;
   std::optional<torch::Tensor> label_t = std::nullopt;
   std::optional<torch::Tensor> label_y_true = std::nullopt;
-};
 
-struct TGMemoryOptions {
-  TGData data;
+  auto validate() const -> void;
 };
 
 class TGStore {
  public:
   virtual ~TGStore() = default;
 
-  [[nodiscard]] static auto from_memory(TGMemoryOptions opts)
+  [[nodiscard]] static auto from_memory(TGData data)
       -> std::shared_ptr<TGStore>;
 
   [[nodiscard]] virtual auto num_edges() const -> std::size_t = 0;

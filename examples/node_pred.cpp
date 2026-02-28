@@ -150,7 +150,7 @@ auto main() -> int {
   const auto cfg = tgn::TGNConfig{};
   const auto data = util::load_csv("data/" + dataset);
   const auto num_classes = data.label_y_true.value().size(1);
-  const auto store = tgn::TGStore::from_memory({.data = data});
+  const auto store = tgn::TGStore::from_memory(data);
 
   tgn::TGN encoder(cfg, store);
   NodePredictor decoder{cfg.embedding_dim, num_classes};

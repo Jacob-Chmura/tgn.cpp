@@ -38,7 +38,7 @@ class TGNTest : public ::testing::Test {
                     .t = torch::linspace(0, 100, n).to(torch::kLong),
                     .msg = torch::randn({n, d}),
                     .neg_dst = std::nullopt};
-    store = tgn::TGStore::from_memory({.data = data});
+    store = tgn::TGStore::from_memory(data);
   }
 
   tgn::TGNConfig cfg;
