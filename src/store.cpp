@@ -1,11 +1,18 @@
+#include <fcntl.h>
+#include <sys/mman.h>
 #include <torch/torch.h>
+#include <unistd.h>
 
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "lib.h"
 
@@ -224,6 +231,214 @@ class StaticTGStoreImpl final : public TGStore {
 
 [[nodiscard]] auto TGStore::from_memory(TGData data)
     -> std::shared_ptr<TGStore> {
+  data.validate();
+  return std::make_shared<StaticTGStoreImpl>(std::move(data));
+}
+
+struct alignas(8) TGDiskHeader {
+  std::uint64_t magic = 0x54474E42494E3031;
+  std::uint64_t num_edges = 0;
+  std::uint64_t msg_dim = 0;
+  std::uint64_t n_neg = 0;
+  std::uint64_t num_labels = 0;
+  std::uint64_t label_dim = 0;
+
+  std::uint64_t src_offset = 0;
+  std::uint64_t dst_offset = 0;
+  std::uint64_t t_offset = 0;
+  std::uint64_t msg_offset = 0;
+  std::uint64_t neg_dst_offset = 0;
+  std::uint64_t label_n_id_offset = 0;
+  std::uint64_t label_t_offset = 0;
+  std::uint64_t label_y_true_offset = 0;
+};
+
+struct TGDiskBuilder::Impl {
+  std::string path;
+  std::ofstream src_f, dst_f, t_f, msg_f, neg_f;
+  std::ofstream label_n_id_f, label_t_f, label_y_true_f;
+
+  TGDiskHeader header;
+  bool finalized = false;
+
+  explicit Impl(const std::string& p) : path(p) {
+    src_f.open(p + ".src", std::ios::binary);
+    dst_f.open(p + ".dst", std::ios::binary);
+    t_f.open(p + ".t", std::ios::binary);
+    msg_f.open(p + ".msg", std::ios::binary);
+    label_n_id_f.open(p + ".label_n_id", std::ios::binary);
+    label_t_f.open(p + ".label_t", std::ios::binary);
+    label_y_true_f.open(p + ".label_y_true", std::ios::binary);
+  }
+
+  auto write_tensor(std::ofstream& stream, const torch::Tensor& t) -> void {
+    auto t_ = t.contiguous();
+    stream.write(reinterpret_cast<const char*>(t_.data_ptr()), t_.nbytes());
+  }
+};
+
+TGDiskBuilder::TGDiskBuilder(const std::string& path)
+    : impl_(std::make_unique<Impl>(path)) {}
+TGDiskBuilder::~TGDiskBuilder() = default;
+
+auto TGDiskBuilder::append_edges(const Batch& batch) -> void {
+  if (impl_->finalized) {
+    // TODO(kuba): Graceful skips?
+    throw std::runtime_error("Cannot append to a finalized builder");
+  }
+
+  if (impl_->header.num_edges == 0) {
+    impl_->header.msg_dim = batch.msg.size(1);
+  }
+
+  impl_->write_tensor(impl_->src_f, batch.src);
+  impl_->write_tensor(impl_->dst_f, batch.dst);
+  impl_->write_tensor(impl_->t_f, batch.t);
+
+  // TODO(kuba): Check shapes and dtypes?
+  impl_->write_tensor(impl_->msg_f, batch.msg);
+
+  if (batch.neg_dst.has_value()) {
+    impl_->header.n_neg = batch.neg_dst->size(1);
+
+    // TODO(kuba): Check shapes and dtypes?
+    impl_->write_tensor(impl_->neg_f, batch.neg_dst.value());
+  }
+
+  impl_->header.num_edges += batch.src.size(0);
+}
+
+auto TGDiskBuilder::append_labels(const torch::Tensor& n_id,
+                                  const torch::Tensor& t,
+                                  const torch::Tensor& y_true) -> void {
+  if (impl_->finalized) {
+    // TODO(kuba): Graceful skips?
+    throw std::runtime_error("Cannot append to a finalized builder");
+  }
+
+  if (impl_->header.num_labels == 0) {
+    impl_->header.label_dim = y_true.size(1);
+  }
+
+  // TODO(kuba): Check shapes and dtypes?
+  impl_->write_tensor(impl_->label_n_id_f, n_id);
+  impl_->write_tensor(impl_->label_t_f, t);
+  impl_->write_tensor(impl_->label_y_true_f, y_true);
+
+  impl_->header.num_labels += n_id.size(0);
+}
+
+auto TGDiskBuilder::finalize() -> void {
+  impl_->finalized = true;
+  std::ofstream out(impl_->path, std::ios::binary);
+
+  // Skip space for the header
+  out.seekp(sizeof(TGDiskHeader));
+  auto current_pos = sizeof(TGDiskHeader);
+
+  auto merge = [&](std::ofstream& f, const std::string& suffix,
+                   std::uint64_t& offset_field) {
+    f.close();
+    const auto part_path = impl_->path + suffix;
+    if (!std::filesystem::exists(part_path) ||
+        std::filesystem::file_size(part_path) == 0) {
+      std::filesystem::remove(part_path);
+      return;
+    }
+
+    // align to 4KB page boundary
+    const auto padding = (4096 - (current_pos % 4096)) % 4096;
+    if (padding > 0) {
+      std::vector<char> pad(padding, 0);
+      out.write(pad.data(), padding);
+      current_pos += padding;
+    }
+
+    offset_field = current_pos;
+
+    // Stream the temp file into the main file
+    std::ifstream in(part_path, std::ios::binary);
+    out << in.rdbuf();
+    current_pos += std::filesystem::file_size(part_path);
+
+    in.close();
+    std::filesystem::remove(part_path);
+  };
+
+  merge(impl_->src_f, ".src", impl_->header.src_offset);
+  merge(impl_->dst_f, ".dst", impl_->header.dst_offset);
+  merge(impl_->t_f, ".t", impl_->header.t_offset);
+  merge(impl_->msg_f, ".msg", impl_->header.msg_offset);
+  merge(impl_->neg_f, ".neg", impl_->header.neg_dst_offset);
+  merge(impl_->label_n_id_f, ".label_n_id", impl_->header.label_n_id_offset);
+  merge(impl_->label_t_f, ".label_t", impl_->header.label_t_offset);
+  merge(impl_->label_y_true_f, ".label_y_true",
+        impl_->header.label_y_true_offset);
+
+  // Write the finalized header at the very beginning
+  out.seekp(0);
+  out.write(reinterpret_cast<const char*>(&impl_->header),
+            sizeof(TGDiskHeader));
+}
+
+[[nodiscard]] auto TGStore::from_disk(const TGDiskOptions& opts)
+    -> std::shared_ptr<TGStore> {
+  auto fd = open(opts.path.c_str(), O_RDONLY);
+  if (fd == -1) {
+    throw std::runtime_error("Could not open file for reading: " + opts.path);
+  }
+
+  const auto file_size = std::filesystem::file_size(opts.path);
+  auto* addr = mmap(nullptr, file_size, PROT_READ, MAP_PRIVATE, fd, 0);
+  if (addr == MAP_FAILED) {
+    close(fd);
+    throw std::runtime_error("Mmap read failed for: " + opts.path);
+  }
+
+  // Hint for the kernel for manages OS pages nicely
+  madvise(addr, file_size, MADV_SEQUENTIAL | MADV_WILLNEED);
+
+  // Custom deleter to unmap store when tensors go out of scope
+  auto mapping_guard = std::shared_ptr<void>(addr, [file_size, fd](void* p) {
+    munmap(p, file_size);
+    close(fd);
+  });
+
+  auto* header = static_cast<TGDiskHeader*>(addr);
+  auto* base = static_cast<char*>(addr);
+
+  auto mmap_tensor = [&](std::uint64_t offset, c10::IntArrayRef shape,
+                         torch::Dtype dtype) {
+    return torch::from_blob(
+        base + offset, shape,
+        [mapping_guard](void*) { /* mapping_guard capture keeps it alive */ },
+        torch::TensorOptions().dtype(dtype));
+  };
+
+  TGData data{.val_start = opts.val_start, .test_start = opts.test_start};
+
+  data.src = mmap_tensor(header->src_offset, {header->num_edges}, torch::kLong);
+  data.dst = mmap_tensor(header->dst_offset, {header->num_edges}, torch::kLong);
+  data.t = mmap_tensor(header->t_offset, {header->num_edges}, torch::kLong);
+  data.msg = mmap_tensor(header->msg_offset,
+                         {header->num_edges, header->msg_dim}, torch::kFloat32);
+
+  if (header->neg_dst_offset > 0) {
+    data.neg_dst =
+        mmap_tensor(header->neg_dst_offset, {header->num_edges, header->n_neg},
+                    torch::kLong);
+  }
+
+  if (header->num_labels > 0) {
+    data.label_n_id = mmap_tensor(header->label_n_id_offset,
+                                  {header->num_labels}, torch::kLong);
+    data.label_t =
+        mmap_tensor(header->label_t_offset, {header->num_labels}, torch::kLong);
+    data.label_y_true =
+        mmap_tensor(header->label_y_true_offset,
+                    {header->num_labels, header->label_dim}, torch::kFloat32);
+  }
+
   data.validate();
   return std::make_shared<StaticTGStoreImpl>(std::move(data));
 }

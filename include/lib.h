@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -71,11 +72,35 @@ struct TGData {
   auto validate() const -> void;
 };
 
+struct TGDiskOptions {
+  std::string path;
+  std::optional<std::size_t> val_start = std::nullopt;
+  std::optional<std::size_t> test_start = std::nullopt;
+};
+
+class TGDiskBuilder {
+ public:
+  explicit TGDiskBuilder(const std::string& path);
+  ~TGDiskBuilder();
+
+  auto append_edges(const Batch& batch) -> void;
+  auto append_labels(const torch::Tensor& n_id, const torch::Tensor& t,
+                     const torch::Tensor& y_true) -> void;
+
+  auto finalize() -> void;
+
+ private:
+  struct Impl;
+  std::unique_ptr<Impl> impl_;
+};
+
 class TGStore {
  public:
   virtual ~TGStore() = default;
 
   [[nodiscard]] static auto from_memory(TGData data)
+      -> std::shared_ptr<TGStore>;
+  [[nodiscard]] static auto from_disk(const TGDiskOptions& opts)
       -> std::shared_ptr<TGStore>;
 
   [[nodiscard]] virtual auto num_edges() const -> std::size_t = 0;
