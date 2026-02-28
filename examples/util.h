@@ -40,7 +40,7 @@ inline auto progress_bar =
                 << std::setfill('0') << std::setw(2) << seconds << std::flush;
     };
 
-inline auto load_csv(const std::string& path) -> tgn::InMemoryTGStoreOptions {
+inline auto load_csv(const std::string& path) -> tgn::TGData {
   const auto edges_path = path + "/edges.csv";
   const auto labels_path = path + "/node_labels.csv";
 
@@ -201,7 +201,7 @@ inline auto load_csv(const std::string& path) -> tgn::InMemoryTGStoreOptions {
                        .view({label_n, static_cast<std::int64_t>(y_dim)});
   }
 
-  return tgn::InMemoryTGStoreOptions{
+  return tgn::TGData{
       .src = torch::tensor(src_vec, torch::kLong),
       .dst = torch::tensor(dst_vec, torch::kLong),
       .t = torch::tensor(t_vec, torch::kLong),

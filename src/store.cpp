@@ -5,12 +5,13 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <utility>
 
 #include "lib.h"
 
 namespace tgn {
 
-class InMemoryTGStore final : public TGStore {
+class StaticTGStoreImpl final : public TGStore {
  private:
   struct RandomNegSampler {
     std::int64_t min_id;
@@ -22,12 +23,12 @@ class InMemoryTGStore final : public TGStore {
   };
 
  public:
-  explicit InMemoryTGStore(const InMemoryTGStoreOptions& opts)
-      : src_(opts.src),
-        dst_(opts.dst),
-        t_(opts.t),
-        msg_(opts.msg),
-        neg_dst_(opts.neg_dst),
+  explicit StaticTGStoreImpl(TGData data)
+      : src_(std::move(data.src)),
+        dst_(std::move(data.dst)),
+        t_(std::move(data.t)),
+        msg_(std::move(data.msg)),
+        neg_dst_(std::move(data.neg_dst)),
         num_edges_(static_cast<std::size_t>(src_.size(0))),
         num_nodes_(num_edges_ > 0
                        ? 1 + std::max(src_.max().item<std::int64_t>(),
@@ -35,10 +36,10 @@ class InMemoryTGStore final : public TGStore {
                        : 0),
         msg_dim_(static_cast<std::size_t>(msg_.size(1))),
         train_(0,
-               opts.val_start.value_or(opts.test_start.value_or(num_edges_))),
-        val_(opts.val_start.value_or(opts.test_start.value_or(num_edges_)),
-             opts.test_start.value_or(num_edges_)),
-        test_(opts.test_start.value_or(num_edges_), num_edges_) {
+               data.val_start.value_or(data.test_start.value_or(num_edges_))),
+        val_(data.val_start.value_or(data.test_start.value_or(num_edges_)),
+             data.test_start.value_or(num_edges_)),
+        test_(data.test_start.value_or(num_edges_), num_edges_) {
     TORCH_CHECK(src_.dim() == 1, "src must be 1D");
     TORCH_CHECK(dst_.dim() == 1 && dst_.size(0) == src_.size(0),
                 "dst must be 1D [n]");
@@ -69,13 +70,13 @@ class InMemoryTGStore final : public TGStore {
                   "neg_dst contains IDs outside the range of src/dst");
     }
 
-    if (opts.label_n_id.has_value()) {
-      TORCH_CHECK(opts.label_t.has_value() && opts.label_y_true.has_value(),
+    if (data.label_n_id.has_value()) {
+      TORCH_CHECK(data.label_t.has_value() && data.label_y_true.has_value(),
                   "Missing label tensors");
 
-      const auto label_t = opts.label_t.value();
-      const auto label_n_id = opts.label_n_id.value();
-      const auto label_y_true = opts.label_y_true.value();
+      const auto label_t = std::move(data.label_t.value());
+      const auto label_n_id = std::move(data.label_n_id.value());
+      const auto label_y_true = std::move(data.label_y_true.value());
 
       // Find unique timestamps in label_t (assumed sorted)
       const auto [unique_ts, inverse_indices, counts] =
@@ -245,9 +246,9 @@ class InMemoryTGStore final : public TGStore {
   std ::vector<std::size_t> stop_e_ids_;
 };
 
-auto make_store(const InMemoryTGStoreOptions& opts)
+[[nodiscard]] auto TGStore::from_memory(TGMemoryOptions opts)
     -> std::shared_ptr<TGStore> {
-  return std::make_shared<InMemoryTGStore>(opts);
+  return std::make_shared<StaticTGStoreImpl>(std::move(opts.data));
 }
 
 }  // namespace tgn
