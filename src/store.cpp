@@ -292,40 +292,29 @@ class TGStoreImpl final : public TGStore {
 
   TGData data{.val_start = opts.val_start, .test_start = opts.test_start};
 
-  // Edges
-  data.src =
-      mmap_tensor(header->src_offset,
-                  {static_cast<std::int64_t>(header->num_edges)}, torch::kLong);
-  data.dst =
-      mmap_tensor(header->dst_offset,
-                  {static_cast<std::int64_t>(header->num_edges)}, torch::kLong);
-  data.t =
-      mmap_tensor(header->t_offset,
-                  {static_cast<std::int64_t>(header->num_edges)}, torch::kLong);
-  data.msg = mmap_tensor(header->msg_offset,
-                         {static_cast<std::int64_t>(header->num_edges),
-                          static_cast<std::int64_t>(header->msg_dim)},
-                         torch::kFloat32);
+  const auto n_edges = static_cast<std::int64_t>(header->num_edges);
+  const auto m_dim = static_cast<std::int64_t>(header->msg_dim);
+  const auto n_neg = static_cast<std::int64_t>(header->n_neg);
+  const auto n_labels = static_cast<std::int64_t>(header->num_labels);
+  const auto l_dim = static_cast<std::int64_t>(header->label_dim);
+
+  data.src = mmap_tensor(header->src_offset, {n_edges}, torch::kLong);
+  data.dst = mmap_tensor(header->dst_offset, {n_edges}, torch::kLong);
+  data.t = mmap_tensor(header->t_offset, {n_edges}, torch::kLong);
+  data.msg = mmap_tensor(header->msg_offset, {n_edges, m_dim}, torch::kFloat32);
 
   if (header->neg_dst_offset > 0 && header->n_neg > 0) {
-    data.neg_dst = mmap_tensor(header->neg_dst_offset,
-                               {static_cast<std::int64_t>(header->num_edges),
-                                static_cast<std::int64_t>(header->n_neg)},
-                               torch::kLong);
+    data.neg_dst =
+        mmap_tensor(header->neg_dst_offset, {n_edges, n_neg}, torch::kLong);
   }
 
   if (header->num_labels > 0) {
-    data.label_n_id = mmap_tensor(
-        header->label_n_id_offset,
-        {static_cast<std::int64_t>(header->num_labels)}, torch::kLong);
-    data.label_t = mmap_tensor(header->label_t_offset,
-                               {static_cast<std::int64_t>(header->num_labels)},
-                               torch::kLong);
-    data.label_y_true =
-        mmap_tensor(header->label_y_true_offset,
-                    {static_cast<std::int64_t>(header->num_labels),
-                     static_cast<std::int64_t>(header->label_dim)},
-                    torch::kFloat32);
+    data.label_n_id =
+        mmap_tensor(header->label_n_id_offset, {n_labels}, torch::kLong);
+    data.label_t =
+        mmap_tensor(header->label_t_offset, {n_labels}, torch::kLong);
+    data.label_y_true = mmap_tensor(header->label_y_true_offset,
+                                    {n_labels, l_dim}, torch::kFloat32);
   }
 
   data.validate();
