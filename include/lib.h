@@ -72,16 +72,18 @@ struct TGData {
   auto validate() const -> void;
 };
 
-struct TGDiskOptions {
+struct TGUFOptions {
   std::string path;
   std::optional<std::size_t> val_start = std::nullopt;
   std::optional<std::size_t> test_start = std::nullopt;
 };
 
-class TGDiskBuilder {
+class TGUFBuilder {
  public:
-  explicit TGDiskBuilder(const std::string& path);
-  ~TGDiskBuilder();
+  explicit TGUFBuilder(const std::string& path, std::size_t n_edges,
+                       std::size_t n_labels, std::size_t m_dim,
+                       std::size_t l_dim, std::size_t n_neg);
+  ~TGUFBuilder();
 
   auto append_edges(const Batch& batch) -> void;
   auto append_labels(const torch::Tensor& n_id, const torch::Tensor& t,
@@ -100,7 +102,7 @@ class TGStore {
 
   [[nodiscard]] static auto from_memory(TGData data)
       -> std::shared_ptr<TGStore>;
-  [[nodiscard]] static auto from_disk(const TGDiskOptions& opts)
+  [[nodiscard]] static auto from_tguf(const TGUFOptions& opts)
       -> std::shared_ptr<TGStore>;
 
   [[nodiscard]] virtual auto num_edges() const -> std::size_t = 0;

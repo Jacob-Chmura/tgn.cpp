@@ -50,6 +50,7 @@ endif()
 
 add_library(${PROJECT_NAME} SHARED
     src/tgn.cpp
+    src/tguf.cpp
     src/store.cpp
 )
 
