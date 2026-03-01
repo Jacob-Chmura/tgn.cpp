@@ -90,6 +90,7 @@ if (TGN_BUILD_TESTS)
         test/test_scatter_ops.cpp
         test/test_store.cpp
         test/test_tgn.cpp
+        test/test_tguf.cpp
     )
     target_link_libraries(test_tgn PRIVATE
         ${PROJECT_NAME}

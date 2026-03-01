@@ -107,6 +107,9 @@ auto TGUFBuilder::append_edges(const Batch& batch) -> void {
   }
 
   auto count = batch.src.size(0);
+  if (count == 0) {
+    return;
+  }
   if (impl_->written_edges + count > impl_->declared_edges) {
     throw std::runtime_error(
         "TGUFBuilder::append_edges: Overflow. Attempting to write " +
@@ -162,6 +165,9 @@ auto TGUFBuilder::append_labels(const torch::Tensor& n_id,
   }
 
   const auto count = n_id.size(0);
+  if (count == 0) {
+    return;
+  }
   if (impl_->written_labels + count > impl_->declared_labels) {
     throw std::runtime_error(
         "TGUFBuilder::append_labels: Overflow. Writing " +

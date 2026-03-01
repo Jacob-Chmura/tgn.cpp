@@ -279,6 +279,9 @@ class TGStoreImpl final : public TGStore {
     if (offset == 0) {
       return torch::Tensor();  // Return empty for optional field
     }
+    if (shape.size() > 0 && shape[0] == 0) {
+      return torch::empty(shape, torch::TensorOptions().dtype(dtype));
+    }
 
     // Safety: ensure offset is within file bounds
     if (offset >= file_size) {
