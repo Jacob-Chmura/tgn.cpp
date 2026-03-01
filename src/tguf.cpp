@@ -135,9 +135,9 @@ auto TGUFBuilder::append_labels(const torch::Tensor& n_id,
   }
 
   impl_->to_mmap(impl_->header.label_n_id_offset, impl_->written_labels,
-                 sizeof(int64_t), n_id);
+                 sizeof(std::int64_t), n_id);
   impl_->to_mmap(impl_->header.label_t_offset, impl_->written_labels,
-                 sizeof(int64_t), t);
+                 sizeof(std::int64_t), t);
   impl_->to_mmap(impl_->header.label_y_true_offset, impl_->written_labels,
                  impl_->header.label_dim * sizeof(float), y_true);
   impl_->written_labels += count;
