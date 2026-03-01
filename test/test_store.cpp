@@ -28,9 +28,8 @@ class InMemoryTGStoreFixture : public TGStoreFixture {
 class TgufTGStoreFixture : public TGStoreFixture {
  public:
   TgufTGStoreFixture() {
-    auto tmp_dir = std::filesystem::temp_directory_path();
-    tguf_path_ = tmp_dir / ("test_store_" +
-                            std::to_string(std::random_device{}()) + ".tguf");
+    tguf_path_ = std::filesystem::temp_directory_path() /
+                 (std::to_string(std::random_device{}()) + ".tguf");
   }
 
   ~TgufTGStoreFixture() override {
