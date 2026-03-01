@@ -18,7 +18,6 @@ struct TGUFBuilder::Impl {
 
   std::size_t declared_edges{};
   std::size_t declared_labels{};
-
   std::size_t written_edges{};
   std::size_t written_labels{};
 
@@ -32,10 +31,11 @@ struct TGUFBuilder::Impl {
     header.label_dim = l_dim;
     header.n_neg = n_neg;
 
-    auto align = [](std::size_t size) { return (size + 4095) & ~4095; };
+    auto align = [](std::size_t size) {
+      return (size + TGUF_PAGE - 1) & ~(TGUF_PAGE - 1);
+    };
 
-    std::size_t head_bytes = 4096;  // Header gets its own page
-    header.src_offset = head_bytes;
+    header.src_offset = TGUF_PAGE;  // Header gets its own page
     header.dst_offset =
         header.src_offset + align(n_edges * sizeof(std::int64_t));
     header.t_offset = header.dst_offset + align(n_edges * sizeof(std::int64_t));
@@ -87,8 +87,8 @@ struct TGUFBuilder::Impl {
   auto to_mmap(std::uint64_t offset, std::size_t start_idx,
                std::size_t element_size, const torch::Tensor& t) const -> void {
     auto t_contiguous = t.contiguous();
-    auto* dst =
-        static_cast<uint8_t*>(base_ptr) + offset + (start_idx * element_size);
+    auto* dst = static_cast<std::uint8_t*>(base_ptr) + offset +
+                (start_idx * element_size);
     std::memcpy(dst, t_contiguous.data_ptr(), t_contiguous.nbytes());
   }
 };
@@ -102,12 +102,38 @@ TGUFBuilder::~TGUFBuilder() = default;
 
 auto TGUFBuilder::append_edges(const Batch& batch) -> void {
   if (impl_->finalized) {
-    throw std::runtime_error("Builder finalized.");
+    throw std::runtime_error(
+        "TGUFBuilder::append_edges: Cannot append to a finalized file.");
   }
 
   auto count = batch.src.size(0);
   if (impl_->written_edges + count > impl_->declared_edges) {
-    throw std::runtime_error("Overflow: Written edges exceed declared count.");
+    throw std::runtime_error(
+        "TGUFBuilder::append_edges: Overflow. Attempting to write " +
+        std::to_string(count) + " edges, but only " +
+        std::to_string(impl_->declared_edges - impl_->written_edges) +
+        " slots remain.");
+  }
+  if (batch.msg.size(1) != static_cast<std::int64_t>(impl_->header.msg_dim)) {
+    throw std::invalid_argument(
+        "TGUFBuilder::append_edges: Message dimension mismatch. Expected " +
+        std::to_string(impl_->header.msg_dim) + ", got " +
+        std::to_string(batch.msg.size(1)));
+  }
+  if (impl_->header.n_neg > 0) {
+    if (!batch.neg_dst.has_value()) {
+      throw std::invalid_argument(
+          "TGUFBuilder::append_edges: neg_dst is required for this TGUF "
+          "schema.");
+    }
+    if (batch.neg_dst->size(1) !=
+        static_cast<std::int64_t>(impl_->header.n_neg)) {
+      throw std::invalid_argument(
+          "TGUFBuilder::append_edges: Negative destination dimension mismatch. "
+          "Expected " +
+          std::to_string(impl_->header.n_neg) + ", got " +
+          std::to_string(batch.neg_dst->size(1)));
+    }
   }
 
   impl_->to_mmap(impl_->header.src_offset, impl_->written_edges,
@@ -130,11 +156,25 @@ auto TGUFBuilder::append_labels(const torch::Tensor& n_id,
                                 const torch::Tensor& t,
                                 const torch::Tensor& y_true) -> void {
   if (impl_->finalized) {
-    throw std::runtime_error("Builder finalized.");
+    throw std::runtime_error(
+        "TGUFBuilder::append_labels: Cannot append labels to a finalized "
+        "file.");
   }
-  auto count = n_id.size(0);
+
+  const auto count = n_id.size(0);
   if (impl_->written_labels + count > impl_->declared_labels) {
-    throw std::runtime_error("Overflow: Written labels exceed declared count.");
+    throw std::runtime_error(
+        "TGUFBuilder::append_labels: Overflow. Writing " +
+        std::to_string(count) + " labels, but only " +
+        std::to_string(impl_->declared_labels - impl_->written_labels) +
+        " slots remain.");
+  }
+
+  if (y_true.size(1) != static_cast<std::int64_t>(impl_->header.label_dim)) {
+    throw std::invalid_argument(
+        "TGUFBuilder::append_labels: Label dimension mismatch. Expected " +
+        std::to_string(impl_->header.label_dim) + ", got " +
+        std::to_string(y_true.size(1)));
   }
 
   impl_->to_mmap(impl_->header.label_n_id_offset, impl_->written_labels,
@@ -151,17 +191,13 @@ auto TGUFBuilder::finalize() -> void {
     return;
   }
 
-  // Update header with actual counts (in case user wrote less than declared)
+  // Update header with counts (user might have wrote less than declared)
   impl_->header.num_edges = impl_->written_edges;
   impl_->header.num_labels = impl_->written_labels;
-
-  // Write header to the very beginning of the mmap
   std::memcpy(impl_->base_ptr, &impl_->header, sizeof(TGUFHeader));
 
-  // Sync to disk and unmap
   msync(impl_->base_ptr, impl_->total_mapped_size, MS_SYNC);
   munmap(impl_->base_ptr, impl_->total_mapped_size);
-
   impl_->base_ptr = nullptr;
   impl_->finalized = true;
 }
