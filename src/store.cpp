@@ -19,7 +19,7 @@
 
 namespace tgn {
 
-class StaticTGStoreImpl final : public TGStore {
+class TGStoreImpl final : public TGStore {
  private:
   struct RandomNegSampler {
     std::int64_t min_id;
@@ -31,7 +31,7 @@ class StaticTGStoreImpl final : public TGStore {
   };
 
  public:
-  explicit StaticTGStoreImpl(TGData data)
+  explicit TGStoreImpl(TGData data)
       : src_(std::move(data.src)),
         dst_(std::move(data.dst)),
         t_(std::move(data.t)),
@@ -233,7 +233,7 @@ class StaticTGStoreImpl final : public TGStore {
 [[nodiscard]] auto TGStore::from_memory(TGData data)
     -> std::shared_ptr<TGStore> {
   data.validate();
-  return std::make_shared<StaticTGStoreImpl>(std::move(data));
+  return std::make_shared<TGStoreImpl>(std::move(data));
 }
 
 [[nodiscard]] auto TGStore::from_tguf(const TGUFOptions& opts)
@@ -329,7 +329,7 @@ class StaticTGStoreImpl final : public TGStore {
   }
 
   data.validate();
-  return std::make_shared<StaticTGStoreImpl>(std::move(data));
+  return std::make_shared<TGStoreImpl>(std::move(data));
 }
 
 auto TGData::validate() const -> void {

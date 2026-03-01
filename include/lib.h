@@ -88,7 +88,6 @@ class TGUFBuilder {
   auto append_edges(const Batch& batch) -> void;
   auto append_labels(const torch::Tensor& n_id, const torch::Tensor& t,
                      const torch::Tensor& y_true) -> void;
-
   auto finalize() -> void;
 
  private:
