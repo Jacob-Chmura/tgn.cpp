@@ -6,22 +6,24 @@
 
 #include <cstring>
 #include <stdexcept>
+#include <string>
+#include <utility>
 
 namespace tgn {
 
 struct TGUFBuilder::Impl {
-  std::string path;
+  std::string path{};
   TGUFHeader header;
   bool finalized = false;
 
-  std::size_t declared_edges;
-  std::size_t declared_labels;
+  std::size_t declared_edges{};
+  std::size_t declared_labels{};
 
-  std::size_t written_edges;
-  std::size_t written_labels;
+  std::size_t written_edges{};
+  std::size_t written_labels{};
 
   void* base_ptr = nullptr;
-  std::size_t total_mapped_size = 0;
+  std::size_t total_mapped_size{};
 
   Impl(std::string p, std::size_t n_edges, std::size_t n_labels,
        std::size_t m_dim, std::size_t l_dim, std::size_t n_neg)
@@ -96,6 +98,7 @@ TGUFBuilder::TGUFBuilder(const std::string& path, std::size_t n_edges,
                          std::size_t l_dim, std::size_t n_neg)
     : impl_(std::make_unique<Impl>(path, n_edges, n_labels, m_dim, l_dim,
                                    n_neg)) {}
+TGUFBuilder::~TGUFBuilder() = default;
 
 auto TGUFBuilder::append_edges(const Batch& batch) -> void {
   if (impl_->finalized) {

@@ -142,8 +142,42 @@ auto eval(tgn::TGN& encoder, LinkPredictor& decoder,
 
 auto main() -> int {
   const auto cfg = tgn::TGNConfig{};
-  const auto data = util::load_csv("data/" + dataset);
-  const auto store = tgn::TGStore::from_memory(std::move(data));
+  auto data = util::load_csv("data/" + dataset);
+
+  std::shared_ptr<tgn::TGStore> store;
+  const auto use_tguf = true;
+
+  if (use_tguf) {
+    // This should be done ahead of time via our CLI
+    const std::string tguf_path = "data/" + dataset + ".tguf";
+    std::cout << "Building TGUF file: " << tguf_path << "..." << std::endl;
+
+    const std::size_t n_edges = data.src.size(0);
+    const std::size_t m_dim = data.msg.size(1);
+    const std::size_t n_neg = data.neg_dst->size(1);
+    const std::size_t n_labels = 0;
+    const std::size_t l_dim = 0;
+
+    tgn::TGUFBuilder builder(tguf_path, n_edges, n_labels, m_dim, l_dim, n_neg);
+
+    tgn::Batch batch{.src = data.src,
+                     .dst = data.dst,
+                     .t = data.t,
+                     .msg = data.msg,
+                     .neg_dst = data.neg_dst};
+    builder.append_edges(batch);
+    builder.finalize();
+    std::cout << "TGUF construction complete." << std::endl;
+
+    std::cout << "Loading store from tguf (mmap)..." << std::endl;
+    tgn::TGUFOptions opts{.path = tguf_path,
+                          .val_start = data.val_start,
+                          .test_start = data.test_start};
+    store = tgn::TGStore::from_tguf(opts);
+  } else {
+    std::cout << "Loading store from memory..." << std::endl;
+    store = tgn::TGStore::from_memory(std::move(data));
+  }
 
   tgn::TGN encoder(cfg, store);
   LinkPredictor decoder{cfg.embedding_dim};
