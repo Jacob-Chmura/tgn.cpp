@@ -1,17 +1,25 @@
+#include <fcntl.h>
+#include <sys/mman.h>
 #include <torch/torch.h>
+#include <unistd.h>
 
 #include <algorithm>
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "lib.h"
+#include "tguf.h"
 
 namespace tgn {
 
-class StaticTGStoreImpl final : public TGStore {
+class TGStoreImpl final : public TGStore {
  private:
   struct RandomNegSampler {
     std::int64_t min_id;
@@ -23,7 +31,7 @@ class StaticTGStoreImpl final : public TGStore {
   };
 
  public:
-  explicit StaticTGStoreImpl(TGData data)
+  explicit TGStoreImpl(TGData data)
       : src_(std::move(data.src)),
         dst_(std::move(data.dst)),
         t_(std::move(data.t)),
@@ -225,7 +233,95 @@ class StaticTGStoreImpl final : public TGStore {
 [[nodiscard]] auto TGStore::from_memory(TGData data)
     -> std::shared_ptr<TGStore> {
   data.validate();
-  return std::make_shared<StaticTGStoreImpl>(std::move(data));
+  return std::make_shared<TGStoreImpl>(std::move(data));
+}
+
+[[nodiscard]] auto TGStore::from_tguf(const TGUFOptions& opts)
+    -> std::shared_ptr<TGStore> {
+  auto fd = open(opts.path.c_str(), O_RDONLY);
+  if (fd == -1) {
+    throw std::runtime_error("Could not open file: " + opts.path);
+  }
+
+  const auto file_size = std::filesystem::file_size(opts.path);
+  if (file_size < sizeof(TGUFHeader)) {
+    close(fd);
+    throw std::runtime_error("File too small to contain TGUF header");
+  }
+
+  auto* addr = mmap(nullptr, file_size, PROT_READ, MAP_PRIVATE, fd, 0);
+  if (addr == MAP_FAILED) {
+    close(fd);
+    throw std::runtime_error("Mmap failed for: " + opts.path);
+  }
+
+  auto* header = static_cast<TGUFHeader*>(addr);
+  if (header->magic != TGUF_MAGIC) {
+    munmap(addr, file_size);
+    close(fd);
+    throw std::runtime_error(
+        "Invalid TGUF magic number. File is corrupted or wrong format.");
+  }
+
+  // TGN training is mostly sequential per epoch.
+  madvise(addr, file_size, MADV_SEQUENTIAL | MADV_WILLNEED);
+
+  auto mapping_guard = std::shared_ptr<void>(addr, [file_size, fd](void* p) {
+    munmap(p, file_size);
+    close(fd);
+  });
+
+  auto* base = static_cast<char*>(addr);
+
+  // Helper to create tensor views into the mmap
+  auto mmap_tensor = [&](std::uint64_t offset, c10::IntArrayRef shape,
+                         torch::Dtype dtype) {
+    if (offset == 0) {
+      return torch::Tensor();  // Return empty for optional field
+    }
+    if (shape.size() > 0 && shape[0] == 0) {
+      return torch::empty(shape, torch::TensorOptions().dtype(dtype));
+    }
+
+    // Safety: ensure offset is within file bounds
+    if (offset >= file_size) {
+      throw std::runtime_error("TGUF offset out of bounds");
+    }
+
+    return torch::from_blob(
+        base + offset, shape, [mapping_guard](void*) { /* Keep mmap alive */ },
+        torch::TensorOptions().dtype(dtype));
+  };
+
+  TGData data{.val_start = opts.val_start, .test_start = opts.test_start};
+
+  const auto n_edges = static_cast<std::int64_t>(header->num_edges);
+  const auto m_dim = static_cast<std::int64_t>(header->msg_dim);
+  const auto n_neg = static_cast<std::int64_t>(header->n_neg);
+  const auto n_labels = static_cast<std::int64_t>(header->num_labels);
+  const auto l_dim = static_cast<std::int64_t>(header->label_dim);
+
+  data.src = mmap_tensor(header->src_offset, {n_edges}, torch::kLong);
+  data.dst = mmap_tensor(header->dst_offset, {n_edges}, torch::kLong);
+  data.t = mmap_tensor(header->t_offset, {n_edges}, torch::kLong);
+  data.msg = mmap_tensor(header->msg_offset, {n_edges, m_dim}, torch::kFloat32);
+
+  if (header->neg_dst_offset > 0 && header->n_neg > 0) {
+    data.neg_dst =
+        mmap_tensor(header->neg_dst_offset, {n_edges, n_neg}, torch::kLong);
+  }
+
+  if (header->num_labels > 0) {
+    data.label_n_id =
+        mmap_tensor(header->label_n_id_offset, {n_labels}, torch::kLong);
+    data.label_t =
+        mmap_tensor(header->label_t_offset, {n_labels}, torch::kLong);
+    data.label_y_true = mmap_tensor(header->label_y_true_offset,
+                                    {n_labels, l_dim}, torch::kFloat32);
+  }
+
+  data.validate();
+  return std::make_shared<TGStoreImpl>(std::move(data));
 }
 
 auto TGData::validate() const -> void {
