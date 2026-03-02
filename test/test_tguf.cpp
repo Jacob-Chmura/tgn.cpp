@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <fstream>
 #include <random>
+#include <string>
 
 #include "tgn.h"
 #include "tguf.h"
