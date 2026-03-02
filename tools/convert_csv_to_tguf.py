@@ -56,12 +56,10 @@ def main() -> None:
         n_labels, _, _, l_dim = get_csv_info(args.labels)
         print(f"Num labels: {n_labels}, Label dim: {l_dim}")
 
-    edge_chunks = (n_edges + args.batch_size - 1) // args.batch_size
-    label_chunks = (n_labels + args.batch_size - 1) // args.batch_size
-
     streamer = TGUFStreamer(args.output, n_edges, m_dim, n_neg, n_labels, l_dim)
 
     try:
+        edge_chunks = (n_edges + args.batch_size - 1) // args.batch_size
         with tqdm(total=edge_chunks, desc="Edges", unit="chunk") as pbar:
             pbar.set_postfix({"bsize": args.batch_size})
             for chunk in pd.read_csv(
@@ -71,6 +69,7 @@ def main() -> None:
                 pbar.update(1)
 
         if n_labels > 0:
+            label_chunks = (n_labels + args.batch_size - 1) // args.batch_size
             with tqdm(total=label_chunks, desc="Labels", unit="chunk") as pbar:
                 pbar.set_postfix({"bsize": args.batch_size})
                 for chunk in pd.read_csv(
@@ -79,7 +78,7 @@ def main() -> None:
                     streamer.stream_labels(chunk)
                     pbar.update(1)
         streamer.finalize()
-        print(f"Successfully created {args.output}")
+        print(f"Successfully created {args.output.resolve()}")
     except Exception as e:
         print(f"Error during streaming: {e}")
         streamer.proc.terminate()
