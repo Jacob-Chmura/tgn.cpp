@@ -14,7 +14,7 @@
 #include <utility>
 #include <vector>
 
-#include "lib.h"
+#include "tgn.h"
 #include "tguf.h"
 
 namespace tgn {

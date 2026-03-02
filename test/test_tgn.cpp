@@ -6,7 +6,7 @@
 #include <utility>
 #include <vector>
 
-#include "lib.h"
+#include "tgn.h"
 
 TEST(TGNConfig, DefaultValues) {
   const tgn::TGNConfig cfg;
