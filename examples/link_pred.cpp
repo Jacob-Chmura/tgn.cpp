@@ -149,25 +149,27 @@ auto main() -> int {
 
   if (use_tguf) {
     // This should be done ahead of time via our CLI
-    const std::string tguf_path = "data/" + dataset + ".tguf";
-    std::cout << "Building TGUF file: " << tguf_path << "..." << std::endl;
+    // const std::string tguf_path = "data/" + dataset + ".tguf";
+    const std::string tguf_path = "fooo_trade.tguf";
+    // std::cout << "Building TGUF file: " << tguf_path << "..." << std::endl;
 
-    const std::size_t n_edges = data.src.size(0);
-    const std::size_t m_dim = data.msg.size(1);
-    const std::size_t n_neg = data.neg_dst->size(1);
-    const std::size_t n_labels = 0;
-    const std::size_t l_dim = 0;
+    // const std::size_t n_edges = data.src.size(0);
+    // const std::size_t m_dim = data.msg.size(1);
+    // const std::size_t n_neg = data.neg_dst->size(1);
+    // const std::size_t n_labels = 0;
+    // const std::size_t l_dim = 0;
 
-    tgn::TGUFBuilder builder(tguf_path, n_edges, n_labels, m_dim, l_dim, n_neg);
+    // tgn::TGUFBuilder builder(tguf_path, n_edges, n_labels, m_dim, l_dim,
+    // n_neg);
 
-    tgn::Batch batch{.src = data.src,
-                     .dst = data.dst,
-                     .t = data.t,
-                     .msg = data.msg,
-                     .neg_dst = data.neg_dst};
-    builder.append_edges(batch);
-    builder.finalize();
-    std::cout << "TGUF construction complete." << std::endl;
+    // tgn::Batch batch{.src = data.src,
+    //                  .dst = data.dst,
+    //                  .t = data.t,
+    //                  .msg = data.msg,
+    //                  .neg_dst = data.neg_dst};
+    // builder.append_edges(batch);
+    // builder.finalize();
+    // std::cout << "TGUF construction complete." << std::endl;
 
     std::cout << "Loading store from tguf (mmap)..." << std::endl;
     tgn::TGUFOptions opts{.path = tguf_path,
