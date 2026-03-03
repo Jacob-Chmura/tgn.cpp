@@ -1,6 +1,5 @@
 import argparse
-import struct
-import subprocess
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -9,6 +8,12 @@ from tgb.linkproppred.negative_sampler import NegativeEdgeSampler
 from tgb.nodeproppred.dataset import NodePropPredDataset
 from tgb.utils.info import DATA_VERSION_DICT, PROJ_DIR
 from tqdm import tqdm
+
+current_dir = Path(__file__).parent.resolve()
+if str(current_dir) not in sys.path:
+    sys.path.insert(0, str(current_dir))
+
+from _tguf_streamer import TGUFStreamer  # noqa: E402
 
 parser = argparse.ArgumentParser(
     description="Download TGB dataset directly to TGUF",
@@ -21,8 +26,6 @@ parser.add_argument("--output", type=Path, required=True, help="Output .tguf pat
 parser.add_argument(
     "--batch_size", type=int, default=16384, help="Streaming batch size"
 )
-
-_TGUF_BIN = "./build/tools/tguf_cli/tguf_cli"
 
 
 def main() -> None:
@@ -64,6 +67,7 @@ def main() -> None:
             full_negs[mask, :n_neg] = [x[:n_neg] for x in negs]
 
         full_negs = full_negs[:, :n_neg]
+    print(f"Num edges: {n_edges}, Msg dim: {m_dim}, Num negatives: {n_neg}")
 
     # Node labels (for node prediction)
     n_labels, l_dim, label_data = 0, 0, None
@@ -76,9 +80,12 @@ def main() -> None:
         label_data = np.array(rows)
         n_labels = len(label_data)
         l_dim = label_data.shape[1] - 2  # Peek to get dimension: t, id, [labels...]
+        print(f"Num labels: {n_labels}, Label dim: {l_dim}")
 
+    # Bake in pre-defined splits into TGUF header
     val_start = int(np.argmax(ds.val_mask))
     test_start = int(np.argmax(ds.test_mask))
+
     streamer = TGUFStreamer(
         args.output, n_edges, m_dim, n_neg, n_labels, l_dim, val_start, test_start
     )
@@ -89,28 +96,26 @@ def main() -> None:
             pbar.set_postfix({"batch_size": args.batch_size})
             for i in range(0, len(src), args.batch_size):
                 end = i + args.batch_size
-
                 streamer.stream_edge_batch(
-                    src[i:end],
-                    dst[i:end],
-                    ts[i:end],
-                    edge_feat[i:end] if m_dim > 0 else None,
-                    full_negs[i:end] if n_neg > 0 else None,
+                    src=src[i:end],
+                    dst=dst[i:end],
+                    ts=ts[i:end],
+                    msg=edge_feat[i:end],
+                    negs=full_negs[i:end] if full_negs is not None else None,
                 )
                 pbar.update(1)
 
         if n_labels > 0:
             label_chunks = (n_labels + args.batch_size - 1) // args.batch_size
+            assert label_data is not None
             with tqdm(total=label_chunks, desc="Labels", unit="batch") as pbar:
                 pbar.set_postfix({"batch_size": args.batch_size})
                 for i in range(0, n_labels, args.batch_size):
                     end = i + args.batch_size
-                    batch = label_data[i:end]
-
-                    # Binary Order: node_id, t, y_true
-                    # (Note: batch[:, 0] is 'time', batch[:, 1] is 'node_id' based on previous logic)
                     streamer.stream_label_batch(
-                        ts=batch[:, 0], nodes=batch[:, 1], labels=batch[:, 2:]
+                        ts=label_data[i:end, 0],
+                        nodes=label_data[i:end, 1],
+                        labels=label_data[i:end, 2:],
                     )
                     pbar.update(1)
 
@@ -119,66 +124,6 @@ def main() -> None:
     except Exception as e:
         print(f"Error during streaming: {e}")
         streamer.proc.terminate()
-
-
-class TGUFStreamer:
-    def __init__(
-        self,
-        out_path: Path,
-        n_edges: int,
-        m_dim: int,
-        n_neg: int,
-        n_labels: int,
-        l_dim: int,
-        val_start: int,
-        test_start: int,
-    ) -> None:
-        self.proc = subprocess.Popen([_TGUF_BIN, str(out_path)], stdin=subprocess.PIPE)
-        if self.proc.stdin is None:
-            raise RuntimeError("Failed to open pipe to tguf_cli")
-
-        # Send header
-        header = struct.pack("7Q", n_edges, m_dim, n_neg, n_labels, l_dim, val_start, test_start)
-        self.proc.stdin.write(header)
-
-        self.m_dim = m_dim
-        self.n_neg = n_neg
-        self.l_dim = l_dim
-
-    def stream_edge_batch(self, src, dst, ts, msg, negs):
-        batch_size = len(src)
-        self.proc.stdin.write(b"E")
-        self.proc.stdin.write(struct.pack("Q", batch_size))
-
-        self._write_array(src, np.int64)
-        self._write_array(dst, np.int64)
-        self._write_array(ts, np.int64)
-
-        if self.m_dim > 0:
-            self._write_array(msg, np.float32)
-        if self.n_neg > 0:
-            self._write_array(negs, np.int64)
-
-    def stream_label_batch(self, ts, nodes, labels):
-        batch_size = len(ts)
-        self.proc.stdin.write(b"L")
-        self.proc.stdin.write(struct.pack("Q", batch_size))
-        self._write_array(nodes, np.int64)
-        self._write_array(ts, np.int64)
-        self._write_array(labels, np.float32)
-
-    def finalize(self):
-        if self.proc.stdin:
-            self.proc.stdin.close()
-        ret = self.proc.wait()
-        if ret != 0:
-            raise RuntimeError(f"CLI failed with exit code {ret}")
-
-    def _write_array(self, x: np.ndarray, dtype) -> None:  # type: ignore
-        if x.dtype != dtype:
-            x = x.astype(dtype)
-        x = np.ascontiguousarray(x)
-        self.proc.stdin.write(x.data)
 
 
 def download_dataset(name: str) -> LinkPropPredDataset | NodePropPredDataset:
