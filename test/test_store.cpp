@@ -39,18 +39,23 @@ class TgufTGStoreFixture : public TGStoreFixture {
   }
 
   auto make_store(tgn::TGData data) -> std::shared_ptr<tgn::TGStore> override {
-    const std::size_t n_edges = data.src.size(0);
-    const std::size_t m_dim = data.msg.size(1);
-    const std::size_t n_neg =
-        data.neg_dst.has_value() ? data.neg_dst->size(1) : 0;
-    const std::size_t n_labels =
+    return make_store_with_opts(std::move(data), std::nullopt);
+  }
+
+  auto make_store_with_opts(tgn::TGData data,
+                            std::optional<tgn::TGUFOptions> opts_override)
+      -> std::shared_ptr<tgn::TGStore> {
+    const auto n_edges = data.src.size(0);
+    const auto m_dim = data.msg.size(1);
+    const auto n_neg = data.neg_dst.has_value() ? data.neg_dst->size(1) : 0;
+    const auto n_labels =
         data.label_n_id.has_value() ? data.label_n_id->size(0) : 0;
-    const std::size_t l_dim =
+    const auto l_dim =
         data.label_y_true.has_value() ? data.label_y_true->size(1) : 0;
 
     {
       tgn::TGUFBuilder builder(tguf_path_.string(), n_edges, n_labels, m_dim,
-                               l_dim, n_neg);
+                               l_dim, n_neg, data.val_start, data.test_start);
       builder.append_edges(tgn::Batch{.src = data.src,
                                       .dst = data.dst,
                                       .t = data.t,
@@ -61,6 +66,11 @@ class TgufTGStoreFixture : public TGStoreFixture {
                               *data.label_y_true);
       }
       builder.finalize();
+    }
+
+    if (opts_override.has_value()) {
+      opts_override->path = tguf_path_.string();
+      return tgn::TGStore::from_tguf(*opts_override);
     }
 
     return tgn::TGStore::from_tguf(
@@ -92,6 +102,7 @@ TYPED_TEST(TGStoreTest, MakeStoreInit) {
   ASSERT_NE(store, nullptr);
   EXPECT_EQ(store->num_edges(), n);
   EXPECT_EQ(store->msg_dim(), d);
+  EXPECT_EQ(store->label_dim(), 0);
   EXPECT_EQ(store->num_nodes(), 6);  // Max ID 5 + 1
 }
 
@@ -324,6 +335,7 @@ TYPED_TEST(TGStoreTest, LabelSplitThreeDistinct) {
   EXPECT_EQ(store->train_label_split().size(), 3);
   EXPECT_EQ(store->val_label_split().size(), 0);
   EXPECT_EQ(store->test_label_split().size(), 0);
+  EXPECT_EQ(store->label_dim(), 1);
 }
 
 TYPED_TEST(TGStoreTest, LabelSplitThreeGrouped) {
@@ -338,6 +350,7 @@ TYPED_TEST(TGStoreTest, LabelSplitThreeGrouped) {
   EXPECT_EQ(store->train_label_split().size(), 2);  // 2 unique timestamps
   EXPECT_EQ(store->val_label_split().size(), 0);
   EXPECT_EQ(store->test_label_split().size(), 0);
+  EXPECT_EQ(store->label_dim(), 1);
 }
 
 TYPED_TEST(TGStoreTest, LabelSplitSingle) {
@@ -352,6 +365,7 @@ TYPED_TEST(TGStoreTest, LabelSplitSingle) {
   EXPECT_EQ(store->train_label_split().size(), 1);
   EXPECT_EQ(store->val_label_split().size(), 0);
   EXPECT_EQ(store->test_label_split().size(), 0);
+  EXPECT_EQ(store->label_dim(), 1);
 }
 
 TYPED_TEST(TGStoreTest, LabelSplitsWithCustomBoundaries) {
@@ -382,6 +396,7 @@ TYPED_TEST(TGStoreTest, LabelSplitsWithCustomBoundaries) {
 
   EXPECT_EQ(store->test_label_split().start(), 2);
   EXPECT_EQ(store->test_label_split().end(), 3);
+  EXPECT_EQ(store->label_dim(), 1);
 }
 
 TYPED_TEST(TGStoreTest, GetStopEIdEmptyThrows) {
@@ -559,6 +574,47 @@ TYPED_TEST(TGStoreTest, ValidateRejectsFloatingPointTimestamps) {
   const auto bad_data = tgn::TGData{.src = src, .dst = dst, .t = t, .msg = msg};
   EXPECT_THROW(std::ignore = tgn::TGStore::from_memory(std::move(bad_data)),
                c10::Error);
+}
+
+TEST_F(TgufTGStoreFixture, SplitResolutionUsesHeaderWhenOptsEmpty) {
+  const std::int64_t n = 10;
+  tgn::TGData data{
+      .src = torch::zeros({n}, torch::kLong),
+      .dst = torch::zeros({n}, torch::kLong),
+      .t = torch::arange(n, torch::kLong),
+      .msg = torch::zeros({n, 1}),
+      .val_start = 2,  // Header value
+      .test_start = 4  // Header value
+  };
+
+  // Load without splits in opts
+  tgn::TGUFOptions empty_opts;
+  const auto store = make_store_with_opts(std::move(data), empty_opts);
+
+  // Verify it fell back to header values
+  EXPECT_EQ(store->val_split().start(), 2);
+  EXPECT_EQ(store->test_split().start(), 4);
+}
+
+TEST_F(TgufTGStoreFixture, SplitResolutionUsesOptsToOverrideHeader) {
+  const std::int64_t n = 10;
+  tgn::TGData data{
+      .src = torch::zeros({n}, torch::kLong),
+      .dst = torch::zeros({n}, torch::kLong),
+      .t = torch::arange(n, torch::kLong),
+      .msg = torch::zeros({n, 1}),
+      .val_start = 2,  // Header value
+      .test_start = 4  // Header value
+  };
+
+  // User explicitly provides different splits in opts
+  tgn::TGUFOptions override_opts{.val_start = 6, .test_start = 9};
+
+  const auto store = make_store_with_opts(std::move(data), override_opts);
+
+  // Verify Options took precedence over Header
+  EXPECT_EQ(store->val_split().start(), 6);
+  EXPECT_EQ(store->test_split().start(), 9);
 }
 
 TEST(TGRange, ValidRange) {
