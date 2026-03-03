@@ -148,20 +148,11 @@ auto eval(tgn::TGN& encoder, NodePredictor& decoder,
 
 auto main() -> int {
   const auto cfg = tgn::TGNConfig{};
-  auto data = util::load_csv("data/" + dataset);
-  const auto num_classes = data.label_y_true.value().size(1);
-
-  std::shared_ptr<tgn::TGStore> store;
-  const auto use_tguf = true;
-
-  if (use_tguf) {
-    std::cout << "Loading store from tguf (mmap)..." << std::endl;
-    tgn::TGUFOptions opts{.path = "data/" + dataset + ".tguf"};
-    store = tgn::TGStore::from_tguf(opts);
-  } else {
-    std::cout << "Loading store from memory..." << std::endl;
-    store = tgn::TGStore::from_memory(std::move(data));
-  }
+  const auto tguf_file = "data/" + dataset + ".tguf";
+  std::cout << "Loading store from " + tguf_file << std::endl;
+  tgn::TGUFOptions opts{.path = tguf_file};
+  const auto store = tgn::TGStore::from_tguf(opts);
+  const auto num_classes = store->label_dim().value();
 
   tgn::TGN encoder(cfg, store);
   NodePredictor decoder{cfg.embedding_dim, num_classes};

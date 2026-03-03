@@ -44,6 +44,10 @@ class TGStoreImpl final : public TGStore {
                                       dst_.max().item<std::int64_t>())
                        : 0),
         msg_dim_(static_cast<std::size_t>(msg_.size(1))),
+        label_dim_(data.label_y_true.has_value()
+                       ? static_cast<std::optional<std::size_t>>(
+                             data.label_y_true.value().size(1))
+                       : std::nullopt),
         train_(0,
                data.val_start.value_or(data.test_start.value_or(num_edges_))),
         val_(data.val_start.value_or(data.test_start.value_or(num_edges_)),
@@ -153,6 +157,9 @@ class TGStoreImpl final : public TGStore {
   [[nodiscard]] auto msg_dim() const -> std::size_t override {
     return msg_dim_;
   }
+  [[nodiscard]] auto label_dim() const -> std::optional<std::size_t> override {
+    return label_dim_;
+  }
   [[nodiscard]] auto train_split() const -> Range override { return train_; }
   [[nodiscard]] auto val_split() const -> Range override { return val_; }
   [[nodiscard]] auto test_split() const -> Range override { return test_; }
@@ -222,6 +229,7 @@ class TGStoreImpl final : public TGStore {
   std::size_t num_edges_{0};
   std::size_t num_nodes_{0};
   std::size_t msg_dim_{0};
+  std::optional<std::size_t> label_dim_;
 
   Range train_, val_, test_;
   Range train_label_, val_label_, test_label_;

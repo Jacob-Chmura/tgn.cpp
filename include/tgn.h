@@ -109,6 +109,8 @@ class TGStore {
   [[nodiscard]] virtual auto num_edges() const -> std::size_t = 0;
   [[nodiscard]] virtual auto num_nodes() const -> std::size_t = 0;
   [[nodiscard]] virtual auto msg_dim() const -> std::size_t = 0;
+  [[nodiscard]] virtual auto label_dim() const
+      -> std::optional<std::size_t> = 0;
 
   [[nodiscard]] virtual auto train_split() const -> Range = 0;
   [[nodiscard]] virtual auto val_split() const -> Range = 0;
