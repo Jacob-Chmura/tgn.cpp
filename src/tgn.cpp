@@ -1,3 +1,5 @@
+#include "tgn.h"
+
 #include <torch/nn/modules/rnn.h>
 #include <torch/torch.h>
 
@@ -8,7 +10,6 @@
 #include <utility>
 #include <vector>
 
-#include "lib.h"
 #include "recency_sampler.h"
 #include "scatter_ops.h"
 

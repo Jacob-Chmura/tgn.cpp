@@ -8,13 +8,14 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "lib.h"
+#include "tgn.h"
 #include "tguf.h"
 
 namespace tgn {
@@ -43,6 +44,8 @@ class TGStoreImpl final : public TGStore {
                                       dst_.max().item<std::int64_t>())
                        : 0),
         msg_dim_(static_cast<std::size_t>(msg_.size(1))),
+        label_dim_(static_cast<std::size_t>(
+            data.label_y_true.has_value() ? data.label_y_true->size(1) : 0)),
         train_(0,
                data.val_start.value_or(data.test_start.value_or(num_edges_))),
         val_(data.val_start.value_or(data.test_start.value_or(num_edges_)),
@@ -152,10 +155,12 @@ class TGStoreImpl final : public TGStore {
   [[nodiscard]] auto msg_dim() const -> std::size_t override {
     return msg_dim_;
   }
+  [[nodiscard]] auto label_dim() const -> std::size_t override {
+    return label_dim_;
+  }
   [[nodiscard]] auto train_split() const -> Range override { return train_; }
   [[nodiscard]] auto val_split() const -> Range override { return val_; }
   [[nodiscard]] auto test_split() const -> Range override { return test_; }
-
   [[nodiscard]] auto train_label_split() const -> Range override {
     return train_label_;
   }
@@ -221,6 +226,7 @@ class TGStoreImpl final : public TGStore {
   std::size_t num_edges_{0};
   std::size_t num_nodes_{0};
   std::size_t msg_dim_{0};
+  std::size_t label_dim_{0};
 
   Range train_, val_, test_;
   Range train_label_, val_label_, test_label_;
@@ -293,7 +299,26 @@ class TGStoreImpl final : public TGStore {
         torch::TensorOptions().dtype(dtype));
   };
 
-  TGData data{.val_start = opts.val_start, .test_start = opts.test_start};
+  auto resolve_split =
+      [](const std::optional<std::size_t>& opt_val, std::uint64_t header_val,
+         const std::string& name) -> std::optional<std::size_t> {
+    if (opt_val.has_value()) {
+      if (header_val != 0 && *opt_val != header_val) {
+        std::cout << "[TGUF WARNING]: Overriding hardcoded " << name << " ("
+                  << header_val << ") with user-provided value (" << *opt_val
+                  << "). Things may break..." << std::endl;
+      }
+      return opt_val;
+    }
+    return (header_val != 0)
+               ? std::make_optional(static_cast<std::size_t>(header_val))
+               : std::nullopt;
+  };
+
+  TGData data{.val_start =
+                  resolve_split(opts.val_start, header->val_start, "val_start"),
+              .test_start = resolve_split(opts.test_start, header->test_start,
+                                          "test_start")};
 
   const auto n_edges = static_cast<std::int64_t>(header->num_edges);
   const auto m_dim = static_cast<std::int64_t>(header->msg_dim);

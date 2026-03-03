@@ -82,7 +82,9 @@ class TGUFBuilder {
  public:
   explicit TGUFBuilder(const std::string& path, std::size_t n_edges,
                        std::size_t n_labels, std::size_t m_dim,
-                       std::size_t l_dim, std::size_t n_neg);
+                       std::size_t l_dim, std::size_t n_neg,
+                       std::optional<std::size_t> val_start = std::nullopt,
+                       std::optional<std::size_t> test_start = std::nullopt);
   ~TGUFBuilder();
 
   auto append_edges(const Batch& batch) -> void;
@@ -107,6 +109,7 @@ class TGStore {
   [[nodiscard]] virtual auto num_edges() const -> std::size_t = 0;
   [[nodiscard]] virtual auto num_nodes() const -> std::size_t = 0;
   [[nodiscard]] virtual auto msg_dim() const -> std::size_t = 0;
+  [[nodiscard]] virtual auto label_dim() const -> std::size_t = 0;
 
   [[nodiscard]] virtual auto train_split() const -> Range = 0;
   [[nodiscard]] virtual auto val_split() const -> Range = 0;

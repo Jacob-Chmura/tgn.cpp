@@ -11,7 +11,7 @@
 #include <utility>
 #include <vector>
 
-#include "lib.h"
+#include "tgn.h"
 #include "util.h"
 
 constexpr std::size_t num_epochs = 10;
