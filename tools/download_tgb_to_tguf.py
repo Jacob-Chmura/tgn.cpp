@@ -77,7 +77,11 @@ def main() -> None:
         n_labels = len(label_data)
         l_dim = label_data.shape[1] - 2  # Peek to get dimension: t, id, [labels...]
 
-    streamer = TGUFStreamer(args.output, n_edges, m_dim, n_neg, n_labels, l_dim)
+    val_start = int(np.argmax(ds.val_mask))
+    test_start = int(np.argmax(ds.test_mask))
+    streamer = TGUFStreamer(
+        args.output, n_edges, m_dim, n_neg, n_labels, l_dim, val_start, test_start
+    )
 
     try:
         edge_chunks = (n_edges + args.batch_size - 1) // args.batch_size
@@ -126,6 +130,8 @@ class TGUFStreamer:
         n_neg: int,
         n_labels: int,
         l_dim: int,
+        val_start: int,
+        test_start: int,
     ) -> None:
         cmd = [_TGUF_BIN]
         cmd += ["--out", str(out_path)]
@@ -134,6 +140,8 @@ class TGUFStreamer:
         cmd += ["--n_neg", str(n_neg)]
         cmd += ["--n_labels", str(n_labels)]
         cmd += ["--l_dim", str(l_dim)]
+        cmd += ["--val_start", str(val_start)]
+        cmd += ["--test_start", str(test_start)]
 
         self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
         if self.proc.stdin is None:
@@ -184,6 +192,7 @@ def download_dataset(name: str) -> LinkPropPredDataset | NodePropPredDataset:
         return NodePropPredDataset(name=name)
     else:
         raise ValueError(f"Unsupported tgb dataset: {name}")
+
 
 if __name__ == "__main__":
     main()

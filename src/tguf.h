@@ -28,6 +28,9 @@ struct alignas(8) TGUFHeader {
   std::uint64_t label_n_id_offset{};
   std::uint64_t label_t_offset{};
   std::uint64_t label_y_true_offset{};
+
+  std::uint64_t val_start{};
+  std::uint64_t test_start{};
 };
 
 }  // namespace tgn

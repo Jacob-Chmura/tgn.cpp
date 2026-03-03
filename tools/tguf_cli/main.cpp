@@ -15,6 +15,8 @@ struct TGUFConfig {
   std::size_t n_neg{};
   std::size_t n_labels{};
   std::size_t l_dim{};
+  std::size_t val_start{};
+  std::size_t test_start{};
 };
 
 auto parse_args(int argc, char** argv) -> TGUFConfig {
@@ -23,6 +25,10 @@ auto parse_args(int argc, char** argv) -> TGUFConfig {
     std::string arg = argv[i];
     if (arg == "--out" && i + 1 < argc) {
       conf.out_path = argv[++i];
+    } else if (arg == "--val_start" && i + 1 < argc) {
+      conf.val_start = std::stoull(argv[++i]);
+    } else if (arg == "--test_start" && i + 1 < argc) {
+      conf.test_start = std::stoull(argv[++i]);
     } else if (arg == "--n_edges" && i + 1 < argc) {
       conf.n_edges = std::stoull(argv[++i]);
     } else if (arg == "--m_dim" && i + 1 < argc) {
@@ -108,7 +114,8 @@ auto main(int argc, char** argv) -> int {
   try {
     auto conf = parse_args(argc, argv);
     tgn::TGUFBuilder builder(conf.out_path, conf.n_edges, conf.n_labels,
-                             conf.m_dim, conf.l_dim, conf.n_neg);
+                             conf.m_dim, conf.l_dim, conf.n_neg, conf.val_start,
+                             conf.test_start);
     char cmd;
     std::int64_t batch_size;
     while (std::cin.read(&cmd, 1)) {
