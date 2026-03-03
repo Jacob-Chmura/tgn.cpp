@@ -85,8 +85,8 @@ def main() -> None:
 
     try:
         edge_chunks = (n_edges + args.batch_size - 1) // args.batch_size
-        with tqdm(total=edge_chunks, desc="Edges", unit="chunk") as pbar:
-            pbar.set_postfix({"bsize": args.batch_size})
+        with tqdm(total=edge_chunks, desc="Edges", unit="batch") as pbar:
+            pbar.set_postfix({"batch_size": args.batch_size})
             for i in range(0, len(src), args.batch_size):
                 end = i + args.batch_size
 
@@ -101,8 +101,8 @@ def main() -> None:
 
         if n_labels > 0:
             label_chunks = (n_labels + args.batch_size - 1) // args.batch_size
-            with tqdm(total=label_chunks, desc="Labels", unit="chunk") as pbar:
-                pbar.set_postfix({"bsize": args.batch_size})
+            with tqdm(total=label_chunks, desc="Labels", unit="batch") as pbar:
+                pbar.set_postfix({"batch_size": args.batch_size})
                 for i in range(0, n_labels, args.batch_size):
                     end = i + args.batch_size
                     batch = label_data[i:end]
@@ -133,19 +133,13 @@ class TGUFStreamer:
         val_start: int,
         test_start: int,
     ) -> None:
-        cmd = [_TGUF_BIN]
-        cmd += ["--out", str(out_path)]
-        cmd += ["--n_edges", str(n_edges)]
-        cmd += ["--m_dim", str(m_dim)]
-        cmd += ["--n_neg", str(n_neg)]
-        cmd += ["--n_labels", str(n_labels)]
-        cmd += ["--l_dim", str(l_dim)]
-        cmd += ["--val_start", str(val_start)]
-        cmd += ["--test_start", str(test_start)]
-
-        self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
+        self.proc = subprocess.Popen([_TGUF_BIN, str(out_path)], stdin=subprocess.PIPE)
         if self.proc.stdin is None:
-            raise RuntimeError(f"Failed to open stdin for TGUF CLI process {_TGUF_BIN}")
+            raise RuntimeError("Failed to open pipe to tguf_cli")
+
+        # Send header
+        header = struct.pack("7Q", n_edges, m_dim, n_neg, n_labels, l_dim, val_start, test_start)
+        self.proc.stdin.write(header)
 
         self.m_dim = m_dim
         self.n_neg = n_neg
@@ -156,32 +150,35 @@ class TGUFStreamer:
         self.proc.stdin.write(b"E")
         self.proc.stdin.write(struct.pack("Q", batch_size))
 
-        self.write_col(src, np.int64)
-        self.write_col(dst, np.int64)
-        self.write_col(ts, np.int64)
+        self._write_array(src, np.int64)
+        self._write_array(dst, np.int64)
+        self._write_array(ts, np.int64)
 
         if self.m_dim > 0:
-            self.write_col(msg, np.float32)
+            self._write_array(msg, np.float32)
         if self.n_neg > 0:
-            self.write_col(negs, np.int64)
+            self._write_array(negs, np.int64)
 
     def stream_label_batch(self, ts, nodes, labels):
         batch_size = len(ts)
         self.proc.stdin.write(b"L")
         self.proc.stdin.write(struct.pack("Q", batch_size))
-        self.write_col(nodes, np.int64)
-        self.write_col(ts, np.int64)
-        self.write_col(labels, np.float32)
+        self._write_array(nodes, np.int64)
+        self._write_array(ts, np.int64)
+        self._write_array(labels, np.float32)
 
     def finalize(self):
         if self.proc.stdin:
             self.proc.stdin.close()
-        retcode = self.proc.wait()
-        if retcode != 0:
-            raise RuntimeError(f"CLI failed with exit code {retcode}")
+        ret = self.proc.wait()
+        if ret != 0:
+            raise RuntimeError(f"CLI failed with exit code {ret}")
 
-    def write_col(self, x: np.ndarray, dtype) -> None:  # type: ignore
-        self.proc.stdin.write(x.astype(dtype).tobytes())
+    def _write_array(self, x: np.ndarray, dtype) -> None:  # type: ignore
+        if x.dtype != dtype:
+            x = x.astype(dtype)
+        x = np.ascontiguousarray(x)
+        self.proc.stdin.write(x.data)
 
 
 def download_dataset(name: str) -> LinkPropPredDataset | NodePropPredDataset:
