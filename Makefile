@@ -10,6 +10,26 @@ BUILD_TYPE ?= RelWithDebInfo
 .PHONY: all
 all: build
 
+.PHONY: help
+help:
+	@echo "TGN Build System"
+	@echo "-----------------------"
+	@echo "Build Targets:"
+	@echo "  make                - Build project ($(BUILD_TYPE))"
+	@echo "  make debug          - Build project (Debug symbols)"
+	@echo "  make release        - Build project (High optimization)"
+	@echo "  make tools          - Build CLI tools (tguf_cli)"
+	@echo "  make examples       - Build tgn_link_prop and tgn_node_prop"
+	@echo "  make test           - Build and run all unit tests"
+	@echo "  make clean          - Remove build directory"
+	@echo ""
+	@echo "Run Targets (Auto-download & TGUF conversion & Run):"
+	@echo "  make run-link-<ds>  - Run link prediction (e.g., make run-link-tgbl-wiki)"
+	@echo "  make run-node-<ds>  - Run node prediction (e.g., make run-node-tgbn-trade)"
+	@echo ""
+	@echo "Data Targets:"
+	@echo "  make download-<ds>  - Download TGB dataset (e.g., make download-tgbl-wiki)"
+
 $(BUILD_DIR)/CMakeCache.txt:
 	@mkdir -p $(BUILD_DIR)
 	@cd $(BUILD_DIR) && cmake $(CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) ..
@@ -70,23 +90,3 @@ download-%: data/%.tguf
 .PHONY: clean
 clean:
 	rm -rf $(BUILD_DIR)
-
-.PHONY: help
-help:
-	@echo "TGN Build System"
-	@echo "-----------------------"
-	@echo "Build Targets:"
-	@echo "  make                - Build project ($(BUILD_TYPE))"
-	@echo "  make debug          - Build project (Debug symbols)"
-	@echo "  make release        - Build project (High optimization)"
-	@echo "  make tools          - Build CLI tools (tguf_cli)"
-	@echo "  make examples       - Build tgn_link_prop and tgn_node_prop"
-	@echo "  make test           - Build and run all unit tests"
-	@echo "  make clean          - Remove build directory"
-	@echo ""
-	@echo "Run Targets (Auto-download & TGUF conversion & Run):"
-	@echo "  make run-link-<ds>  - Run link prediction (e.g., make run-link-tgbl-wiki)"
-	@echo "  make run-node-<ds>  - Run node prediction (e.g., make run-node-tgbn-trade)"
-	@echo ""
-	@echo "Data Targets:"
-	@echo "  make download-<ds>  - Download TGB dataset (e.g., make download-tgbl-wiki)"
