@@ -9,7 +9,7 @@
 #include <string>
 #include <utility>
 
-#include "lib.h"
+#include "tgn.h"
 
 class TGStoreFixture : public ::testing::Test {
  public:

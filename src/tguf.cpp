@@ -5,6 +5,7 @@
 #include <unistd.h>
 
 #include <cstring>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -25,11 +26,15 @@ struct TGUFBuilder::Impl {
   std::size_t total_mapped_size{};
 
   Impl(std::string p, std::size_t n_edges, std::size_t n_labels,
-       std::size_t m_dim, std::size_t l_dim, std::size_t n_neg)
+       std::size_t m_dim, std::size_t l_dim, std::size_t n_neg,
+       std::optional<std::size_t> val_start,
+       std::optional<std::size_t> test_start)
       : path(std::move(p)), declared_edges(n_edges), declared_labels(n_labels) {
     header.msg_dim = m_dim;
     header.label_dim = l_dim;
     header.n_neg = n_neg;
+    header.val_start = val_start.value_or(0);
+    header.test_start = test_start.value_or(0);
 
     auto align = [](std::size_t size) {
       return (size + TGUF_PAGE - 1) & ~(TGUF_PAGE - 1);
@@ -95,9 +100,11 @@ struct TGUFBuilder::Impl {
 
 TGUFBuilder::TGUFBuilder(const std::string& path, std::size_t n_edges,
                          std::size_t n_labels, std::size_t m_dim,
-                         std::size_t l_dim, std::size_t n_neg)
-    : impl_(std::make_unique<Impl>(path, n_edges, n_labels, m_dim, l_dim,
-                                   n_neg)) {}
+                         std::size_t l_dim, std::size_t n_neg,
+                         std::optional<std::size_t> val_start,
+                         std::optional<std::size_t> test_start)
+    : impl_(std::make_unique<Impl>(path, n_edges, n_labels, m_dim, l_dim, n_neg,
+                                   val_start, test_start)) {}
 TGUFBuilder::~TGUFBuilder() = default;
 
 auto TGUFBuilder::append_edges(const Batch& batch) -> void {

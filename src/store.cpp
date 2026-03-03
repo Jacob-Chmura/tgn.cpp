@@ -8,13 +8,14 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <iostream>
 #include <memory>
 #include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "lib.h"
+#include "tgn.h"
 #include "tguf.h"
 
 namespace tgn {
@@ -43,6 +44,8 @@ class TGStoreImpl final : public TGStore {
                                       dst_.max().item<std::int64_t>())
                        : 0),
         msg_dim_(static_cast<std::size_t>(msg_.size(1))),
+        label_dim_(static_cast<std::size_t>(
+            data.label_y_true.has_value() ? data.label_y_true->size(1) : 0)),
         train_(0,
                data.val_start.value_or(data.test_start.value_or(num_edges_))),
         val_(data.val_start.value_or(data.test_start.value_or(num_edges_)),
@@ -152,10 +155,12 @@ class TGStoreImpl final : public TGStore {
   [[nodiscard]] auto msg_dim() const -> std::size_t override {
     return msg_dim_;
   }
+  [[nodiscard]] auto label_dim() const -> std::size_t override {
+    return label_dim_;
+  }
   [[nodiscard]] auto train_split() const -> Range override { return train_; }
   [[nodiscard]] auto val_split() const -> Range override { return val_; }
   [[nodiscard]] auto test_split() const -> Range override { return test_; }
-
   [[nodiscard]] auto train_label_split() const -> Range override {
     return train_label_;
   }
@@ -221,6 +226,7 @@ class TGStoreImpl final : public TGStore {
   std::size_t num_edges_{0};
   std::size_t num_nodes_{0};
   std::size_t msg_dim_{0};
+  std::size_t label_dim_{0};
 
   Range train_, val_, test_;
   Range train_label_, val_label_, test_label_;
@@ -263,6 +269,35 @@ class TGStoreImpl final : public TGStore {
         "Invalid TGUF magic number. File is corrupted or wrong format.");
   }
 
+  std::size_t val_start{};
+  if (opts.val_start.has_value()) {
+    if (header->val_start != 0 && *opts.val_start != header->val_start) {
+      std::cout << "[TGUF WARNING]: Overriding hardcoded val_start ("
+                << header->val_start << ") with user-provided value ("
+                << *opts.val_start << "). Things may break..." << std::endl;
+    }
+    val_start = *opts.val_start;
+  } else if (header->val_start != 0) {
+    val_start = header->val_start;
+  }
+
+  std::size_t test_start{};
+  if (opts.test_start.has_value()) {
+    if (header->test_start != 0 && *opts.test_start != header->test_start) {
+      std::cout << "[TGUF WARNING]: Overriding hardcoded test_start ("
+                << header->test_start << ") with user-provided value ("
+                << *opts.test_start << "). Things may break..." << std::endl;
+    }
+    test_start = *opts.test_start;
+  } else if (header->test_start != 0) {
+    test_start = header->test_start;
+  }
+
+  if (val_start > test_start || test_start > header->num_edges) {
+    throw std::runtime_error(
+        "Invalid split indices: val_start must be < test_start < num_edges");
+  }
+
   // TGN training is mostly sequential per epoch.
   madvise(addr, file_size, MADV_SEQUENTIAL | MADV_WILLNEED);
 
@@ -293,7 +328,7 @@ class TGStoreImpl final : public TGStore {
         torch::TensorOptions().dtype(dtype));
   };
 
-  TGData data{.val_start = opts.val_start, .test_start = opts.test_start};
+  TGData data{.val_start = val_start, .test_start = test_start};
 
   const auto n_edges = static_cast<std::int64_t>(header->num_edges);
   const auto m_dim = static_cast<std::int64_t>(header->msg_dim);

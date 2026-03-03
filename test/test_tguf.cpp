@@ -5,8 +5,9 @@
 #include <filesystem>
 #include <fstream>
 #include <random>
+#include <string>
 
-#include "lib.h"
+#include "tgn.h"
 #include "tguf.h"
 
 class TGUFBuilderTest : public ::testing::Test {

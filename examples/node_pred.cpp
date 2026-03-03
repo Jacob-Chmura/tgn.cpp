@@ -12,7 +12,7 @@
 #include <utility>
 #include <vector>
 
-#include "lib.h"
+#include "tgn.h"
 #include "util.h"
 
 constexpr std::size_t num_epochs = 10;
@@ -149,8 +149,6 @@ auto eval(tgn::TGN& encoder, NodePredictor& decoder,
 auto main() -> int {
   const auto cfg = tgn::TGNConfig{};
   auto data = util::load_csv("data/" + dataset);
-  const auto num_classes = data.label_y_true.value().size(1);
-
   std::shared_ptr<tgn::TGStore> store;
   const auto use_tguf = true;
 
@@ -185,6 +183,8 @@ auto main() -> int {
     std::cout << "Loading store from memory..." << std::endl;
     store = tgn::TGStore::from_memory(std::move(data));
   }
+
+  const auto num_classes = store->label_dim();
 
   tgn::TGN encoder(cfg, store);
   NodePredictor decoder{cfg.embedding_dim, num_classes};
