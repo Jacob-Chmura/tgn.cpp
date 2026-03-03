@@ -152,7 +152,7 @@ auto main() -> int {
   std::cout << "Loading store from " + tguf_file << std::endl;
   tgn::TGUFOptions opts{.path = tguf_file};
   const auto store = tgn::TGStore::from_tguf(opts);
-  const auto num_classes = store->label_dim().value();
+  const auto num_classes = store->label_dim();
 
   tgn::TGN encoder(cfg, store);
   NodePredictor decoder{cfg.embedding_dim, num_classes};

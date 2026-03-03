@@ -35,10 +35,12 @@ TEST_F(TGUFBuilderTest, PhysicalLayoutAndAlignment) {
   const std::size_t num_labels = 50;
   const std::size_t label_dim = 2;
   const std::size_t n_neg = 1;
+  const std::size_t val_start = 70;
+  const std::size_t test_start = 85;
 
   {
     tgn::TGUFBuilder builder(tguf_path_, num_edges, num_labels, msg_dim,
-                             label_dim, n_neg);
+                             label_dim, n_neg, val_start, test_start);
     builder.finalize();
   }
 
@@ -46,6 +48,8 @@ TEST_F(TGUFBuilderTest, PhysicalLayoutAndAlignment) {
   EXPECT_EQ(h.magic, tgn::TGUF_MAGIC);
   EXPECT_EQ(h.msg_dim, msg_dim);
   EXPECT_EQ(h.n_neg, n_neg);
+  EXPECT_EQ(h.val_start, val_start);
+  EXPECT_EQ(h.test_start, test_start);
 
   auto is_aligned = [](uint64_t off) { return off % tgn::TGUF_PAGE == 0; };
 
@@ -86,6 +90,8 @@ TEST_F(TGUFBuilderTest, AppendEdges) {
   EXPECT_EQ(h.msg_dim, msg_dim);
   EXPECT_EQ(h.label_dim, label_dim);
   EXPECT_EQ(h.n_neg, n_neg);
+  EXPECT_EQ(h.val_start, 0);
+  EXPECT_EQ(h.test_start, 0);
 }
 
 TEST_F(TGUFBuilderTest, AppendLabels) {
@@ -113,6 +119,8 @@ TEST_F(TGUFBuilderTest, AppendLabels) {
   EXPECT_EQ(h.msg_dim, msg_dim);
   EXPECT_EQ(h.label_dim, label_dim);
   EXPECT_EQ(h.n_neg, n_neg);
+  EXPECT_EQ(h.val_start, 0);
+  EXPECT_EQ(h.test_start, 0);
 }
 
 TEST_F(TGUFBuilderTest, FailureAppendEdgesAfterFinalize) {
