@@ -22,6 +22,7 @@ echo "Streaming $DATASET_NAME directly to $OUTPUT_PATH..."
 uv run --no-project \
     --with py-tgb \
     --with numpy \
+    --with torch \
     --with tqdm \
     --with pandas \
     python "$PROJECT_ROOT/tools/download_tgb_to_tguf.py" \
