@@ -35,7 +35,6 @@ def main() -> None:
     ds = download_dataset(args.name)
     data = ds.full_data
 
-    # Edge data
     src, dst, ts = data["sources"], data["destinations"], data["timestamps"]
     edge_feat = data["edge_feat"]
     m_dim = edge_feat.shape[1] if edge_feat is not None else 0
@@ -45,17 +44,15 @@ def main() -> None:
     n_neg, full_negs = 0, None
     if args.name.startswith("tgbl-"):
         ns = NegativeEdgeSampler(dataset_name=args.name)
-        v = (
-            f"_v{DATA_VERSION_DICT[args.name]}"
-            if DATA_VERSION_DICT.get(args.name, 1) > 1
-            else ""
-        )
+        v = ""
+        if DATA_VERSION_DICT.get(args.name, 1) > 1:
+            v = f"_v{DATA_VERSION_DICT[args.name]}"
 
         # Max number of negative we parse is 1000 per positive link
         full_negs = np.full((len(src), 1000), -1, dtype=np.int32)
 
         for split in ["val", "test"]:
-            print(f"Processing negatives for {split}...")
+            print(f"Processing negatives for {split} (TGB NegativeSampler is slow)...")
             mask = ds.val_mask if split == "val" else ds.test_mask
             ns_path = f"{PROJ_DIR}datasets/{args.name.replace('-', '_')}/{args.name}_{split}_ns{v}.pkl"
             ns.load_eval_set(fname=ns_path, split_mode=split)

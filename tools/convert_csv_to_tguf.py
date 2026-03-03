@@ -71,7 +71,7 @@ def main() -> None:
             pbar.set_postfix({"batch_size": args.batch_size})
             for chunk in pd.read_csv(args.edges, chunksize=args.batch_size):
                 streamer.stream_edge_batch(
-                    src=chunk["src"].value,
+                    src=chunk["src"].values,
                     dst=chunk["dst"].values,
                     ts=chunk["time"].values,
                     msg=chunk[msg_cols].values,
