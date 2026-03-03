@@ -24,7 +24,7 @@ uv run --no-project \
     --with numpy \
     --with torch \
     --with tqdm \
-    --with pandas \
+    --with pandas==2.2.3 \ # https://pandas.pydata.org/docs/dev/user_guide/migration.html
     python "$PROJECT_ROOT/tools/download_tgb_to_tguf.py" \
     --name "$DATASET_NAME" \
     --output "$OUTPUT_PATH"
