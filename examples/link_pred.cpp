@@ -150,7 +150,7 @@ auto main() -> int {
   if (use_tguf) {
     // This should be done ahead of time via our CLI
     // const std::string tguf_path = "data/" + dataset + ".tguf";
-    const std::string tguf_path = "fooo_trade.tguf";
+    const std::string tguf_path = "fooo_wiki.tguf";
     // std::cout << "Building TGUF file: " << tguf_path << "..." << std::endl;
 
     // const std::size_t n_edges = data.src.size(0);
