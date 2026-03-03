@@ -269,35 +269,6 @@ class TGStoreImpl final : public TGStore {
         "Invalid TGUF magic number. File is corrupted or wrong format.");
   }
 
-  std::size_t val_start{};
-  if (opts.val_start.has_value()) {
-    if (header->val_start != 0 && *opts.val_start != header->val_start) {
-      std::cout << "[TGUF WARNING]: Overriding hardcoded val_start ("
-                << header->val_start << ") with user-provided value ("
-                << *opts.val_start << "). Things may break..." << std::endl;
-    }
-    val_start = *opts.val_start;
-  } else if (header->val_start != 0) {
-    val_start = header->val_start;
-  }
-
-  std::size_t test_start{};
-  if (opts.test_start.has_value()) {
-    if (header->test_start != 0 && *opts.test_start != header->test_start) {
-      std::cout << "[TGUF WARNING]: Overriding hardcoded test_start ("
-                << header->test_start << ") with user-provided value ("
-                << *opts.test_start << "). Things may break..." << std::endl;
-    }
-    test_start = *opts.test_start;
-  } else if (header->test_start != 0) {
-    test_start = header->test_start;
-  }
-
-  if (val_start > test_start || test_start > header->num_edges) {
-    throw std::runtime_error(
-        "Invalid split indices: val_start must be < test_start < num_edges");
-  }
-
   // TGN training is mostly sequential per epoch.
   madvise(addr, file_size, MADV_SEQUENTIAL | MADV_WILLNEED);
 
@@ -328,7 +299,26 @@ class TGStoreImpl final : public TGStore {
         torch::TensorOptions().dtype(dtype));
   };
 
-  TGData data{.val_start = val_start, .test_start = test_start};
+  auto resolve_split =
+      [](const std::optional<std::size_t>& opt_val, std::uint64_t header_val,
+         const std::string& name) -> std::optional<std::size_t> {
+    if (opt_val.has_value()) {
+      if (header_val != 0 && *opt_val != header_val) {
+        std::cout << "[TGUF WARNING]: Overriding hardcoded " << name << " ("
+                  << header_val << ") with user-provided value (" << *opt_val
+                  << "). Things may break..." << std::endl;
+      }
+      return opt_val;
+    }
+    return (header_val != 0)
+               ? std::make_optional(static_cast<std::size_t>(header_val))
+               : std::nullopt;
+  };
+
+  TGData data{.val_start =
+                  resolve_split(opts.val_start, header->val_start, "val_start"),
+              .test_start = resolve_split(opts.test_start, header->test_start,
+                                          "test_start")};
 
   const auto n_edges = static_cast<std::int64_t>(header->num_edges);
   const auto m_dim = static_cast<std::int64_t>(header->msg_dim);
