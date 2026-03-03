@@ -4,7 +4,6 @@
 
 #include <chrono>
 #include <cstddef>
-#include <filesystem>
 #include <iostream>
 #include <memory>
 #include <numeric>
@@ -146,11 +145,6 @@ auto main(int argc, char** argv) -> int {
     return 1;
   }
   const std::string tguf_path = argv[1];
-
-  if (!std::filesystem::exists(tguf_path)) {
-    std::cerr << "Error: File not found: " << tguf_path << std::endl;
-    return 1;
-  }
   std::cout << "Loading store from " << tguf_path << std::endl;
   tgn::TGUFOptions opts{.path = tguf_path};
   const auto store = tgn::TGStore::from_tguf(opts);
