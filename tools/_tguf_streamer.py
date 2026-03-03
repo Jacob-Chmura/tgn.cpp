@@ -1,5 +1,6 @@
 import struct
 import subprocess
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -23,7 +24,9 @@ class TGUFStreamer:
         val_start: int = 0,
         test_start: int = 0,
     ) -> None:
-        self.proc = subprocess.Popen([_TGUF_BIN, str(out_path)], stdin=subprocess.PIPE)
+        self.proc = subprocess.Popen(
+            [_TGUF_BIN, str(out_path)], stdin=subprocess.PIPE, stderr=sys.stderr
+        )
         if self.proc.stdin is None:
             raise RuntimeError("Failed to open pipe to tguf_cli")
         self.cpp_buffer = self.proc.stdin
