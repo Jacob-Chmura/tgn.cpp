@@ -16,7 +16,7 @@ if ! command -v uv >/dev/null 2>&1; then
 fi
 
 DATASET_NAME="$1"
-OUTPUT_PATH="$PROJECT_ROOT/data/$DATASET_NAME/$DATASET_NAME.tguf"
+OUTPUT_PATH="$PROJECT_ROOT/data/$DATASET_NAME.tguf"
 
 echo "Streaming $DATASET_NAME directly to $OUTPUT_PATH..."
 uv run --no-project \
@@ -27,4 +27,3 @@ uv run --no-project \
     python "$PROJECT_ROOT/tools/download_tgb_to_tguf.py" \
     --name "$DATASET_NAME" \
     --output "$OUTPUT_PATH"
-EOF

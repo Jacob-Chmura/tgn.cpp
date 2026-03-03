@@ -27,9 +27,7 @@ jobs:
           sudo apt-get install -y clang libc++-dev libc++abi-dev
 
       - name: Build TGN
-        shell: bash
-        run: |
-          ./scripts/build.sh ${{ matrix.build_type }}
+        run: make build BUILD_TYPE=${{ matrix.build_type }}
 
   test:
     runs-on: ${{ matrix.os }}
@@ -49,9 +47,7 @@ jobs:
           sudo apt-get install -y clang libc++-dev libc++abi-dev
 
       - name: Run Tests
-        shell: bash
-        run: |
-          ./scripts/run_tests.sh
+        run: make test
 
   cpp-lint:
     runs-on: ubuntu-latest
@@ -65,9 +61,7 @@ jobs:
           sudo apt-get install -y clang libc++-dev libc++abi-dev
 
       - name: Build TGN (for compilation db)
-        shell: bash
-        run: |
-          ./scripts/build.sh ${{ matrix.build_type }}
+        run: make config
 
       - uses: cpp-linter/cpp-linter-action@v2
         id: linter
