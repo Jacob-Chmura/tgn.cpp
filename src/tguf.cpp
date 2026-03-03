@@ -2,6 +2,7 @@
 
 #include <fcntl.h>
 #include <sys/mman.h>
+#include <torch/types.h>
 #include <unistd.h>
 
 #include <cstring>
@@ -9,6 +10,8 @@
 #include <stdexcept>
 #include <string>
 #include <utility>
+
+#include "tgn.h"
 
 namespace tgn {
 

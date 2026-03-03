@@ -52,6 +52,8 @@ endif()
 add_library(${PROJECT_NAME} SHARED
     src/tgn.cpp
     src/tguf.cpp
+    src/recency_sampler.cpp
+    src/scatter_ops.cpp
     src/store.cpp
 )
 
