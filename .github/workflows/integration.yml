@@ -52,6 +52,11 @@ jobs:
           name: tgn-release-build
           path: build/
 
+      - name: Restore Binary Permissions
+        run: |
+          chmod +x build/tools/tguf_cli/tguf_cli
+          chmod +x build/examples/tgn_link_pred
+
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
         with:
@@ -77,6 +82,11 @@ jobs:
         with:
           name: tgn-release-build
           path: build/
+
+      - name: Restore Binary Permissions
+        run: |
+          chmod +x build/tools/tguf_cli/tguf_cli
+          chmod +x build/examples/tgn_node_pred
 
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
