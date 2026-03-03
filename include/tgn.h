@@ -88,9 +88,9 @@ class TGUFBuilder {
                        std::optional<std::size_t> test_start = std::nullopt);
   ~TGUFBuilder();
 
-  auto append_edges(const Batch& batch) -> void;
+  auto append_edges(const Batch& batch) const -> void;
   auto append_labels(const torch::Tensor& n_id, const torch::Tensor& t,
-                     const torch::Tensor& y_true) -> void;
+                     const torch::Tensor& y_true) const -> void;
   auto finalize() -> void;
 
  private:

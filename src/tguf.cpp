@@ -110,7 +110,7 @@ TGUFBuilder::TGUFBuilder(const std::string& path, std::size_t n_edges,
                                    val_start, test_start)) {}
 TGUFBuilder::~TGUFBuilder() = default;
 
-auto TGUFBuilder::append_edges(const Batch& batch) -> void {
+auto TGUFBuilder::append_edges(const Batch& batch) const -> void {
   if (impl_->finalized) {
     throw std::runtime_error(
         "TGUFBuilder::append_edges: Cannot append to a finalized file.");
@@ -167,7 +167,7 @@ auto TGUFBuilder::append_edges(const Batch& batch) -> void {
 
 auto TGUFBuilder::append_labels(const torch::Tensor& n_id,
                                 const torch::Tensor& t,
-                                const torch::Tensor& y_true) -> void {
+                                const torch::Tensor& y_true) const -> void {
   if (impl_->finalized) {
     throw std::runtime_error(
         "TGUFBuilder::append_labels: Cannot append labels to a finalized "
