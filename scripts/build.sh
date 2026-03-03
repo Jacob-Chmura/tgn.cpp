@@ -7,11 +7,16 @@ BUILD_DIR="$PROJECT_ROOT/build"
 
 BUILD_TYPE="RelWithDebInfo"
 BUILD_EXAMPLES="OFF"
+BUILD_TOOLS="OFF"
 
 for arg in "$@"; do
   case $arg in
     --examples)
       BUILD_EXAMPLES="ON"
+      shift
+      ;;
+    --tools)
+      BUILD_TOOLS="ON"
       shift
       ;;
     Debug|Release|RelWithDebInfo|MinSizeRel)
@@ -26,6 +31,7 @@ done
 echo "Configuring CMake project"
 echo "  Build Type: $BUILD_TYPE"
 echo "  Build Examples: $BUILD_EXAMPLES"
+echo "  Build Tools: $BUILD_TOOLS"
 echo "  Build Directory: $BUILD_DIR"
 
 mkdir -p "$BUILD_DIR" && cd "$BUILD_DIR"
@@ -33,6 +39,7 @@ mkdir -p "$BUILD_DIR" && cd "$BUILD_DIR"
 cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
       -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
       -DTGN_BUILD_EXAMPLES="${BUILD_EXAMPLES}" \
+      -DTGN_BUILD_TOOLS="${BUILD_TOOLS}" \
       ..
 
 cmake --build . --parallel "$(nproc)"
