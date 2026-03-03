@@ -12,23 +12,28 @@ all: build
 
 .PHONY: help
 help:
-	@echo "TGN Build System"
-	@echo "-----------------------"
+	@echo "========================================================================"
+	@echo " TGN Build System "
+	@echo "========================================================================"
 	@echo "Build Targets:"
-	@echo "  make                - Build project ($(BUILD_TYPE))"
-	@echo "  make debug          - Build project (Debug symbols)"
-	@echo "  make release        - Build project (High optimization)"
-	@echo "  make tools          - Build CLI tools (tguf_cli)"
-	@echo "  make examples       - Build tgn_link_prop and tgn_node_prop"
-	@echo "  make test           - Build and run all unit tests"
-	@echo "  make clean          - Remove build directory"
+	@echo "  make                     - Build project (current: $(BUILD_TYPE))"
+	@echo "  make debug               - Build project with Debug symbols"
+	@echo "  make release             - Build project with High optimization"
+	@echo "  make tools               - Build CLI tools (tguf_cli)"
+	@echo "  make examples            - Build tgn_link_prop and tgn_node_prop"
+	@echo "  make clean               - Remove build directory"
 	@echo ""
-	@echo "Run Targets (Auto-download & TGUF conversion & Run):"
-	@echo "  make run-link-<ds>  - Run link prediction (e.g., make run-link-tgbl-wiki)"
-	@echo "  make run-node-<ds>  - Run node prediction (e.g., make run-node-tgbn-trade)"
+	@echo "Testing Targets:"
+	@echo "  make test                - Run C++ unit tests (no Python dep)"
+	@echo "  make test-integration    - Run Python-C++ TGUF roundtrip (requires uv)"
+	@echo ""
+	@echo "Run Targets (Download + TGUF Convert + Run):"
+	@echo "  make run-link-<ds>       - Link prediction (e.g., make run-link-tgbl-wiki)"
+	@echo "  make run-node-<ds>       - Node prediction (e.g., make run-node-tgbn-trade)"
 	@echo ""
 	@echo "Data Targets:"
-	@echo "  make download-<ds>  - Download TGB dataset (e.g., make download-tgbl-wiki)"
+	@echo "  make download-<ds>       - Download TGB dataset (e.g., make download-tgbl-wiki)"
+	@echo "========================================================================"
 
 $(BUILD_DIR)/CMakeCache.txt:
 	@mkdir -p $(BUILD_DIR)
@@ -63,7 +68,13 @@ examples: config
 test: config
 	@cd $(BUILD_DIR) && cmake -DTGN_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Debug ..
 	$(MAKE) build
-	@cd $(BUILD_DIR) && ctest --output-on-failure -j $(NPROCS)
+	@cd $(BUILD_DIR) && ctest -L unit --output-on-failure -j $(NPROCS)
+
+.PHONY: test-integration
+test-integration: tools
+	@cd $(BUILD_DIR) && cmake -DTGN_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Debug ..
+	$(MAKE) build
+	@cd $(BUILD_DIR) && ctest -L integration --output-on-failure -j $(NPROCS)
 
 data/%.tguf: tools
 	@mkdir -p data

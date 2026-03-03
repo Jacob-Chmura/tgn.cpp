@@ -96,7 +96,7 @@ jobs:
       - name: Run Node Prediction
         run: make run-node-${{ matrix.dataset }}
 
-  custom-csv-to-tguf-smoke-test:
+  cpp-integration-tests:
     needs: build-all
     runs-on: ${{ matrix.os }}
     strategy:
@@ -118,37 +118,10 @@ jobs:
           chmod +x build/tools/tguf_cli/tguf_cli
           chmod +x build/examples/tgn_node_pred
 
-      - name: Generate Dummy CSVs
-        run: |
-          mkdir -p data
-          # Edges: 3 rows, 2 msgs, 0 negs
-          cat <<EOF > data/dummy_edges.csv
-          src,dst,time,msg_0,msg_1
-          1,2,100.0,0.1,0.2
-          2,3,101.0,0.3,0.4
-          3,1,102.0,0.5,0.6
-          EOF
-
-          # Labels: 2 rows, 2 node_y labels
-          cat <<EOF > data/dummy_labels.csv
-          node_id,time,node_y0,node_y1
-          1,105.0,1,0
-          2,106.0,0,1
-          EOF
-
       - name: Set up uv
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
 
-      - name: Convert CSV to TGUF
-        run: uv run python tools/convert_csv_to_tguf.py \
-          --edges data/dummy_edges.csv \
-          --labels data/dummy_labels.csv \
-          --output data/dummy.tguf \
-          --batch_size 2
-
-      - name: Run Node Prediction
-        # TODO(kuba): Would be nice to have a script for testing binary directly
-        # Here we just run node prop and ensure the tguf file can be read as a store
-        run: ./build/examples/tgn_node_pred data/dummy.tguf
+      - name: Run Integration Tests
+        run: make test-integration
