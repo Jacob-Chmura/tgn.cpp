@@ -1,5 +1,5 @@
 #include <gtest/gtest.h>
-#include <torch/torch.h>
+#include <torch/types.h>
 
 #include "recency_sampler.h"
 

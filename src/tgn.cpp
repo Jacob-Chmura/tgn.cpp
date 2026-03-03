@@ -1,7 +1,9 @@
 #include "tgn.h"
 
+#include <torch/nn/module.h>
+#include <torch/nn/modules/linear.h>
 #include <torch/nn/modules/rnn.h>
-#include <torch/torch.h>
+#include <torch/types.h>
 
 #include <cstddef>
 #include <cstdint>
@@ -14,6 +16,7 @@
 #include "scatter_ops.h"
 
 namespace tgn {
+namespace detail {
 struct TimeEncoderImpl : torch::nn::Module {
   explicit TimeEncoderImpl(std::size_t out_channels) {
     lin_ = register_module("lin_", torch::nn::Linear(1, out_channels));
@@ -308,6 +311,7 @@ struct TGNMemoryImpl : torch::nn::Module {
       src_store_, dst_store_;
 };
 TORCH_MODULE(TGNMemory);
+}  // namespace detail
 
 struct TGNImpl::Impl {
   Impl(const TGNConfig& cfg, const std::shared_ptr<TGStore>& store)
@@ -316,19 +320,19 @@ struct TGNImpl::Impl {
         nbr_loader_(cfg.num_nbrs, store->num_nodes()),
         assoc_(torch::full({static_cast<std::int64_t>(store->num_nodes())}, -1,
                            torch::dtype(torch::kLong))) {
-    time_encoder_ = TimeEncoder(cfg.time_dim);
-    memory_ =
-        TGNMemory(cfg, time_encoder_, store->msg_dim(), store->num_nodes());
-    conv_ = TransformerConv(cfg.memory_dim, cfg.embedding_dim / 2,
-                            store->msg_dim() + cfg.time_dim, cfg.num_heads,
-                            cfg.dropout);
+    time_encoder_ = detail::TimeEncoder(cfg.time_dim);
+    memory_ = detail::TGNMemory(cfg, time_encoder_, store->msg_dim(),
+                                store->num_nodes());
+    conv_ = detail::TransformerConv(cfg.memory_dim, cfg.embedding_dim / 2,
+                                    store->msg_dim() + cfg.time_dim,
+                                    cfg.num_heads, cfg.dropout);
   }
 
   const TGNConfig cfg_;
   std::shared_ptr<TGStore> store_;
-  TimeEncoder time_encoder_{nullptr};
-  TransformerConv conv_{nullptr};
-  TGNMemory memory_{nullptr};
+  detail::TimeEncoder time_encoder_{nullptr};
+  detail::TransformerConv conv_{nullptr};
+  detail::TGNMemory memory_{nullptr};
   LastNeighborLoader nbr_loader_;
   torch::Tensor assoc_;
 };

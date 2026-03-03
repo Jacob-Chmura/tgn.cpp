@@ -1,3 +1,5 @@
+#include <torch/types.h>
+
 #include <cstdint>
 #include <exception>
 #include <iostream>
@@ -41,7 +43,7 @@ struct Scratch {
   }
 };
 
-auto process_edge_batch(const StreamHeader& h, tgn::TGUFBuilder& builder,
+auto process_edge_batch(const StreamHeader& h, const tgn::TGUFBuilder& builder,
                         std::int64_t bsize, Scratch& scratch) -> void {
   scratch.reserve_edges(bsize, h.m_dim, h.n_neg);
   read_exactly(scratch.i64.data(), bsize * 3 * sizeof(std::int64_t));
@@ -71,7 +73,7 @@ auto process_edge_batch(const StreamHeader& h, tgn::TGUFBuilder& builder,
   builder.append_edges(batch);
 }
 
-auto process_label_batch(const StreamHeader& h, tgn::TGUFBuilder& builder,
+auto process_label_batch(const StreamHeader& h, const tgn::TGUFBuilder& builder,
                          std::int64_t bsize, Scratch& scratch) -> void {
   scratch.reserve_labels(bsize, h.l_dim);
   read_exactly(scratch.i64.data(), bsize * 2 * sizeof(std::int64_t));

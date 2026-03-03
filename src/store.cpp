@@ -1,6 +1,6 @@
 #include <fcntl.h>
 #include <sys/mman.h>
-#include <torch/torch.h>
+#include <torch/types.h>
 #include <unistd.h>
 
 #include <algorithm>
@@ -19,6 +19,7 @@
 #include "tguf.h"
 
 namespace tgn {
+namespace detail {
 
 class TGStoreImpl final : public TGStore {
  private:
@@ -236,10 +237,12 @@ class TGStoreImpl final : public TGStore {
   std ::vector<std::size_t> stop_e_ids_;
 };
 
+}  // namespace detail
+
 [[nodiscard]] auto TGStore::from_memory(TGData data)
     -> std::shared_ptr<TGStore> {
   data.validate();
-  return std::make_shared<TGStoreImpl>(std::move(data));
+  return std::make_shared<detail::TGStoreImpl>(std::move(data));
 }
 
 [[nodiscard]] auto TGStore::from_tguf(const TGUFOptions& opts)
@@ -346,7 +349,7 @@ class TGStoreImpl final : public TGStore {
   }
 
   data.validate();
-  return std::make_shared<TGStoreImpl>(std::move(data));
+  return std::make_shared<detail::TGStoreImpl>(std::move(data));
 }
 
 auto TGData::validate() const -> void {

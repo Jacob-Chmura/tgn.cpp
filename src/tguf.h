@@ -1,9 +1,6 @@
 #pragma once
-#include <torch/torch.h>
 
 #include <cstdint>
-
-#include "tgn.h"
 
 namespace tgn {
 static constexpr std::uint64_t TGUF_MAGIC = 0x54474E42494E3031;

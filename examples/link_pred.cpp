@@ -1,5 +1,3 @@
-#include <torch/nn/module.h>
-#include <torch/optim/adam.h>
 #include <torch/torch.h>
 
 #include <chrono>
