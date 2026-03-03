@@ -15,9 +15,10 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 #### Usage
 
 ```sh
-git clone git@github.com:Jacob-Chmura/tgn.cpp.git
-cd tgn.cpp
-make help # See available targets
+git clone git@github.com:Jacob-Chmura/tgn.cpp.git && cd tgn.cpp
+
+# See available targets
+make help
 
 # Download `tgbl-wiki` data, convert to `.tguf` and run examples/link_pred.cpp.
 make run-link-tgbl-wiki
