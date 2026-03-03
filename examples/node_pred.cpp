@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <chrono>
 #include <cstddef>
+#include <filesystem>
 #include <iostream>
 #include <memory>
 #include <numeric>
@@ -17,7 +18,6 @@
 
 constexpr std::size_t num_epochs = 10;
 constexpr double learning_rate = 1e-4;
-constexpr std::string dataset = "tgbn-trade";
 
 namespace {
 
@@ -146,15 +146,24 @@ auto eval(tgn::TGN& encoder, NodePredictor& decoder,
 
 }  // namespace
 
-auto main() -> int {
-  const auto cfg = tgn::TGNConfig{};
-  const auto tguf_file = "data/" + dataset + ".tguf";
-  std::cout << "Loading store from " + tguf_file << std::endl;
-  tgn::TGUFOptions opts{.path = tguf_file};
+auto main(int argc, char** argv) -> int {
+  if (argc < 2) {
+    std::cerr << "Usage: " << argv[0] << " <path_to_tguf>" << std::endl;
+    return 1;
+  }
+  const std::string tguf_path = argv[1];
+
+  if (!std::filesystem::exists(tguf_path)) {
+    std::cerr << "Error: File not found: " << tguf_path << std::endl;
+    return 1;
+  }
+  std::cout << "Loading store from " << tguf_path << std::endl;
+  tgn::TGUFOptions opts{.path = tguf_path};
   const auto store = tgn::TGStore::from_tguf(opts);
-  const auto num_classes = store->label_dim();
+  const auto cfg = tgn::TGNConfig{};
 
   tgn::TGN encoder(cfg, store);
+  const auto num_classes = store->label_dim();
   NodePredictor decoder{cfg.embedding_dim, num_classes};
 
   auto params = encoder->parameters();
