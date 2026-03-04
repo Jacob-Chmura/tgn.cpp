@@ -2,6 +2,9 @@
 
 C++ Port of "Temporal Graph Networks for Deep Learning on Dynamic Graphs".
 
+> \[!Note\]
+> Tested on Linux (Ubuntu 22.04+) and macOS (Apple Silicon)
+
 #### Prerequisites
 
 ```sh
@@ -26,6 +29,3 @@ make run-link-tgbl-wiki
 # Download `tgbn-trade` data, convert to `.tguf` and run examples/node_pred.cpp
 make run-node-tgbn-trade
 ```
-
-> \[!Note\]
-> Tested on Linux (Ubuntu 22.04+) and macOS (Apple Silicon)

@@ -90,13 +90,23 @@ struct TGUFBuilder::Impl {
     }
 
 #ifdef __APPLE__
-    fstore_t store = {F_ALLOCSP, F_VOLPOSES, 0, total_mapped_size, 0};
+    fstore_t store = {};
+    store.fst_flags = F_ALLOCATECONTIG;      // try contiguous first
+    store.fst_posmode = F_PEOFPOSMODE;
+    store.fst_offset = 0;
+    store.fst_length = total_mapped_size;
+    store.fst_bytesalloc = 0;
+
     if (fcntl(fd, F_PREALLOCATE, &store) == -1) {
-      if (ftruncate(fd, total_mapped_size) != 0) {
-        close(fd);
-        throw std::runtime_error("Failed to allocate disk space on (macOS)");
-      }
+        // Fall back to non-contiguous allocation
+        store.fst_flags = F_ALLOCATEALL;
+        if (fcntl(fd, F_PREALLOCATE, &store) == -1) {
+            close(fd);
+            throw std::runtime_error("Failed to preallocate disk space (macOS)");
+        }
     }
+
+    // Set the logical file size
     if (ftruncate(fd, total_mapped_size) != 0) {
       close(fd);
       throw std::runtime_error("Failed to set file size (macOS)");
