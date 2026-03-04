@@ -12,9 +12,6 @@ apt-get install -y clang libc++-dev libc++abi-dev
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-> \[!Note\]
-> Tested on Linux (Ubuntu 22.04+) and macOS (Apple Silicon)
-
 #### Usage
 
 ```sh
@@ -29,3 +26,6 @@ make run-link-tgbl-wiki
 # Download `tgbn-trade` data, convert to `.tguf` and run examples/node_pred.cpp
 make run-node-tgbn-trade
 ```
+
+> \[!Note\]
+> Tested on Linux (Ubuntu 22.04+) and macOS (Apple Silicon)

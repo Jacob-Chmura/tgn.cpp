@@ -1,6 +1,7 @@
 #include "tguf.h"
 
 #include <fcntl.h>
+#include <unistd.h>
 #include <sys/mman.h>
 #include <torch/types.h>
 #include <unistd.h>
