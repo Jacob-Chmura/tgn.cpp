@@ -8,7 +8,7 @@ on: # yamllint disable-line rule:truthy
     branches: ["master"]
 
 jobs:
-  build_tgn:
+  build:
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -29,7 +29,14 @@ jobs:
       - name: Build TGN
         run: make build BUILD_TYPE=${{ matrix.build_type }}
 
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.build_type }}
+          path: build/
+
   test:
+    needs: build
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -40,28 +47,26 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Clang Dependencies (Ubuntu)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang libc++-dev libc++abi-dev
+      - name: Download Debug Build
+        uses: actions/download-artifact@v4
+        with:
+          name: build-Debug
+          path: build/
 
       - name: Run Tests
         run: make test
 
   cpp-lint:
+    needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
 
-      - name: Install Clang Dependencies (Ubuntu)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang libc++-dev libc++abi-dev
-
-      - name: Build TGN (for compilation db)
-        run: make config
+      - name: Download Debug Build
+        uses: actions/download-artifact@v4
+        with:
+          name: build-Debug
+          path: build/
 
       - uses: cpp-linter/cpp-linter-action@v2
         id: linter

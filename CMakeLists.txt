@@ -92,22 +92,40 @@ if (TGN_BUILD_TESTS)
     set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(googletest)
 
-    add_executable(test_tgn
-        test/test_recency_sampler.cpp
-        test/test_scatter_ops.cpp
-        test/test_store.cpp
-        test/test_tgn.cpp
-        test/test_tguf.cpp
+    # Unit tests
+    add_executable(test_unit
+        test/unit/test_recency_sampler.cpp
+        test/unit/test_scatter_ops.cpp
+        test/unit/test_store.cpp
+        test/unit/test_tgn.cpp
+        test/unit/test_tguf.cpp
     )
-    target_link_libraries(test_tgn PRIVATE
+    target_link_libraries(test_unit PRIVATE
         ${PROJECT_NAME}
         "${TORCH_LIBRARIES}"
         GTest::gtest_main
     )
-    target_include_directories(test_tgn PRIVATE
+    target_include_directories(test_unit PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+
+    # Integration tests
+    add_executable(test_integration
+        test/integration/test_csv_tguf_roundtrip.cpp
+    )
+    target_link_libraries(test_integration PRIVATE
+        ${PROJECT_NAME}
+        "${TORCH_LIBRARIES}"
+        GTest::gtest_main
+    )
+    target_include_directories(test_integration PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
     )
 
     include(GoogleTest)
-    gtest_discover_tests(test_tgn)
+    gtest_discover_tests(test_unit PROPERTIES LABELS "unit")
+    gtest_discover_tests(test_integration 
+        PROPERTIES LABELS "integration"
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+    )
 endif()
