@@ -12,7 +12,8 @@
 #include <utility>
 #include <vector>
 
-#include "recency_sampler.h"
+#include "logging.h"
+#include "sampler.h"
 #include "scatter_ops.h"
 
 namespace tgn {
@@ -20,6 +21,8 @@ namespace detail {
 struct TimeEncoderImpl : torch::nn::Module {
   explicit TimeEncoderImpl(std::size_t out_channels) {
     lin_ = register_module("lin_", torch::nn::Linear(1, out_channels));
+    TGN_LOG_INFO("TimeEncoder: Initialized (time_embedding_dim={})",
+                 out_channels);
   }
 
   auto forward(const torch::Tensor& t) -> torch::Tensor {
@@ -49,12 +52,19 @@ struct TransformerConvImpl : torch::nn::Module {
         torch::nn::Linear(torch::nn::LinearOptions(
                               static_cast<std::int64_t>(edge_dim), out_dim)
                               .bias(false)));
+    TGN_LOG_INFO(
+        "TransformerConv: Initialized (in_channels={}, out_channels={}, "
+        "heads={}, edge_dim={}, dropout={:.2f})",
+        in_channels, out_channels, heads, edge_dim, dropout);
   }
 
   auto forward(const torch::Tensor& x, const torch::Tensor& edge_index,
                const torch::Tensor& edge_attr) -> torch::Tensor {
     // Cold Start short-circuit (no edges sampled for this batch)
     if (edge_index.size(1) == 0) {
+      TGN_LOG_WARN(
+          "TransformerConv: Cold start on forward (0 edges). Using "
+          "skip-connection only.");
       return w_skip_->forward(x);
     }
 
@@ -134,9 +144,18 @@ struct TGNMemoryImpl : torch::nn::Module {
     src_store_.resize(num_nodes_);
     dst_store_.resize(num_nodes_);
     reset_state();
+
+    const auto bytes =
+        memory_.nbytes() + last_update_.nbytes() + assoc_.nbytes();
+    TGN_LOG_INFO(
+        "TGNMemory: ~{:.2f} MiB allocated ({} nodes, memory_dim: {}, msg_dim: "
+        "{}, gru_cell_dim: {})",
+        bytes / (1024.0 * 1024.0), num_nodes_, cfg.memory_dim, msg_dim_,
+        cell_dim);
   }
 
   auto reset_state() -> void {
+    TGN_LOG_DEBUG("TGNMemory: Resetting state");
     memory_.zero_();
     last_update_.zero_();
     reset_msg_store();
@@ -170,6 +189,9 @@ struct TGNMemoryImpl : torch::nn::Module {
   auto train(bool mode = true) -> void override {
     if (is_training() && !mode) {
       // Flush message store in case we just entered eval mode.
+      TGN_LOG_DEBUG(
+          "TGNMemory: Switching to Eval. Flushing memory for all {} nodes",
+          num_nodes_);
       update_memory(torch::arange(static_cast<std::int64_t>(num_nodes_)));
       reset_msg_store();
     }
@@ -321,11 +343,11 @@ struct TGNImpl::Impl {
         assoc_(torch::full({static_cast<std::int64_t>(store->num_nodes())}, -1,
                            torch::dtype(torch::kLong))) {
     time_encoder_ = detail::TimeEncoder(cfg.time_dim);
-    memory_ = detail::TGNMemory(cfg, time_encoder_, store->msg_dim(),
-                                store->num_nodes());
     conv_ = detail::TransformerConv(cfg.memory_dim, cfg.embedding_dim / 2,
                                     store->msg_dim() + cfg.time_dim,
                                     cfg.num_heads, cfg.dropout);
+    memory_ = detail::TGNMemory(cfg, time_encoder_, store->msg_dim(),
+                                store->num_nodes());
   }
 
   const TGNConfig cfg_;

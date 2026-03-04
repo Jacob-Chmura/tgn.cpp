@@ -15,6 +15,7 @@
 #include <utility>
 #include <vector>
 
+#include "logging.h"
 #include "tgn.h"
 #include "tguf.h"
 
@@ -52,6 +53,15 @@ class TGStoreImpl final : public TGStore {
         val_(data.val_start.value_or(data.test_start.value_or(num_edges_)),
              data.test_start.value_or(num_edges_)),
         test_(data.test_start.value_or(num_edges_), num_edges_) {
+    TGN_LOG_INFO("TGStore: Loaded {} edges ({} nodes, msg_dim: {})", num_edges_,
+                 num_nodes_, msg_dim_);
+    if (neg_dst_.has_value()) {
+      TGN_LOG_INFO("TGStore: Pre-computed negatives found ({} negatives/edge)",
+                   neg_dst_->size(1));
+    }
+    TGN_LOG_INFO("TGStore: Edge Splits Train[{}:{}] Val[{}:{}] Test[{}:{}]",
+                 train_.start(), train_.end(), val_.start(), val_.end(),
+                 test_.start(), test_.end());
     if (train_.size() > 0) {
       const auto train_dst =
           dst_.slice(0, 0, static_cast<std::int64_t>(train_.end()));
@@ -59,6 +69,8 @@ class TGStoreImpl final : public TGStore {
           .min_id = train_dst.min().item<std::int64_t>(),
           .max_id = train_dst.max().item<std::int64_t>(),
       };
+      TGN_LOG_INFO("TGStore: Using RandomNegSampler w/ sample range: [{}, {}]",
+                   sampler_->min_id, sampler_->max_id);
     }
 
     if (data.label_n_id.has_value()) {
@@ -130,8 +142,18 @@ class TGStoreImpl final : public TGStore {
         auto end = static_cast<std::size_t>(
             std::distance(stop_e_ids_.begin(), it_end));
 
+        TGN_LOG_INFO(
+            "TGStore: Mapped Label Time [{}, {}] -> Edges [{}, {}] -> Label "
+            "Split "
+            "[{}:{}]",
+            start_t, end_t, start_e_pos, end_e_pos, start, end);
+
         return Range{start, end};
       };
+
+      TGN_LOG_INFO(
+          "TGStore: Node labels active (label_dim: {}, total_events: {})",
+          label_dim_, label_events_.size());
 
       const auto train_start_time = 0;
       const auto train_end_time = get_edge_time(train_.end());
@@ -144,6 +166,10 @@ class TGStoreImpl final : public TGStore {
       train_label_ = calculate_label_range(train_start_time, train_end_time);
       val_label_ = calculate_label_range(val_start, val_end_time);
       test_label_ = calculate_label_range(test_start, test_end_time);
+
+      TGN_LOG_INFO("TGStore: Label Splits Train[{}:{}] Val[{}:{}] Test[{}:{}]",
+                   train_label_.start(), train_label_.end(), val_label_.start(),
+                   val_label_.end(), test_label_.start(), test_label_.end());
     }
   }
 
@@ -182,15 +208,22 @@ class TGStoreImpl final : public TGStore {
     std::optional<torch::Tensor> batch_neg = std::nullopt;
 
     if (strategy == NegStrategy::Random) {  // TODO(kuba): fix rng
+      TGN_LOG_DEBUG("TGStore: get_batch [{}:{}] (NegStrategy::Random)", start,
+                    end);
       TORCH_CHECK(sampler_.has_value(),
                   "Random sampling requested but sampler not initialized "
                   "(train split is empty)");
       batch_neg = sampler_->sample(e - s);
     } else if (strategy == NegStrategy::PreComputed) {
+      TGN_LOG_DEBUG("TGStore: get_batch [{}:{}] (NegStrategy::PreComputed)",
+                    start, end);
       TORCH_CHECK(
           neg_dst_.has_value(),
           "NegStrategy::PreComputed requested but no neg_dst tensor available");
       batch_neg = neg_dst_->slice(0, s, e);
+    } else {
+      TGN_LOG_DEBUG("TGStore: get_batch [{}:{}] (NegStrategy::None)", start,
+                    end);
     }
 
     return Batch{.src = src_.slice(0, s, e),
@@ -237,16 +270,35 @@ class TGStoreImpl final : public TGStore {
   std ::vector<std::size_t> stop_e_ids_;
 };
 
+[[nodiscard]] static auto get_data_size_bytes(const TGData& data)
+    -> std::size_t {
+  auto bytes = data.src.nbytes() + data.dst.nbytes() + data.t.nbytes() +
+               data.msg.nbytes();
+  if (data.neg_dst.has_value()) {
+    bytes += data.neg_dst->nbytes();
+  }
+  if (data.label_n_id.has_value()) {
+    bytes += data.label_n_id->nbytes();
+    bytes += data.label_t->nbytes();
+    bytes += data.label_y_true->nbytes();
+  }
+  return bytes;
+}
+
 }  // namespace detail
 
 [[nodiscard]] auto TGStore::from_memory(TGData data)
     -> std::shared_ptr<TGStore> {
   data.validate();
+
+  TGN_LOG_INFO("TGStore: Initialized from memory (~{:.2f} GiB allocated)",
+               detail::get_data_size_bytes(data) / (1024.0 * 1024.0 * 1024.0));
   return std::make_shared<detail::TGStoreImpl>(std::move(data));
 }
 
 [[nodiscard]] auto TGStore::from_tguf(const TGUFOptions& opts)
     -> std::shared_ptr<TGStore> {
+  TGN_LOG_INFO("TGStore: Mapping TGUF file: {}", opts.path);
   auto fd = open(opts.path.c_str(), O_RDONLY);
   if (fd == -1) {
     throw std::runtime_error("Could not open file: " + opts.path);
@@ -271,6 +323,8 @@ class TGStoreImpl final : public TGStore {
     throw std::runtime_error(
         "Invalid TGUF magic number. File is corrupted or wrong format.");
   }
+  TGN_LOG_INFO("TGStore: TGUF v{:X} Header Parsed (Magic Ox{:X})",
+               header->version, header->magic);
 
   // TGN training is mostly sequential per epoch.
   madvise(addr, file_size, MADV_SEQUENTIAL | MADV_WILLNEED);
@@ -307,9 +361,8 @@ class TGStoreImpl final : public TGStore {
          const std::string& name) -> std::optional<std::size_t> {
     if (opt_val.has_value()) {
       if (header_val != 0 && *opt_val != header_val) {
-        std::cout << "[TGUF WARNING]: Overriding hardcoded " << name << " ("
-                  << header_val << ") with user-provided value (" << *opt_val
-                  << "). Things may break..." << std::endl;
+        TGN_LOG_WARN("TGUF: Overriding header {} ({}) with user value ({})",
+                     name, header_val, *opt_val);
       }
       return opt_val;
     }
@@ -338,7 +391,6 @@ class TGStoreImpl final : public TGStore {
     data.neg_dst =
         mmap_tensor(header->neg_dst_offset, {n_edges, n_neg}, torch::kLong);
   }
-
   if (header->num_labels > 0) {
     data.label_n_id =
         mmap_tensor(header->label_n_id_offset, {n_labels}, torch::kLong);
@@ -349,6 +401,8 @@ class TGStoreImpl final : public TGStore {
   }
 
   data.validate();
+  TGN_LOG_INFO("TGStore: Initialized from TGUF (~{:.2f} GiB Memory-Mapped)",
+               detail::get_data_size_bytes(data) / (1024.0 * 1024.0 * 1024.0));
   return std::make_shared<detail::TGStoreImpl>(std::move(data));
 }
 

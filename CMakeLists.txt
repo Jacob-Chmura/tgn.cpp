@@ -52,7 +52,7 @@ endif()
 add_library(${PROJECT_NAME} SHARED
     src/tgn.cpp
     src/tguf.cpp
-    src/recency_sampler.cpp
+    src/sampler.cpp
     src/scatter_ops.cpp
     src/store.cpp
 )
@@ -124,7 +124,7 @@ if (TGN_BUILD_TESTS)
 
     include(GoogleTest)
     gtest_discover_tests(test_unit PROPERTIES LABELS "unit")
-    gtest_discover_tests(test_integration 
+    gtest_discover_tests(test_integration
         PROPERTIES LABELS "integration"
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
     )
