@@ -25,9 +25,16 @@ add_compile_options(
 )
 
 include(FetchContent)
+
+if(APPLE) # Target Apple Silicon (M1/M2/M3)
+    set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cpu/libtorch-macos-arm64-2.10.0.zip")
+else() # Target Linux x86_64
+    set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cpu/libtorch-shared-with-deps-2.10.0%2Bcpu.zip")
+endif()
+
 FetchContent_Declare(
     libtorch
-    URL https://download.pytorch.org/libtorch/cpu/libtorch-shared-with-deps-2.10.0%2Bcpu.zip
+    URL ${LIBTORCH_URL}
     DOWNLOAD_EXTRACT_TIMESTAMP ON
 )
 FetchContent_MakeAvailable(libtorch)
