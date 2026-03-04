@@ -87,10 +87,25 @@ struct TGUFBuilder::Impl {
     if (fd == -1) {
       throw std::runtime_error("Failed to create file");
     }
+
+#ifdef __APPLE__
+    fstore_t store = {F_ALLOCSP, F_VOLPOSES, 0, total_mapped_size, 0};
+    if (fcntl(fd, F_PREALLOCATE, &store) == -1) {
+      if (ftruncate(fd, total_mapped_size) != 0) {
+        close(fd);
+        throw std::runtime_error("Failed to allocate disk space on (macOS)");
+      }
+    }
+    if (ftruncate(fd, total_mapped_size) != 0) {
+      close(fd);
+      throw std::runtime_error("Failed to set file size (macOS)");
+    }
+#else
     if (posix_fallocate(fd, 0, total_mapped_size) != 0) {
       close(fd);
-      throw std::runtime_error("Failed to allocate disk space");
+      throw std::runtime_error("Failed to allocate disk space (Linux)");
     }
+#endif
 
     base_ptr = mmap(nullptr, total_mapped_size, PROT_READ | PROT_WRITE,
                     MAP_SHARED, fd, 0);
