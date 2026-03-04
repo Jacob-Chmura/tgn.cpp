@@ -1,6 +1,6 @@
 BUILD_DIR := build
 CMAKE_FLAGS := -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-NPROCS := $(shell nproc)
+NPROCS := $(shell nproc 2>/dev/null || sysctl -n hw.logicalcpu)
 EXAMPLE_LINK := $(BUILD_DIR)/examples/tgn_link_pred
 EXAMPLE_NODE := $(BUILD_DIR)/examples/tgn_node_pred
 
