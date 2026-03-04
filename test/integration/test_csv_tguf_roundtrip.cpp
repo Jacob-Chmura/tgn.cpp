@@ -13,12 +13,10 @@ class CSV_TGUF_RoundtripTest : public ::testing::Test {
   const std::string edges_csv = resource_dir + "edges.csv";
   const std::string labels_csv = resource_dir + "labels.csv";
   const std::string output_tguf = resource_dir + "out.tguf";
+  const std::string cmd = std::format("{} {} {} {}", script_path, edges_csv,
+                                      output_tguf, labels_csv);
 
-  void SetUp() override {
-    std::string cmd = std::format("{} {} {} {}", script_path, edges_csv,
-                                  output_tguf, labels_csv);
-    ASSERT_EQ(std::system(cmd.c_str()), 0);
-  }
+  void SetUp() override { ASSERT_EQ(std::system(cmd.c_str()), 0); }
 };
 
 TEST_F(CSV_TGUF_RoundtripTest, Verify) {
@@ -67,7 +65,7 @@ TEST_F(CSV_TGUF_RoundtripTest, Verify) {
   EXPECT_FLOAT_EQ(label1.y_true[0][0].item<float>(), 0.0F);
   EXPECT_FLOAT_EQ(label1.y_true[0][1].item<float>(), 1.0F);
 
-  // Verify Edge-Label Synchronization (Stop IDs)
+  // Check Edge-Label Synchronization (Stop IDs)
   // Label 0 (t=12) sees edges before 12 (Index 0, 1) -> Stop ID = 2
   EXPECT_EQ(store->get_stop_e_id_for_label_event(0), 2);
   // Label 1 (t=24) sees all edges (Index 0, 1, 2) -> Stop ID = 3
