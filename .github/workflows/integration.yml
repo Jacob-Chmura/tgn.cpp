@@ -15,7 +15,7 @@ jobs:
       fail-fast: false
       matrix:
         # Testing across Linux and macOS
-        os: [ubuntu-latest] # TODO(kuba): Get LibTorch to link with macOS
+        os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
 
@@ -41,7 +41,7 @@ jobs:
       fail-fast: false
       matrix:
         # Testing across Linux and macOS
-        os: [ubuntu-latest] # TODO(kuba): Get LibTorch to link with macOS
+        os: [ubuntu-latest, macos-latest]
         dataset: [tgbl-wiki] # TODO(kuba): Consider some larger ones too
     steps:
       - uses: actions/checkout@v4
@@ -72,7 +72,7 @@ jobs:
       fail-fast: false
       matrix:
         # Testing across Linux and macOS
-        os: [ubuntu-latest] # TODO(kuba): Get LibTorch to link with macOS
+        os: [ubuntu-latest, macos-latest]
         dataset: [tgbn-trade] # TODO(kuba): Consider some larger ones too
     steps:
       - uses: actions/checkout@v4
@@ -103,7 +103,7 @@ jobs:
       fail-fast: false
       matrix:
         # Testing across Linux and macOS
-        os: [ubuntu-latest] # TODO(kuba): Get LibTorch to link with macOS
+        os: [ubuntu-latest, macos-latest]
     steps:
       - uses: actions/checkout@v4
 
