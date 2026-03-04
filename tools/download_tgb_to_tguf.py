@@ -118,11 +118,6 @@ def main() -> None:
 
         streamer.finalize()
         print(f"Successfully created: {args.output.resolve()}")
-    except BrokenPipeError:
-        stdout, stderr = self.proc.communicate()
-        print(f"C++ Stdout: {stdout.decode() if stdout else 'None'}")
-        print(f"C++ Stderr: {stderr.decode() if stderr else 'None'}")
-        raise RuntimeError("tguf_cli crashed during streaming.")
     except Exception as e:
         print(f"Error during streaming: {e}")
         streamer.proc.terminate()
