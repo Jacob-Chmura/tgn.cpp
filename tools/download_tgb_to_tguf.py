@@ -64,7 +64,6 @@ def main() -> None:
             full_negs[mask, :n_neg] = [x[:n_neg] for x in negs]
 
         full_negs = full_negs[:, :n_neg]
-    print(f"Num edges: {n_edges}, Msg dim: {m_dim}, Num negatives: {n_neg}")
 
     # Node labels (for node prediction)
     n_labels, l_dim, label_data = 0, 0, None
@@ -77,7 +76,6 @@ def main() -> None:
         label_data = np.array(rows)
         n_labels = len(label_data)
         l_dim = label_data.shape[1] - 2  # Peek to get dimension: t, id, [labels...]
-        print(f"Num labels: {n_labels}, Label dim: {l_dim}")
 
     # Bake in pre-defined splits into TGUF header
     val_start = int(np.argmax(ds.val_mask))
@@ -89,7 +87,7 @@ def main() -> None:
 
     try:
         edge_chunks = (n_edges + args.batch_size - 1) // args.batch_size
-        with tqdm(total=edge_chunks, desc="Edges", unit="batch") as pbar:
+        with tqdm(total=edge_chunks, desc="Appending Edges", unit="batch") as pbar:
             pbar.set_postfix({"batch_size": args.batch_size})
             for i in range(0, len(src), args.batch_size):
                 end = i + args.batch_size
@@ -105,7 +103,9 @@ def main() -> None:
         if n_labels > 0:
             label_chunks = (n_labels + args.batch_size - 1) // args.batch_size
             assert label_data is not None
-            with tqdm(total=label_chunks, desc="Labels", unit="batch") as pbar:
+            with tqdm(
+                total=label_chunks, desc="Appending Labels", unit="batch"
+            ) as pbar:
                 pbar.set_postfix({"batch_size": args.batch_size})
                 for i in range(0, n_labels, args.batch_size):
                     end = i + args.batch_size
@@ -117,7 +117,6 @@ def main() -> None:
                     pbar.update(1)
 
         streamer.finalize()
-        print(f"Successfully created: {args.output.resolve()}")
     except Exception as e:
         print(f"Error during streaming: {e}")
         streamer.proc.terminate()

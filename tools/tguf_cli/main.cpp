@@ -116,9 +116,7 @@ auto main(int argc, char** argv) -> int {
         process_label_batch(h, builder, bsize, scratch);
       }
     }
-    std::cout << "Finalizing builder...\n";
     builder.finalize();
-    std::cout << "TGUF construction complete." << std::endl;
   } catch (const std::exception& e) {
     std::cerr << "Error in tguf_cli: " << e.what() << std::endl;
     return 1;

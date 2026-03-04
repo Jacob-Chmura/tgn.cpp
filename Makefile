@@ -5,10 +5,12 @@ EXAMPLE_LINK := $(BUILD_DIR)/examples/tgn_link_pred
 EXAMPLE_NODE := $(BUILD_DIR)/examples/tgn_node_pred
 
 MAKEFLAGS += --no-print-directory
-BUILD_TYPE ?= RelWithDebInfo
+BUILD_TYPE ?= Release
 
 .PHONY: all
 all: build
+
+.PRECIOUS: data/%.tguf
 
 .PHONY: help
 help:
@@ -55,25 +57,28 @@ release:
 	@$(MAKE) build BUILD_TYPE=Release
 
 .PHONY: tools
-tools: config
-	@cd $(BUILD_DIR) && cmake -DTGN_BUILD_TOOLS=ON ..
+tools:
+	@mkdir -p $(BUILD_DIR)
+	@cd $(BUILD_DIR) && cmake $(CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DTGN_BUILD_TOOLS=ON ..
 	@$(MAKE) build
 
 .PHONY: examples
 examples: config
-	@cd $(BUILD_DIR) && cmake -DTGN_BUILD_EXAMPLES=ON ..
+	@mkdir -p $(BUILD_DIR)
+	@cd $(BUILD_DIR) && cmake $(CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DTGN_BUILD_EXAMPLES=ON ..
 	@$(MAKE) build
 
 .PHONY: test
-test: config
-	@cd $(BUILD_DIR) && cmake -DTGN_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Debug ..
-	$(MAKE) build
+test:
+	@mkdir -p $(BUILD_DIR)
+	@cd $(BUILD_DIR) && cmake $(CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=Debug -DTGN_BUILD_TESTS=ON ..
+	@$(MAKE) build BUILD_TYPE=Debug
 	@cd $(BUILD_DIR) && ctest -L unit --output-on-failure -j $(NPROCS)
 
 .PHONY: test-integration
 test-integration: tools
-	@cd $(BUILD_DIR) && cmake -DTGN_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Debug ..
-	$(MAKE) build
+	@cd $(BUILD_DIR) && cmake $(CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=Debug -DTGN_BUILD_TESTS=ON -DTGN_BUILD_TOOLS=ON ..
+	@$(MAKE) build BUILD_TYPE=Debug
 	@cd $(BUILD_DIR) && ctest -L integration --output-on-failure -j $(NPROCS)
 
 data/%.tguf: tools
@@ -86,12 +91,10 @@ data/%.tguf: tools
 
 .PHONY: run-link-%
 run-link-%: examples data/%.tguf
-	@echo "Running Link Prediction: data/$*.tguf"
 	@$(EXAMPLE_LINK) data/$*.tguf
 
 .PHONY: run-node-%
 run-node-%: examples data/%.tguf
-	@echo "Running Node Prediction: data/$*.tguf"
 	@$(EXAMPLE_NODE) data/$*.tguf
 
 .PHONY: download-%

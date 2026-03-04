@@ -9,6 +9,7 @@
 #include <utility>
 #include <vector>
 
+#include "logging.h"
 #include "tgn.h"
 #include "util.h"
 
@@ -18,11 +19,14 @@ constexpr double learning_rate = 1e-4;
 
 namespace {
 
+std::size_t current_epoch = 1;
+
 struct LinkPredictorImpl : torch::nn::Module {
   explicit LinkPredictorImpl(std::size_t in_dim) {
     w_src_ = register_module("w_src_", torch::nn::Linear(in_dim, in_dim));
     w_dst_ = register_module("w_dst_", torch::nn::Linear(in_dim, in_dim));
     w_final_ = register_module("w_final_", torch::nn::Linear(in_dim, 1));
+    TGN_LOG_INFO("LinkDecoder: Initialized (in_channels={})", in_dim);
   }
 
   auto forward(const torch::Tensor& z_src, const torch::Tensor& z_dst)
@@ -52,7 +56,7 @@ auto compute_mrr(const torch::Tensor& pred_pos, const torch::Tensor& pred_neg)
 }
 
 auto train(tgn::TGN& encoder, LinkPredictor& decoder, torch::optim::Adam& opt,
-           const std::shared_ptr<tgn::TGStore>& store) -> float {
+           const std::shared_ptr<tgn::TGStore>& store) -> void {
   auto start_time = std::chrono::steady_clock::now();
   encoder->train();
   decoder->train();
@@ -84,16 +88,18 @@ auto train(tgn::TGN& encoder, LinkPredictor& decoder, torch::optim::Adam& opt,
     encoder->update_state(batch.src, batch.dst, batch.t, batch.msg);
     encoder->detach_memory();
 
-    util::progress_bar(e_id - e_range.start(), e_range.size(), "Train",
-                       start_time);
+    const auto running_loss =
+        total_loss / std::max<float>(1.0f, e_id - e_range.start());
+    util::progress_bar(
+        e_id - e_range.start(), e_range.size(), start_time,
+        std::format("Epoch {:2d}/{:2d} [Train]", current_epoch, num_epochs),
+        std::format("Loss: {:.3f}", running_loss));
   }
-
   std::cout << std::endl;
-  return total_loss / static_cast<float>(e_range.size());
 }
 
 auto eval(tgn::TGN& encoder, LinkPredictor& decoder,
-          const std::shared_ptr<tgn::TGStore>& store) -> float {
+          const std::shared_ptr<tgn::TGStore>& store) -> void {
   auto start_time = std::chrono::steady_clock::now();
 
   torch::NoGradGuard no_grad;
@@ -124,15 +130,15 @@ auto eval(tgn::TGN& encoder, LinkPredictor& decoder,
     perf_list.push_back(compute_mrr(pred_pos, pred_neg));
     encoder->update_state(batch.src, batch.dst, batch.t, batch.msg);
 
-    util::progress_bar(e_id - e_range.start(), e_range.size(), "Valid",
-                       start_time);
+    const auto running_mrr =
+        std::accumulate(perf_list.begin(), perf_list.end(), 0.0F) /
+        perf_list.size();
+    util::progress_bar(
+        e_id - e_range.start(), e_range.size(), start_time,
+        std::format("            [Valid]", current_epoch, num_epochs),
+        std::format("MRR:  {:.3f}", running_mrr));
   }
-
   std::cout << std::endl;
-  return perf_list.empty()
-             ? 0.0
-             : std::accumulate(perf_list.begin(), perf_list.end(), 0.0) /
-                   perf_list.size();
 }
 
 }  // namespace
@@ -143,7 +149,8 @@ auto main(int argc, char** argv) -> int {
     return 1;
   }
   const std::string tguf_path = argv[1];
-  std::cout << "Loading store from " << tguf_path << std::endl;
+  TGN_LOG_INFO("Running LinkPrediction ({})", tguf_path);
+
   tgn::TGUFOptions opts{.path = tguf_path};
   const auto store = tgn::TGStore::from_tguf(opts);
   const auto cfg = tgn::TGNConfig{};
@@ -156,10 +163,9 @@ auto main(int argc, char** argv) -> int {
   params.insert(params.end(), dec_params.begin(), dec_params.end());
   torch::optim::Adam opt(params, torch::optim::AdamOptions(learning_rate));
 
-  for (std::size_t epoch = 1; epoch <= num_epochs; ++epoch) {
-    auto loss = train(encoder, decoder, opt, store);
-    auto mrr = eval(encoder, decoder, store);
-    std::cout << "Epoch " << epoch << " Loss: " << loss << " MRR: " << mrr
-              << std::endl;
+  while (current_epoch <= num_epochs) {
+    train(encoder, decoder, opt, store);
+    eval(encoder, decoder, store);
+    ++current_epoch;
   }
 }

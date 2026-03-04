@@ -11,6 +11,7 @@
 #include <string>
 #include <utility>
 
+#include "logging.h"
 #include "tgn.h"
 
 namespace tgn {
@@ -33,6 +34,7 @@ struct TGUFBuilder::Impl {
        std::optional<std::size_t> val_start,
        std::optional<std::size_t> test_start)
       : path(std::move(p)), declared_edges(n_edges), declared_labels(n_labels) {
+    TGN_LOG_INFO("TGUFBuilder: Creating TGUF binary at {}", path);
     header.msg_dim = m_dim;
     header.label_dim = l_dim;
     header.n_neg = n_neg;
@@ -68,6 +70,18 @@ struct TGUFBuilder::Impl {
     }
 
     total_mapped_size = last_offset;
+
+    TGN_LOG_INFO(
+        "TGUFBuilder: Pre-allocating {:.2f} GiB for {} edges and {} labels "
+        "(msg_dim={}, label_dim={}, n_neg={})",
+        total_mapped_size / (1024.0 * 1024.0 * 1024.0), declared_edges,
+        declared_labels, header.msg_dim, header.label_dim, header.n_neg);
+    if (header.val_start > 0 || header.test_start > 0) {
+      TGN_LOG_INFO(
+          "TGUFBuilder: Using hardcoded edge splits (Val Start: {}, Test "
+          "Start: {})",
+          header.val_start, header.test_start);
+    }
 
     auto fd = open(path.c_str(), O_RDWR | O_CREAT | O_TRUNC, 0666);
     if (fd == -1) {
@@ -120,6 +134,8 @@ auto TGUFBuilder::append_edges(const Batch& batch) const -> void {
   if (count == 0) {
     return;
   }
+  TGN_LOG_DEBUG("TGUFBuilder: Appending {} edges to TGUF file", count);
+
   if (impl_->written_edges + count > impl_->declared_edges) {
     throw std::runtime_error(
         "TGUFBuilder::append_edges: Overflow. Attempting to write " +
@@ -178,6 +194,8 @@ auto TGUFBuilder::append_labels(const torch::Tensor& n_id,
   if (count == 0) {
     return;
   }
+  TGN_LOG_DEBUG("TGUFBuilder: Appending {} labels to TGUF file", count);
+
   if (impl_->written_labels + count > impl_->declared_labels) {
     throw std::runtime_error(
         "TGUFBuilder::append_labels: Overflow. Writing " +
@@ -207,6 +225,13 @@ auto TGUFBuilder::finalize() -> void {
     return;
   }
 
+  if (impl_->written_edges < impl_->declared_edges) {
+    TGN_LOG_WARN(
+        "TGUFBuilder: Finalizing with fewer edges than declared ({} < {}). "
+        "File will have unused padding.",
+        impl_->written_edges, impl_->declared_edges);
+  }
+
   // Update header with counts (user might have wrote less than declared)
   impl_->header.num_edges = impl_->written_edges;
   impl_->header.num_labels = impl_->written_labels;
@@ -216,5 +241,9 @@ auto TGUFBuilder::finalize() -> void {
   munmap(impl_->base_ptr, impl_->total_mapped_size);
   impl_->base_ptr = nullptr;
   impl_->finalized = true;
+
+  TGN_LOG_INFO(
+      "TGUFBuilder: Finalized to {} (Total edges: {}, Total labels: {})",
+      impl_->path, impl_->header.num_edges, impl_->header.num_labels);
 }
 }  // namespace tgn

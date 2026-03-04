@@ -52,12 +52,9 @@ def main() -> None:
     args.output.parent.mkdir(parents=True, exist_ok=True)
 
     n_edges, m_dim, n_neg, _ = get_csv_info(args.edges)
-    print(f"Num edges: {n_edges}, Msg dim: {m_dim}, Num negatives: {n_neg}")
-
     n_labels, l_dim = 0, 0
     if args.labels:
         n_labels, _, _, l_dim = get_csv_info(args.labels)
-        print(f"Num labels: {n_labels}, Label dim: {l_dim}")
 
     streamer = TGUFStreamer(args.output, n_edges, m_dim, n_neg, n_labels, l_dim)
 
@@ -67,7 +64,7 @@ def main() -> None:
 
     try:
         edge_chunks = (n_edges + args.batch_size - 1) // args.batch_size
-        with tqdm(total=edge_chunks, desc="Edges", unit="batch") as pbar:
+        with tqdm(total=edge_chunks, desc="Appending Edges", unit="batch") as pbar:
             pbar.set_postfix({"batch_size": args.batch_size})
             for chunk in pd.read_csv(args.edges, chunksize=args.batch_size):
                 streamer.stream_edge_batch(
@@ -81,7 +78,9 @@ def main() -> None:
 
         if n_labels > 0:
             label_chunks = (n_labels + args.batch_size - 1) // args.batch_size
-            with tqdm(total=label_chunks, desc="Labels", unit="chunk") as pbar:
+            with tqdm(
+                total=label_chunks, desc="Appending Labels", unit="chunk"
+            ) as pbar:
                 pbar.set_postfix({"batch_size": args.batch_size})
                 for chunk in pd.read_csv(args.labels, chunksize=args.batch_size):
                     streamer.stream_label_batch(
@@ -92,14 +91,12 @@ def main() -> None:
                     pbar.update(1)
 
         streamer.finalize()
-        print(f"Successfully created {args.output.resolve()}")
     except Exception as e:
         print(f"Error during streaming: {e}")
         streamer.proc.terminate()
 
 
 def get_csv_info(path: Path) -> Tuple[int, ...]:
-    print(f"Infering metadata from {path}...")
     preview = pd.read_csv(path, nrows=1, comment="#")
     cols = preview.columns.tolist()
 

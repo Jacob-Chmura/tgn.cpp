@@ -10,6 +10,7 @@
 #include <utility>
 #include <vector>
 
+#include "logging.h"
 #include "tgn.h"
 #include "util.h"
 
@@ -18,6 +19,8 @@ constexpr double learning_rate = 1e-4;
 
 namespace {
 
+std::size_t current_epoch = 1;
+
 struct NodePredictorImpl : torch::nn::Module {
   explicit NodePredictorImpl(std::size_t in_dim, std::size_t out_dim,
                              std::size_t hidden_dim = 64) {
@@ -25,6 +28,10 @@ struct NodePredictorImpl : torch::nn::Module {
                                    torch::nn::ReLU(),
                                    torch::nn::Linear(hidden_dim, out_dim));
     register_module("model_", model_);
+    TGN_LOG_INFO(
+        "NodeDecoder: Initialized (in_channels={}, hidden_dim={}, "
+        "out_channels={})",
+        in_dim, hidden_dim, out_dim);
   }
 
   auto forward(const torch::Tensor& z_node) -> torch::Tensor {
@@ -54,7 +61,7 @@ auto compute_ndcg(const torch::Tensor& y_pred, const torch::Tensor& y_true,
 }
 
 auto train(tgn::TGN& encoder, NodePredictor& decoder, torch::optim::Adam& opt,
-           const std::shared_ptr<tgn::TGStore>& store) -> float {
+           const std::shared_ptr<tgn::TGStore>& store) -> void {
   auto start_time = std::chrono::steady_clock::now();
   encoder->train();
   decoder->train();
@@ -92,16 +99,18 @@ auto train(tgn::TGN& encoder, NodePredictor& decoder, torch::optim::Adam& opt,
 
     encoder->detach_memory();
 
-    util::progress_bar(l_id - l_range.start(), l_range.size(), "Train",
-                       start_time);
+    const auto running_loss =
+        total_loss / std::max<float>(1.0f, (l_id - l_range.start()));
+    util::progress_bar(
+        e_id - e_range.start(), e_range.size(), start_time,
+        std::format("Epoch {:2d}/{:2d} [Train]", current_epoch, num_epochs),
+        std::format("Loss:    {:.3f}", running_loss));
   }
-
   std::cout << std::endl;
-  return total_loss / static_cast<float>(l_range.size());
 }
 
 auto eval(tgn::TGN& encoder, NodePredictor& decoder,
-          const std::shared_ptr<tgn::TGStore>& store) -> float {
+          const std::shared_ptr<tgn::TGStore>& store) -> void {
   auto start_time = std::chrono::steady_clock::now();
 
   torch::NoGradGuard no_grad;
@@ -130,15 +139,15 @@ auto eval(tgn::TGN& encoder, NodePredictor& decoder,
     const auto y_pred = decoder->forward(z);
     perf_list.push_back(compute_ndcg(y_pred, label_event.y_true));
 
-    util::progress_bar(l_id - l_range.start(), l_range.size(), "Valid",
-                       start_time);
+    const auto running_ndcg =
+        std::accumulate(perf_list.begin(), perf_list.end(), 0.0F) /
+        perf_list.size();
+    util::progress_bar(
+        e_id - e_range.start(), e_range.size(), start_time,
+        std::format("            [Valid]", current_epoch, num_epochs),
+        std::format("NDCG@10: {:.3f}", running_ndcg));
   }
-
   std::cout << std::endl;
-  return perf_list.empty()
-             ? 0.0
-             : std::accumulate(perf_list.begin(), perf_list.end(), 0.0) /
-                   perf_list.size();
 }
 
 }  // namespace
@@ -149,7 +158,8 @@ auto main(int argc, char** argv) -> int {
     return 1;
   }
   const std::string tguf_path = argv[1];
-  std::cout << "Loading store from " << tguf_path << std::endl;
+  TGN_LOG_INFO("Running Node Property Prediction ({})", tguf_path);
+
   tgn::TGUFOptions opts{.path = tguf_path};
   const auto store = tgn::TGStore::from_tguf(opts);
   const auto cfg = tgn::TGNConfig{};
@@ -163,10 +173,9 @@ auto main(int argc, char** argv) -> int {
   params.insert(params.end(), dec_params.begin(), dec_params.end());
   torch::optim::Adam opt(params, torch::optim::AdamOptions(learning_rate));
 
-  for (std::size_t epoch = 1; epoch <= num_epochs; ++epoch) {
-    auto loss = train(encoder, decoder, opt, store);
-    auto ndcg = eval(encoder, decoder, store);
-    std::cout << "Epoch " << epoch << " Loss: " << loss << " NDCG: " << ndcg
-              << std::endl;
+  while (current_epoch <= num_epochs) {
+    train(encoder, decoder, opt, store);
+    eval(encoder, decoder, store);
+    ++current_epoch;
   }
 }
