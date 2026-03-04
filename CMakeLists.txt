@@ -36,6 +36,10 @@ set(CMAKE_PREFIX_PATH ${libtorch_SOURCE_DIR})
 find_package(Torch REQUIRED)
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${TORCH_CXX_FLAGS}")
 
+if(APPLE)
+    set(OpenMP_ROOT "/opt/homebrew/opt/libomp")
+endif()
+
 find_package(OpenMP REQUIRED)
 
 if(CMAKE_BUILD_TYPE STREQUAL "Debug")
