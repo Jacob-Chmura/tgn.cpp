@@ -78,7 +78,9 @@ def main() -> None:
 
         if n_labels > 0:
             label_chunks = (n_labels + args.batch_size - 1) // args.batch_size
-            with tqdm(total=label_chunks, desc="Appending Labels", unit="chunk") as pbar:
+            with tqdm(
+                total=label_chunks, desc="Appending Labels", unit="chunk"
+            ) as pbar:
                 pbar.set_postfix({"batch_size": args.batch_size})
                 for chunk in pd.read_csv(args.labels, chunksize=args.batch_size):
                     streamer.stream_label_batch(

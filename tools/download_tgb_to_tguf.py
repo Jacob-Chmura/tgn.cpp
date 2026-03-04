@@ -103,7 +103,9 @@ def main() -> None:
         if n_labels > 0:
             label_chunks = (n_labels + args.batch_size - 1) // args.batch_size
             assert label_data is not None
-            with tqdm(total=label_chunks, desc="Appending Labels", unit="batch") as pbar:
+            with tqdm(
+                total=label_chunks, desc="Appending Labels", unit="batch"
+            ) as pbar:
                 pbar.set_postfix({"batch_size": args.batch_size})
                 for i in range(0, n_labels, args.batch_size):
                     end = i + args.batch_size
