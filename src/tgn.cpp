@@ -62,7 +62,7 @@ struct TransformerConvImpl : torch::nn::Module {
                const torch::Tensor& edge_attr) -> torch::Tensor {
     // Cold Start short-circuit (no edges sampled for this batch)
     if (edge_index.size(1) == 0) {
-      TGN_LOG_WARN(
+      TGN_LOG_DEBUG(
           "TransformerConv: Cold start on forward (0 edges). Using "
           "skip-connection only.");
       return w_skip_->forward(x);

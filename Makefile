@@ -86,12 +86,10 @@ data/%.tguf: tools
 
 .PHONY: run-link-%
 run-link-%: examples data/%.tguf
-	@echo "Running Link Prediction: data/$*.tguf"
 	@$(EXAMPLE_LINK) data/$*.tguf
 
 .PHONY: run-node-%
 run-node-%: examples data/%.tguf
-	@echo "Running Node Prediction: data/$*.tguf"
 	@$(EXAMPLE_NODE) data/$*.tguf
 
 .PHONY: download-%

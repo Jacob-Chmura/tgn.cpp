@@ -243,7 +243,7 @@ auto TGUFBuilder::finalize() -> void {
   impl_->finalized = true;
 
   TGN_LOG_INFO(
-      "TGUFBuilder: Finalized to disk. Total edges: {}, Total labels: {}",
-      impl_->header.num_edges, impl_->header.num_labels);
+      "TGUFBuilder: Finalized to {} (Total edges: {}, Total labels: {})",
+      impl_->path, impl_->header.num_edges, impl_->header.num_labels);
 }
 }  // namespace tgn
