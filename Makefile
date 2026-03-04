@@ -5,7 +5,7 @@ EXAMPLE_LINK := $(BUILD_DIR)/examples/tgn_link_pred
 EXAMPLE_NODE := $(BUILD_DIR)/examples/tgn_node_pred
 
 MAKEFLAGS += --no-print-directory
-BUILD_TYPE ?= RelWithDebInfo
+BUILD_TYPE ?= Release
 
 .PHONY: all
 all: build
