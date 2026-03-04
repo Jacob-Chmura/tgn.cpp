@@ -4,9 +4,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$SCRIPT_DIR/.."
 
-if [ "$#" -ne 1 ]; then
-    echo "Usage: $0 <dataset_name>"
-    echo "Example: $0 tgbl-wiki"
+if [[ $# -lt 2 ]]; then
+    echo "Usage: $0 <edges_csv> <output_tguf> [labels_csv]" >&2
     exit 1
 fi
 
@@ -15,15 +14,15 @@ if ! command -v uv >/dev/null 2>&1; then
     exit 1
 fi
 
-DATASET_NAME="$1"
-OUTPUT_PATH="$PROJECT_ROOT/data/$DATASET_NAME.tguf"
+EDGES="$1"
+OUTPUT="$2"
+LABELS="${3:-}"
+
+PY_ARGS=(--edges "$EDGES" --output "$OUTPUT")
+[[ -n "$LABELS" ]] && PY_ARGS+=(--labels "$LABELS")
 
 uv run --no-project \
-    --with py-tgb \
     --with numpy \
-    --with torch \
     --with tqdm \
     --with pandas==2.2.3 \
-    python "$PROJECT_ROOT/tools/download_tgb_to_tguf.py" \
-    --name "$DATASET_NAME" \
-    --output "$OUTPUT_PATH"
+    python "$PROJECT_ROOT/tools/convert_csv_to_tguf.py" "${PY_ARGS[@]}"

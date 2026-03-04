@@ -7,18 +7,16 @@
 
 class CSV_TGUF_RoundtripTest : public ::testing::Test {
  protected:
-  const std::string resource_path =
-      "test/integration/resources/csv_tguf_roundtrip";
-  const std::string python_tool_path = "tools/convert_csv_to_tguf.py";
-  const std::string edges_csv = resource_path + "/edges.csv";
-  const std::string labels_csv = resource_path + "/labels.csv";
-  const std::string output_tguf = resource_path + "/out.tguf";
+  const std::string script_path = "scripts/convert_csv_to_tguf.sh";
+  const std::string resource_dir =
+      "test/integration/resources/csv_tguf_roundtrip/";
+  const std::string edges_csv = resource_dir + "edges.csv";
+  const std::string labels_csv = resource_dir + "labels.csv";
+  const std::string output_tguf = resource_dir + "out.tguf";
 
   void SetUp() override {
-    std::string cmd = "uv run python " + python_tool_path;
-    cmd += " --edges " + edges_csv;
-    cmd += " --labels " + labels_csv;
-    cmd += " --output " + output_tguf;
+    std::string cmd = std::format("{} {} {} {}", script_path, edges_csv,
+                                  output_tguf, labels_csv);
     ASSERT_EQ(std::system(cmd.c_str()), 0);
   }
 };
@@ -28,7 +26,7 @@ TEST_F(CSV_TGUF_RoundtripTest, Verify) {
 
   // TODO(kuba): Would be nice to read in expect out from resources
   EXPECT_EQ(store->num_edges(), 3);
-  EXPECT_EQ(store->num_nodes(), 3001);
+  EXPECT_EQ(store->num_nodes(), 31);
   EXPECT_EQ(store->msg_dim(), 2);
   EXPECT_EQ(store->label_dim(), 2);
 
@@ -39,23 +37,24 @@ TEST_F(CSV_TGUF_RoundtripTest, Verify) {
   EXPECT_EQ(batch.src[1].item<std::int64_t>(), 2);
   EXPECT_EQ(batch.src[2].item<std::int64_t>(), 3);
 
-  EXPECT_EQ(batch.dst[0].item<std::int64_t>(), 2000);
-  EXPECT_EQ(batch.dst[1].item<std::int64_t>(), 3000);
-  EXPECT_EQ(batch.dst[2].item<std::int64_t>(), 1000);
+  EXPECT_EQ(batch.dst[0].item<std::int64_t>(), 20);
+  EXPECT_EQ(batch.dst[1].item<std::int64_t>(), 30);
+  EXPECT_EQ(batch.dst[2].item<std::int64_t>(), 10);
 
-  EXPECT_EQ(batch.t[0].item<std::int64_t>(), 100);
-  EXPECT_EQ(batch.t[1].item<std::int64_t>(), 200);
-  EXPECT_EQ(batch.t[2].item<std::int64_t>(), 300);
+  EXPECT_EQ(batch.t[0].item<std::int64_t>(), 5);
+  EXPECT_EQ(batch.t[1].item<std::int64_t>(), 10);
+  EXPECT_EQ(batch.t[2].item<std::int64_t>(), 15);
 
   EXPECT_FLOAT_EQ(batch.msg[0][0].item<float>(), 0.11F);
   EXPECT_FLOAT_EQ(batch.msg[2][0].item<float>(), 0.31F);
 
   // Check Pre-Computed Negatives
-  EXPECT_EQ(batch.neg_dst.value()[0][0].item<std::int64_t>(), 999);
-  EXPECT_EQ(batch.neg_dst.value()[0][1].item<std::int64_t>(), 888);
-
-  EXPECT_EQ(batch.neg_dst.value()[2][0].item<std::int64_t>(), 555);
-  EXPECT_EQ(batch.neg_dst.value()[2][1].item<std::int64_t>(), 444);
+  EXPECT_EQ(batch.neg_dst.value()[0][0].item<std::int64_t>(), 9);
+  EXPECT_EQ(batch.neg_dst.value()[0][1].item<std::int64_t>(), 8);
+  EXPECT_EQ(batch.neg_dst.value()[1][0].item<std::int64_t>(), 7);
+  EXPECT_EQ(batch.neg_dst.value()[1][1].item<std::int64_t>(), 6);
+  EXPECT_EQ(batch.neg_dst.value()[2][0].item<std::int64_t>(), 5);
+  EXPECT_EQ(batch.neg_dst.value()[2][1].item<std::int64_t>(), 4);
 
   // Check labels
   auto label0 = store->get_label_event(0);
@@ -69,8 +68,8 @@ TEST_F(CSV_TGUF_RoundtripTest, Verify) {
   EXPECT_FLOAT_EQ(label1.y_true[0][1].item<float>(), 1.0F);
 
   // Verify Edge-Label Synchronization (Stop IDs)
-  // Label 0 (t=250) sees edges before 250 (Index 0, 1) -> Stop ID = 2
+  // Label 0 (t=12) sees edges before 12 (Index 0, 1) -> Stop ID = 2
   EXPECT_EQ(store->get_stop_e_id_for_label_event(0), 2);
-  // Label 1 (t=350) sees all edges (Index 0, 1, 2) -> Stop ID = 3
+  // Label 1 (t=24) sees all edges (Index 0, 1, 2) -> Stop ID = 3
   EXPECT_EQ(store->get_stop_e_id_for_label_event(1), 3);
 }
