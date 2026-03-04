@@ -40,7 +40,7 @@ inline void log_impl(LogLevel level, std::string_view file, int line,
   const auto short_file =
       (pos == std::string_view::npos) ? file : file.substr(pos + 1);
   const auto loc = std::format("{}:{}", short_file, line);
-  std::cerr << std::format("{} {:%H:%M:%S} [{:<15}] {}\n", prefix, now, loc,
+  std::cerr << std::format("{} {:%H:%M:%S} [{:<17}] {}\n", prefix, now, loc,
                            msg);
 }
 

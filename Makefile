@@ -10,6 +10,8 @@ BUILD_TYPE ?= RelWithDebInfo
 .PHONY: all
 all: build
 
+.PRECIOUS: data/%.tguf
+
 .PHONY: help
 help:
 	@echo "========================================================================"
