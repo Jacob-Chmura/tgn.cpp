@@ -36,7 +36,7 @@ jobs:
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: build-${{ matrix.build_type }}
+          name: build-${{ matrix.os }}-${{ matrix.build_type }}
           path: build/
 
   test:
@@ -54,7 +54,7 @@ jobs:
       - name: Download Debug Build
         uses: actions/download-artifact@v4
         with:
-          name: build-Debug
+          name: build-${{ matrix.os }}-Debug
           path: build/
 
       - name: Run Tests
@@ -69,7 +69,7 @@ jobs:
       - name: Download Debug Build
         uses: actions/download-artifact@v4
         with:
-          name: build-Debug
+          name: build-${{ matrix.os }}-Debug
           path: build/
 
       - uses: cpp-linter/cpp-linter-action@v2
