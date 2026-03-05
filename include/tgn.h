@@ -34,45 +34,6 @@ struct LabelEvent {
   torch::Tensor target;
 };
 
-enum class NegStrategy {
-  None,         // Node Prop or Inference
-  Random,       // Link Prop Training (1:1 random negatives)
-  PreComputed,  // Link Prop Eval (Uses pre-comptued negatives)
-};
-
-struct Range {
-  Range() = default;
-
-  Range(std::size_t s, std::size_t e) : start_(s), end_(e) {
-    if (end_ < start_) {
-      throw std::out_of_range("Invalid range");
-    }
-  }
-
-  [[nodiscard]] auto start() const -> std::size_t { return start_; }
-  [[nodiscard]] auto end() const -> std::size_t { return end_; }
-  [[nodiscard]] auto size() const -> std::size_t { return end_ - start_; }
-
-  std::size_t start_{0};
-  std::size_t end_{0};
-};
-
-struct TGData {
-  torch::Tensor src;
-  torch::Tensor dst;
-  torch::Tensor time;
-  torch::Tensor msg;
-  std::optional<torch::Tensor> neg_dst = std::nullopt;
-  std::optional<std::size_t> val_start = std::nullopt;
-  std::optional<std::size_t> test_start = std::nullopt;
-
-  std::optional<torch::Tensor> label_n_id = std::nullopt;
-  std::optional<torch::Tensor> label_time = std::nullopt;
-  std::optional<torch::Tensor> label_target = std::nullopt;
-
-  auto validate() const -> void;
-};
-
 struct TGUFSchema {
   std::string path;
 
@@ -103,10 +64,38 @@ class TGUFBuilder {
 
 class TGStore {
  public:
+  enum class NegStrategy {
+    None,         // Node Prop or Inference
+    Random,       // Link Prop Training (1:1 random negatives)
+    PreComputed,  // Link Prop Eval (Uses pre-comptued negatives)
+  };
+
+  struct IndexRange {
+    IndexRange() = default;
+    IndexRange(std::size_t s, std::size_t e) : start_(s), end_(e) {
+      if (end_ < start_) {
+        throw std::out_of_range("Invalid range");
+      }
+    }
+    [[nodiscard]] auto start() const -> std::size_t { return start_; }
+    [[nodiscard]] auto end() const -> std::size_t { return end_; }
+    [[nodiscard]] auto size() const -> std::size_t { return end_ - start_; }
+
+    std::size_t start_{0};
+    std::size_t end_{0};
+  };
+
   virtual ~TGStore() = default;
 
-  [[nodiscard]] static auto from_memory(TGData data)
+  [[nodiscard]] static auto from_memory(
+      const Batch& edges,
+      const std::optional<torch::Tensor>& label_n_id = std::nullopt,
+      const std::optional<torch::Tensor>& label_time = std::nullopt,
+      const std::optional<torch::Tensor>& label_target = std::nullopt,
+      std::optional<std::size_t> val_start = std::nullopt,
+      std::optional<std::size_t> test_start = std::nullopt)
       -> std::shared_ptr<TGStore>;
+
   [[nodiscard]] static auto from_tguf(
       const std::string& path,
       std::optional<std::size_t> val_start = std::nullopt,
@@ -118,13 +107,13 @@ class TGStore {
   [[nodiscard]] virtual auto msg_dim() const -> std::size_t = 0;
   [[nodiscard]] virtual auto label_dim() const -> std::size_t = 0;
 
-  [[nodiscard]] virtual auto train_split() const -> Range = 0;
-  [[nodiscard]] virtual auto val_split() const -> Range = 0;
-  [[nodiscard]] virtual auto test_split() const -> Range = 0;
+  [[nodiscard]] virtual auto train_split() const -> IndexRange = 0;
+  [[nodiscard]] virtual auto val_split() const -> IndexRange = 0;
+  [[nodiscard]] virtual auto test_split() const -> IndexRange = 0;
 
-  [[nodiscard]] virtual auto train_label_split() const -> Range = 0;
-  [[nodiscard]] virtual auto val_label_split() const -> Range = 0;
-  [[nodiscard]] virtual auto test_label_split() const -> Range = 0;
+  [[nodiscard]] virtual auto train_label_split() const -> IndexRange = 0;
+  [[nodiscard]] virtual auto val_label_split() const -> IndexRange = 0;
+  [[nodiscard]] virtual auto test_label_split() const -> IndexRange = 0;
 
   [[nodiscard]] virtual auto get_batch(
       std::size_t start, std::size_t size,

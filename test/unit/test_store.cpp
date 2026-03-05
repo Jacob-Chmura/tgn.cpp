@@ -11,17 +11,30 @@
 
 #include "tgn.h"
 
+struct TestData {
+  torch::Tensor src, dst, time, msg;
+  std::optional<torch::Tensor> neg_dst;
+  std::optional<torch::Tensor> label_n_id, label_time, label_target;
+  std::optional<std::size_t> val_start, test_start;
+};
+
 class TGStoreFixture : public ::testing::Test {
  public:
   virtual ~TGStoreFixture() = default;
-  virtual auto make_store(tgn::TGData data)
-      -> std::shared_ptr<tgn::TGStore> = 0;
+  virtual auto make_store(TestData data) -> std::shared_ptr<tgn::TGStore> = 0;
 };
 
 class InMemoryTGStoreFixture : public TGStoreFixture {
  public:
-  auto make_store(tgn::TGData data) -> std::shared_ptr<tgn::TGStore> override {
-    return tgn::TGStore::from_memory(std::move(data));
+  auto make_store(TestData data) -> std::shared_ptr<tgn::TGStore> override {
+    return tgn::TGStore::from_memory(tgn::Batch{.src = data.src,
+                                                .dst = data.dst,
+                                                .time = data.time,
+                                                .msg = data.msg,
+                                                .neg_dst = data.neg_dst},
+                                     data.label_n_id, data.label_time,
+                                     data.label_target, data.val_start,
+                                     data.test_start);
   }
 };
 
@@ -38,12 +51,12 @@ class TgufTGStoreFixture : public TGStoreFixture {
     }
   }
 
-  auto make_store(tgn::TGData data) -> std::shared_ptr<tgn::TGStore> override {
+  auto make_store(TestData data) -> std::shared_ptr<tgn::TGStore> override {
     return make_store_with_opts(std::move(data));
   }
 
   auto make_store_with_opts(
-      tgn::TGData data,
+      TestData data,
       std::optional<std::size_t> val_start_override = std::nullopt,
       std::optional<std::size_t> test_start_override = std::nullopt)
       -> std::shared_ptr<tgn::TGStore> {
@@ -99,11 +112,11 @@ TYPED_TEST(TGStoreTest, MakeStoreInit) {
   const std::int64_t d = 8;
   const std::int64_t m = 3;
   const auto store = this->make_store(
-      tgn::TGData{.src = torch::zeros({n}, torch::kLong),
-                  .dst = torch::full({n}, 5, torch::kLong),
-                  .time = torch::arange(n, torch::kLong),
-                  .msg = torch::randn({n, d}),
-                  .neg_dst = torch::randint(0, 6, {n, m}, torch::kLong)});
+      TestData{.src = torch::zeros({n}, torch::kLong),
+               .dst = torch::full({n}, 5, torch::kLong),
+               .time = torch::arange(n, torch::kLong),
+               .msg = torch::randn({n, d}),
+               .neg_dst = torch::randint(0, 6, {n, m}, torch::kLong)});
   ASSERT_NE(store, nullptr);
   EXPECT_EQ(store->edge_count(), n);
   EXPECT_EQ(store->msg_dim(), d);
@@ -114,11 +127,11 @@ TYPED_TEST(TGStoreTest, MakeStoreInit) {
 TYPED_TEST(TGStoreTest, GetBatchNegStrategyNone) {
   const std::int64_t n = 100;
   const auto store =
-      this->make_store(tgn::TGData{.src = torch::arange(n, torch::kLong),
-                                   .dst = torch::zeros({n}, torch::kLong),
-                                   .time = torch::zeros({n}, torch::kLong),
-                                   .msg = torch::zeros({n, 4}),
-                                   .neg_dst = std::nullopt});
+      this->make_store(TestData{.src = torch::arange(n, torch::kLong),
+                                .dst = torch::zeros({n}, torch::kLong),
+                                .time = torch::zeros({n}, torch::kLong),
+                                .msg = torch::zeros({n, 4}),
+                                .neg_dst = std::nullopt});
 
   const std::size_t start = 10;
   const std::size_t batch_size = 20;
@@ -140,16 +153,16 @@ TYPED_TEST(TGStoreTest, GetBatchNegStrategyPreComputed) {
   }
 
   const auto store =
-      this->make_store(tgn::TGData{.src = torch::arange(n, torch::kLong),
-                                   .dst = torch::full({n}, n, torch::kLong),
-                                   .time = torch::zeros({n}, torch::kLong),
-                                   .msg = torch::zeros({n, 4}),
-                                   .neg_dst = negs});
+      this->make_store(TestData{.src = torch::arange(n, torch::kLong),
+                                .dst = torch::full({n}, n, torch::kLong),
+                                .time = torch::zeros({n}, torch::kLong),
+                                .msg = torch::zeros({n, 4}),
+                                .neg_dst = negs});
 
   const std::size_t start = 10;
   const std::size_t batch_size = 20;
-  const auto batch =
-      store->get_batch(start, batch_size, tgn::NegStrategy::PreComputed);
+  const auto batch = store->get_batch(start, batch_size,
+                                      tgn::TGStore::NegStrategy::PreComputed);
 
   ASSERT_EQ(batch.src.size(0), 20);
   ASSERT_TRUE(batch.neg_dst.has_value());
@@ -163,26 +176,26 @@ TYPED_TEST(TGStoreTest, GetBatchNegStrategyPreComputed) {
 
 TYPED_TEST(TGStoreTest, GetBatchNegStrategyPreComputedThrowsIfNull) {
   const auto store =
-      this->make_store(tgn::TGData{.src = torch::zeros({10}, torch::kLong),
-                                   .dst = torch::zeros({10}, torch::kLong),
-                                   .time = torch::zeros({10}, torch::kLong),
-                                   .msg = torch::zeros({10, 1}),
-                                   .neg_dst = std::nullopt});
+      this->make_store(TestData{.src = torch::zeros({10}, torch::kLong),
+                                .dst = torch::zeros({10}, torch::kLong),
+                                .time = torch::zeros({10}, torch::kLong),
+                                .msg = torch::zeros({10, 1}),
+                                .neg_dst = std::nullopt});
 
   // Should throw because strategy is PreComputed but neg_dst is missing
-  EXPECT_THROW(store->get_batch(0, 5, tgn::NegStrategy::PreComputed),
+  EXPECT_THROW(store->get_batch(0, 5, tgn::TGStore::NegStrategy::PreComputed),
                c10::Error);
 }
 
 TYPED_TEST(TGStoreTest, GetBatchNegStrategyRandom) {
-  const auto store = this->make_store(tgn::TGData{
+  const auto store = this->make_store(TestData{
       .src = torch::tensor({0, 1}, torch::kLong),
       .dst = torch::tensor({10, 20}, torch::kLong),  // IDs in train are 10,
       .time = torch::zeros({2}, torch::kLong),
       .msg = torch::zeros({2, 1}),
       .val_start = 2});
 
-  const auto batch = store->get_batch(0, 10, tgn::NegStrategy::Random);
+  const auto batch = store->get_batch(0, 10, tgn::TGStore::NegStrategy::Random);
 
   ASSERT_TRUE(batch.neg_dst.has_value());
 
@@ -197,25 +210,26 @@ TYPED_TEST(TGStoreTest, GetBatchNegStrategyRandom) {
 
 TYPED_TEST(TGStoreTest, GetBatchNegStrategyRandomThrowsIfTrainEmpty) {
   const auto store =
-      this->make_store(tgn::TGData{.src = torch::zeros({10}, torch::kLong),
-                                   .dst = torch::zeros({10}, torch::kLong),
-                                   .time = torch::zeros({10}, torch::kLong),
-                                   .msg = torch::zeros({10, 1}),
-                                   .val_start = 0});
+      this->make_store(TestData{.src = torch::zeros({10}, torch::kLong),
+                                .dst = torch::zeros({10}, torch::kLong),
+                                .time = torch::zeros({10}, torch::kLong),
+                                .msg = torch::zeros({10, 1}),
+                                .val_start = 0});
 
   // TODO(kuba): There might be a use case for factoring out negatives
   // into a more general API (e.g. you want random negatives in validation?)
-  EXPECT_THROW(store->get_batch(0, 5, tgn::NegStrategy::Random), c10::Error);
+  EXPECT_THROW(store->get_batch(0, 5, tgn::TGStore::NegStrategy::Random),
+               c10::Error);
 }
 
 TYPED_TEST(TGStoreTest, GetBatchPartialTail) {
   const std::int64_t n = 100;
   const auto store =
-      this->make_store(tgn::TGData{.src = torch::arange(n, torch::kLong),
-                                   .dst = torch::zeros({n}, torch::kLong),
-                                   .time = torch::zeros({n}, torch::kLong),
-                                   .msg = torch::zeros({n, 4}),
-                                   .neg_dst = std::nullopt});
+      this->make_store(TestData{.src = torch::arange(n, torch::kLong),
+                                .dst = torch::zeros({n}, torch::kLong),
+                                .time = torch::zeros({n}, torch::kLong),
+                                .msg = torch::zeros({n, 4}),
+                                .neg_dst = std::nullopt});
 
   // Start near the end and request a size that exceeds total edges
   const std::size_t start = 95;
@@ -234,7 +248,7 @@ TYPED_TEST(TGStoreTest, GetBatchPartialTail) {
 TYPED_TEST(TGStoreTest, GatherMsgs) {
   const std::int64_t n = 5;
   const std::int64_t d = 2;
-  const auto store = this->make_store(tgn::TGData{
+  const auto store = this->make_store(TestData{
       .src = torch::zeros({n}, torch::kLong),
       .dst = torch::zeros({n}, torch::kLong),
       .time = torch::zeros({n}, torch::kLong),
@@ -255,12 +269,12 @@ TYPED_TEST(TGStoreTest, GatherMsgs) {
 
 TYPED_TEST(TGStoreTest, GatherTimestamps) {
   const std::int64_t n = 5;
-  const auto store = this->make_store(tgn::TGData{
-      .src = torch::zeros({n}, torch::kLong),
-      .dst = torch::zeros({n}, torch::kLong),
-      .time = torch::tensor({101, 202, 303, 404, 505}, torch::kLong),
-      .msg = torch::zeros({n, 4}),
-      .neg_dst = std::nullopt});
+  const auto store = this->make_store(
+      TestData{.src = torch::zeros({n}, torch::kLong),
+               .dst = torch::zeros({n}, torch::kLong),
+               .time = torch::tensor({101, 202, 303, 404, 505}, torch::kLong),
+               .msg = torch::zeros({n, 4}),
+               .neg_dst = std::nullopt});
 
   const auto e_ids = torch::tensor({4, 0, 2}, torch::kLong);
   const auto timestamps = store->gather_timestamps(e_ids);
@@ -274,11 +288,11 @@ TYPED_TEST(TGStoreTest, GatherTimestamps) {
 
 TYPED_TEST(TGStoreTest, HandlesEmptyInputs) {
   const auto store =
-      this->make_store(tgn::TGData{.src = torch::empty({0}, torch::kLong),
-                                   .dst = torch::empty({0}, torch::kLong),
-                                   .time = torch::empty({0}, torch::kLong),
-                                   .msg = torch::empty({0, 4}),
-                                   .neg_dst = std::nullopt});
+      this->make_store(TestData{.src = torch::empty({0}, torch::kLong),
+                                .dst = torch::empty({0}, torch::kLong),
+                                .time = torch::empty({0}, torch::kLong),
+                                .msg = torch::empty({0, 4}),
+                                .neg_dst = std::nullopt});
   EXPECT_EQ(store->edge_count(), 0);
   EXPECT_EQ(store->node_count(), 0);
 }
@@ -286,12 +300,12 @@ TYPED_TEST(TGStoreTest, HandlesEmptyInputs) {
 TYPED_TEST(TGStoreTest, SplitsWithCustomBoundaries) {
   const std::int64_t n = 10;
   const auto store =
-      this->make_store(tgn::TGData{.src = torch::zeros({n}, torch::kLong),
-                                   .dst = torch::zeros({n}, torch::kLong),
-                                   .time = torch::zeros({n}, torch::kLong),
-                                   .msg = torch::zeros({n, 1}),
-                                   .val_start = 6,
-                                   .test_start = 8});
+      this->make_store(TestData{.src = torch::zeros({n}, torch::kLong),
+                                .dst = torch::zeros({n}, torch::kLong),
+                                .time = torch::zeros({n}, torch::kLong),
+                                .msg = torch::zeros({n, 1}),
+                                .val_start = 6,
+                                .test_start = 8});
 
   EXPECT_EQ(store->train_split().start(), 0);
   EXPECT_EQ(store->train_split().end(), 6);
@@ -306,10 +320,10 @@ TYPED_TEST(TGStoreTest, SplitsWithCustomBoundaries) {
 TYPED_TEST(TGStoreTest, SplitsWithNoBoundaries) {
   const std::int64_t n = 10;
   const auto store =
-      this->make_store(tgn::TGData{.src = torch::zeros({n}, torch::kLong),
-                                   .dst = torch::zeros({n}, torch::kLong),
-                                   .time = torch::zeros({n}, torch::kLong),
-                                   .msg = torch::zeros({n, 1})});
+      this->make_store(TestData{.src = torch::zeros({n}, torch::kLong),
+                                .dst = torch::zeros({n}, torch::kLong),
+                                .time = torch::zeros({n}, torch::kLong),
+                                .msg = torch::zeros({n, 1})});
 
   // Default behavior should put everything in train
   EXPECT_EQ(store->train_split().size(), 10);
@@ -319,10 +333,10 @@ TYPED_TEST(TGStoreTest, SplitsWithNoBoundaries) {
 
 TYPED_TEST(TGStoreTest, LabelSplitEmpty) {
   const auto store =
-      this->make_store(tgn::TGData{.src = torch::zeros({5}, torch::kLong),
-                                   .dst = torch::zeros({5}, torch::kLong),
-                                   .time = torch::zeros({5}, torch::kLong),
-                                   .msg = torch::zeros({5, 1})});
+      this->make_store(TestData{.src = torch::zeros({5}, torch::kLong),
+                                .dst = torch::zeros({5}, torch::kLong),
+                                .time = torch::zeros({5}, torch::kLong),
+                                .msg = torch::zeros({5, 1})});
   EXPECT_EQ(store->train_label_split().size(), 0);
   EXPECT_EQ(store->val_label_split().size(), 0);
   EXPECT_EQ(store->test_label_split().size(), 0);
@@ -330,13 +344,13 @@ TYPED_TEST(TGStoreTest, LabelSplitEmpty) {
 
 TYPED_TEST(TGStoreTest, LabelSplitThreeDistinct) {
   const auto store = this->make_store(
-      tgn::TGData{.src = torch::zeros({5}, torch::kLong),
-                  .dst = torch::zeros({5}, torch::kLong),
-                  .time = torch::tensor({10, 20, 30, 40, 50}, torch::kLong),
-                  .msg = torch::zeros({5, 1}),
-                  .label_n_id = torch::zeros({3}, torch::kLong),
-                  .label_time = torch::tensor({15, 25, 45}, torch::kLong),
-                  .label_target = torch::zeros({3, 1})});
+      TestData{.src = torch::zeros({5}, torch::kLong),
+               .dst = torch::zeros({5}, torch::kLong),
+               .time = torch::tensor({10, 20, 30, 40, 50}, torch::kLong),
+               .msg = torch::zeros({5, 1}),
+               .label_n_id = torch::zeros({3}, torch::kLong),
+               .label_time = torch::tensor({15, 25, 45}, torch::kLong),
+               .label_target = torch::zeros({3, 1})});
   EXPECT_EQ(store->train_label_split().size(), 3);
   EXPECT_EQ(store->val_label_split().size(), 0);
   EXPECT_EQ(store->test_label_split().size(), 0);
@@ -345,13 +359,13 @@ TYPED_TEST(TGStoreTest, LabelSplitThreeDistinct) {
 
 TYPED_TEST(TGStoreTest, LabelSplitThreeGrouped) {
   const auto store = this->make_store(
-      tgn::TGData{.src = torch::zeros({5}, torch::kLong),
-                  .dst = torch::zeros({5}, torch::kLong),
-                  .time = torch::tensor({10, 20, 30, 40, 50}, torch::kLong),
-                  .msg = torch::zeros({5, 1}),
-                  .label_n_id = torch::zeros({3}, torch::kLong),
-                  .label_time = torch::tensor({15, 15, 25}, torch::kLong),
-                  .label_target = torch::zeros({3, 1})});
+      TestData{.src = torch::zeros({5}, torch::kLong),
+               .dst = torch::zeros({5}, torch::kLong),
+               .time = torch::tensor({10, 20, 30, 40, 50}, torch::kLong),
+               .msg = torch::zeros({5, 1}),
+               .label_n_id = torch::zeros({3}, torch::kLong),
+               .label_time = torch::tensor({15, 15, 25}, torch::kLong),
+               .label_target = torch::zeros({3, 1})});
   EXPECT_EQ(store->train_label_split().size(), 2);  // 2 unique timestamps
   EXPECT_EQ(store->val_label_split().size(), 0);
   EXPECT_EQ(store->test_label_split().size(), 0);
@@ -360,13 +374,13 @@ TYPED_TEST(TGStoreTest, LabelSplitThreeGrouped) {
 
 TYPED_TEST(TGStoreTest, LabelSplitSingle) {
   const auto store = this->make_store(
-      tgn::TGData{.src = torch::zeros({5}, torch::kLong),
-                  .dst = torch::zeros({5}, torch::kLong),
-                  .time = torch::tensor({10, 20, 30, 40, 50}, torch::kLong),
-                  .msg = torch::zeros({5, 1}),
-                  .label_n_id = torch::zeros({1}, torch::kLong),
-                  .label_time = torch::tensor({15}, torch::kLong),
-                  .label_target = torch::zeros({1, 1})});
+      TestData{.src = torch::zeros({5}, torch::kLong),
+               .dst = torch::zeros({5}, torch::kLong),
+               .time = torch::tensor({10, 20, 30, 40, 50}, torch::kLong),
+               .msg = torch::zeros({5, 1}),
+               .label_n_id = torch::zeros({1}, torch::kLong),
+               .label_time = torch::tensor({15}, torch::kLong),
+               .label_target = torch::zeros({1, 1})});
   EXPECT_EQ(store->train_label_split().size(), 1);
   EXPECT_EQ(store->val_label_split().size(), 0);
   EXPECT_EQ(store->test_label_split().size(), 0);
@@ -378,20 +392,20 @@ TYPED_TEST(TGStoreTest, LabelSplitsWithCustomBoundaries) {
   // Train ends at edge index 6 (t=70)
   // Val ends at edge index 8 (t=90)
   const auto store = this->make_store(
-      tgn::TGData{.src = torch::zeros({10}, torch::kLong),
-                  .dst = torch::zeros({10}, torch::kLong),
-                  .time = torch::tensor(
-                      {10, 20, 30, 40, 50, 60, 70, 80, 90, 100}, torch::kLong),
-                  .msg = torch::zeros({10, 1}),
-                  .val_start = 6,
-                  .test_start = 8,
-                  // Labels:
-                  // t=15 (Index 0) -> Train (15 < 70)
-                  // t=75 (Index 1) -> Val   (70 <= 75 < 90)
-                  // t=95 (Index 2) -> Test  (95 >= 90)
-                  .label_n_id = torch::tensor({1, 2, 3}, torch::kLong),
-                  .label_time = torch::tensor({15, 75, 95}, torch::kLong),
-                  .label_target = torch::zeros({3, 1})});
+      TestData{.src = torch::zeros({10}, torch::kLong),
+               .dst = torch::zeros({10}, torch::kLong),
+               .time = torch::tensor({10, 20, 30, 40, 50, 60, 70, 80, 90, 100},
+                                     torch::kLong),
+               .msg = torch::zeros({10, 1}),
+               // Labels:
+               // t=15 (Index 0) -> Train (15 < 70)
+               // t=75 (Index 1) -> Val   (70 <= 75 < 90)
+               // t=95 (Index 2) -> Test  (95 >= 90)
+               .label_n_id = torch::tensor({1, 2, 3}, torch::kLong),
+               .label_time = torch::tensor({15, 75, 95}, torch::kLong),
+               .label_target = torch::zeros({3, 1}),
+               .val_start = 6,
+               .test_start = 8});
 
   EXPECT_EQ(store->train_label_split().start(), 0);
   EXPECT_EQ(store->train_label_split().end(), 1);
@@ -406,22 +420,22 @@ TYPED_TEST(TGStoreTest, LabelSplitsWithCustomBoundaries) {
 
 TYPED_TEST(TGStoreTest, GetEdgeCutoffEmptyThrows) {
   const auto store =
-      this->make_store(tgn::TGData{.src = torch::zeros({5}, torch::kLong),
-                                   .dst = torch::zeros({5}, torch::kLong),
-                                   .time = torch::arange(5, torch::kLong),
-                                   .msg = torch::zeros({5, 1})});
+      this->make_store(TestData{.src = torch::zeros({5}, torch::kLong),
+                                .dst = torch::zeros({5}, torch::kLong),
+                                .time = torch::arange(5, torch::kLong),
+                                .msg = torch::zeros({5, 1})});
   EXPECT_THROW(store->get_edge_cutoff_for_label_event(0), std::out_of_range);
 }
 
 TYPED_TEST(TGStoreTest, GetEdgeCutoffThreeDistinct) {
   const auto store = this->make_store(
-      tgn::TGData{.src = torch::zeros({5}, torch::kLong),
-                  .dst = torch::zeros({5}, torch::kLong),
-                  .time = torch::tensor({10, 20, 30, 40, 50}, torch::kLong),
-                  .msg = torch::zeros({5, 1}),
-                  .label_n_id = torch::zeros({3}, torch::kLong),
-                  .label_time = torch::tensor({15, 25, 45}, torch::kLong),
-                  .label_target = torch::zeros({3, 1})});
+      TestData{.src = torch::zeros({5}, torch::kLong),
+               .dst = torch::zeros({5}, torch::kLong),
+               .time = torch::tensor({10, 20, 30, 40, 50}, torch::kLong),
+               .msg = torch::zeros({5, 1}),
+               .label_n_id = torch::zeros({3}, torch::kLong),
+               .label_time = torch::tensor({15, 25, 45}, torch::kLong),
+               .label_target = torch::zeros({3, 1})});
   EXPECT_EQ(store->get_edge_cutoff_for_label_event(0), 1);  // Before t=20
   EXPECT_EQ(store->get_edge_cutoff_for_label_event(1), 2);  // Before t=30
   EXPECT_EQ(store->get_edge_cutoff_for_label_event(2), 4);  // Before t=50
@@ -429,13 +443,13 @@ TYPED_TEST(TGStoreTest, GetEdgeCutoffThreeDistinct) {
 
 TYPED_TEST(TGStoreTest, GetEdgeCutoffThreeGrouped) {
   const auto store = this->make_store(
-      tgn::TGData{.src = torch::zeros({5}, torch::kLong),
-                  .dst = torch::zeros({5}, torch::kLong),
-                  .time = torch::tensor({10, 20, 30, 40, 50}, torch::kLong),
-                  .msg = torch::zeros({5, 1}),
-                  .label_n_id = torch::zeros({3}, torch::kLong),
-                  .label_time = torch::tensor({15, 15, 25}, torch::kLong),
-                  .label_target = torch::zeros({3, 1})});
+      TestData{.src = torch::zeros({5}, torch::kLong),
+               .dst = torch::zeros({5}, torch::kLong),
+               .time = torch::tensor({10, 20, 30, 40, 50}, torch::kLong),
+               .msg = torch::zeros({5, 1}),
+               .label_n_id = torch::zeros({3}, torch::kLong),
+               .label_time = torch::tensor({15, 15, 25}, torch::kLong),
+               .label_target = torch::zeros({3, 1})});
 
   // Stop ID for the first group (t=15)
   EXPECT_EQ(store->get_edge_cutoff_for_label_event(0), 1);
@@ -445,35 +459,35 @@ TYPED_TEST(TGStoreTest, GetEdgeCutoffThreeGrouped) {
 }
 
 TYPED_TEST(TGStoreTest, GetEdgeCutoffSingle) {
-  const auto store = this->make_store(
-      tgn::TGData{.src = torch::zeros({2}, torch::kLong),
-                  .dst = torch::zeros({2}, torch::kLong),
-                  .time = torch::tensor({10, 20}, torch::kLong),
-                  .msg = torch::zeros({2, 1}),
-                  .label_n_id = torch::zeros({1}, torch::kLong),
-                  .label_time = torch::tensor({25}, torch::kLong),
-                  .label_target = torch::zeros({1, 1})});
+  const auto store =
+      this->make_store(TestData{.src = torch::zeros({2}, torch::kLong),
+                                .dst = torch::zeros({2}, torch::kLong),
+                                .time = torch::tensor({10, 20}, torch::kLong),
+                                .msg = torch::zeros({2, 1}),
+                                .label_n_id = torch::zeros({1}, torch::kLong),
+                                .label_time = torch::tensor({25}, torch::kLong),
+                                .label_target = torch::zeros({1, 1})});
   EXPECT_EQ(store->get_edge_cutoff_for_label_event(0),
             2);  // Matches end of edges
 }
 TYPED_TEST(TGStoreTest, GetLabelEventEmptyThrows) {
   const auto store =
-      this->make_store(tgn::TGData{.src = torch::zeros({5}, torch::kLong),
-                                   .dst = torch::zeros({5}, torch::kLong),
-                                   .time = torch::arange(5, torch::kLong),
-                                   .msg = torch::zeros({5, 1})});
+      this->make_store(TestData{.src = torch::zeros({5}, torch::kLong),
+                                .dst = torch::zeros({5}, torch::kLong),
+                                .time = torch::arange(5, torch::kLong),
+                                .msg = torch::zeros({5, 1})});
   EXPECT_THROW(store->get_label_event(0), std::out_of_range);
 }
 
 TYPED_TEST(TGStoreTest, GetLabelEventThreeDistinct) {
   const auto store = this->make_store(
-      tgn::TGData{.src = torch::zeros({5}, torch::kLong),
-                  .dst = torch::zeros({5}, torch::kLong),
-                  .time = torch::arange(5, torch::kLong),
-                  .msg = torch::zeros({5, 1}),
-                  .label_n_id = torch::tensor({100, 200, 300}, torch::kLong),
-                  .label_time = torch::tensor({1, 2, 3}, torch::kLong),
-                  .label_target = torch::zeros({3, 1})});
+      TestData{.src = torch::zeros({5}, torch::kLong),
+               .dst = torch::zeros({5}, torch::kLong),
+               .time = torch::arange(5, torch::kLong),
+               .msg = torch::zeros({5, 1}),
+               .label_n_id = torch::tensor({100, 200, 300}, torch::kLong),
+               .label_time = torch::tensor({1, 2, 3}, torch::kLong),
+               .label_target = torch::zeros({3, 1})});
   EXPECT_EQ(store->get_label_event(0).n_id[0].template item<std::int64_t>(),
             100);
   EXPECT_EQ(store->get_label_event(1).n_id[0].template item<std::int64_t>(),
@@ -488,13 +502,13 @@ TYPED_TEST(TGStoreTest, GetLabelEventThreeDistinct) {
 
 TYPED_TEST(TGStoreTest, GetLabelEventThreeGrouped) {
   const auto store = this->make_store(
-      tgn::TGData{.src = torch::zeros({5}, torch::kLong),
-                  .dst = torch::zeros({5}, torch::kLong),
-                  .time = torch::arange(5, torch::kLong),
-                  .msg = torch::zeros({5, 1}),
-                  .label_n_id = torch::tensor({1, 2, 3}, torch::kLong),
-                  .label_time = torch::tensor({10, 10, 20}, torch::kLong),
-                  .label_target = torch::zeros({3, 1})});
+      TestData{.src = torch::zeros({5}, torch::kLong),
+               .dst = torch::zeros({5}, torch::kLong),
+               .time = torch::arange(5, torch::kLong),
+               .msg = torch::zeros({5, 1}),
+               .label_n_id = torch::tensor({1, 2, 3}, torch::kLong),
+               .label_time = torch::tensor({10, 10, 20}, torch::kLong),
+               .label_target = torch::zeros({3, 1})});
   auto event = store->get_label_event(0);
   EXPECT_EQ(event.n_id.size(0), 2);  // Groups node 1 and 2
   EXPECT_EQ(event.n_id[0].template item<std::int64_t>(), 1);
@@ -507,13 +521,13 @@ TYPED_TEST(TGStoreTest, GetLabelEventThreeGrouped) {
 
 TYPED_TEST(TGStoreTest, GetLabelEventSingle) {
   const auto store = this->make_store(
-      tgn::TGData{.src = torch::zeros({5}, torch::kLong),
-                  .dst = torch::zeros({5}, torch::kLong),
-                  .time = torch::arange(5, torch::kLong),
-                  .msg = torch::zeros({5, 1}),
-                  .label_n_id = torch::tensor({999}, torch::kLong),
-                  .label_time = torch::tensor({10}, torch::kLong),
-                  .label_target = torch::zeros({1, 1})});
+      TestData{.src = torch::zeros({5}, torch::kLong),
+               .dst = torch::zeros({5}, torch::kLong),
+               .time = torch::arange(5, torch::kLong),
+               .msg = torch::zeros({5, 1}),
+               .label_n_id = torch::tensor({999}, torch::kLong),
+               .label_time = torch::tensor({10}, torch::kLong),
+               .label_target = torch::zeros({1, 1})});
   EXPECT_EQ(store->get_label_event(0).n_id[0].template item<std::int64_t>(),
             999);
   EXPECT_EQ(store->get_label_event(0).target[0].template item<float>(), 0);
@@ -527,10 +541,9 @@ TYPED_TEST(TGStoreTest, ValidateRejectsInvalidShapes) {
   const auto msg = torch::zeros({n, 4});
   const auto neg_dst = torch::zeros({n, 1}, torch::kLong);
 
-  const auto bad_data = tgn::TGData{
+  const auto edges = tgn::Batch{
       .src = src, .dst = dst, .time = t, .msg = msg, .neg_dst = neg_dst};
-  EXPECT_THROW(std::ignore = tgn::TGStore::from_memory(std::move(bad_data)),
-               c10::Error);
+  EXPECT_THROW(std::ignore = tgn::TGStore::from_memory(edges), c10::Error);
 }
 
 TYPED_TEST(TGStoreTest, ValidateRejectsInvalidNegativesShapes) {
@@ -541,10 +554,9 @@ TYPED_TEST(TGStoreTest, ValidateRejectsInvalidNegativesShapes) {
   const auto msg = torch::zeros({n, 4});
   const auto neg_dst = torch::zeros({n}, torch::kLong);  // Should be [n, m]
 
-  const auto bad_data = tgn::TGData(
-      {.src = src, .dst = dst, .time = t, .msg = msg, .neg_dst = neg_dst});
-  EXPECT_THROW(std::ignore = tgn::TGStore::from_memory(std::move(bad_data)),
-               c10::Error);
+  const auto edges = tgn::Batch{
+      .src = src, .dst = dst, .time = t, .msg = msg, .neg_dst = neg_dst};
+  EXPECT_THROW(std::ignore = tgn::TGStore::from_memory(edges), c10::Error);
 }
 
 TYPED_TEST(TGStoreTest, ValidateRejectsOutOfRangeNegatives) {
@@ -555,10 +567,9 @@ TYPED_TEST(TGStoreTest, ValidateRejectsOutOfRangeNegatives) {
   const auto neg_dst =
       torch::zeros({99}, torch::kLong);  // 99 is out of range [0, 2]
 
-  const auto bad_data = tgn::TGData{
+  const auto edges = tgn::Batch{
       .src = src, .dst = dst, .time = t, .msg = msg, .neg_dst = neg_dst};
-  EXPECT_THROW(std::ignore = tgn::TGStore::from_memory(std::move(bad_data)),
-               c10::Error);
+  EXPECT_THROW(std::ignore = tgn::TGStore::from_memory(edges), c10::Error);
 }
 
 TYPED_TEST(TGStoreTest, ValidateRejectsFloatingPointIDs) {
@@ -568,10 +579,8 @@ TYPED_TEST(TGStoreTest, ValidateRejectsFloatingPointIDs) {
   const auto t = torch::zeros({n}, torch::kLong);
   const auto msg = torch::zeros({n, 4});
 
-  const auto bad_data =
-      tgn::TGData{.src = src, .dst = dst, .time = t, .msg = msg};
-  EXPECT_THROW(std::ignore = tgn::TGStore::from_memory(std::move(bad_data)),
-               c10::Error);
+  const auto edges = tgn::Batch{.src = src, .dst = dst, .time = t, .msg = msg};
+  EXPECT_THROW(std::ignore = tgn::TGStore::from_memory(edges), c10::Error);
 }
 
 TYPED_TEST(TGStoreTest, ValidateRejectsFloatingPointTimestamps) {
@@ -581,15 +590,13 @@ TYPED_TEST(TGStoreTest, ValidateRejectsFloatingPointTimestamps) {
   const auto t = torch::zeros({n});  // Float instead of long
   const auto msg = torch::zeros({n, 4});
 
-  const auto bad_data =
-      tgn::TGData{.src = src, .dst = dst, .time = t, .msg = msg};
-  EXPECT_THROW(std::ignore = tgn::TGStore::from_memory(std::move(bad_data)),
-               c10::Error);
+  const auto edges = tgn::Batch{.src = src, .dst = dst, .time = t, .msg = msg};
+  EXPECT_THROW(std::ignore = tgn::TGStore::from_memory(edges), c10::Error);
 }
 
 TEST_F(TgufTGStoreFixture, SplitResolutionUsesHeaderWhenOptsEmpty) {
   const std::int64_t n = 10;
-  tgn::TGData data{
+  TestData data{
       .src = torch::zeros({n}, torch::kLong),
       .dst = torch::zeros({n}, torch::kLong),
       .time = torch::arange(n, torch::kLong),
@@ -608,7 +615,7 @@ TEST_F(TgufTGStoreFixture, SplitResolutionUsesHeaderWhenOptsEmpty) {
 
 TEST_F(TgufTGStoreFixture, SplitResolutionOverrideHeader) {
   const std::int64_t n = 10;
-  tgn::TGData data{
+  TestData data{
       .src = torch::zeros({n}, torch::kLong),
       .dst = torch::zeros({n}, torch::kLong),
       .time = torch::arange(n, torch::kLong),
@@ -629,19 +636,19 @@ TEST_F(TgufTGStoreFixture, SplitResolutionOverrideHeader) {
 }
 
 TEST(TGRange, ValidRange) {
-  const auto split = tgn::Range(1, 5);
+  const auto split = tgn::TGStore::IndexRange(1, 5);
   EXPECT_EQ(split.start(), 1);
   EXPECT_EQ(split.end(), 5);
   EXPECT_EQ(split.size(), 4);
 }
 
 TEST(TGRange, ValidEmptyRange) {
-  const auto split = tgn::Range();
+  const auto split = tgn::TGStore::IndexRange();
   EXPECT_EQ(split.start(), 0);
   EXPECT_EQ(split.end(), 0);
   EXPECT_EQ(split.size(), 0);
 }
 
 TEST(TGRange, RejectsInvalidRange) {
-  EXPECT_THROW(tgn::Range(5, 3), std::out_of_range);
+  EXPECT_THROW(tgn::TGStore::IndexRange(5, 3), std::out_of_range);
 }

@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <cstdlib>
+#include <string>
 
 #include "tgn.h"
 
@@ -29,7 +30,7 @@ TEST_F(CSV_TGUF_RoundtripTest, Verify) {
   EXPECT_EQ(store->label_dim(), 2);
 
   // Check Edges
-  auto batch = store->get_batch(0, 3, tgn::NegStrategy::PreComputed);
+  auto batch = store->get_batch(0, 3, tgn::TGStore::NegStrategy::PreComputed);
 
   EXPECT_EQ(batch.src[0].item<std::int64_t>(), 1);
   EXPECT_EQ(batch.src[1].item<std::int64_t>(), 2);

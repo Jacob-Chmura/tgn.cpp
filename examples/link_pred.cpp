@@ -69,7 +69,7 @@ auto train(tgn::TGN& encoder, LinkPredictor& decoder, torch::optim::Adam& opt,
     opt.zero_grad();
 
     const auto batch =
-        store->get_batch(e_id, batch_size, tgn::NegStrategy::Random);
+        store->get_batch(e_id, batch_size, tgn::TGStore::NegStrategy::Random);
     const auto [z_src, z_dst, z_neg] =
         encoder->forward(batch.src, batch.dst, batch.neg_dst->flatten());
 
@@ -110,8 +110,8 @@ auto eval(tgn::TGN& encoder, LinkPredictor& decoder,
   const auto e_range = store->val_split();
 
   for (auto e_id = e_range.start(); e_id < e_range.end(); e_id += batch_size) {
-    const auto batch =
-        store->get_batch(e_id, batch_size, tgn::NegStrategy::PreComputed);
+    const auto batch = store->get_batch(e_id, batch_size,
+                                        tgn::TGStore::NegStrategy::PreComputed);
     const auto [z_src, z_dst, z_neg] =
         encoder->forward(batch.src, batch.dst, batch.neg_dst->flatten());
 
