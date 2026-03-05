@@ -47,7 +47,7 @@ class TGStoreImpl final : public TGStore {
                        : 0),
         msg_dim_(static_cast<std::size_t>(msg_.size(1))),
         label_dim_(static_cast<std::size_t>(
-            data.label_y_true.has_value() ? data.label_y_true->size(1) : 0)),
+            data.label_target.has_value() ? data.label_target->size(1) : 0)),
         train_(0,
                data.val_start.value_or(data.test_start.value_or(num_edges_))),
         val_(data.val_start.value_or(data.test_start.value_or(num_edges_)),
@@ -74,13 +74,13 @@ class TGStoreImpl final : public TGStore {
     }
 
     if (data.label_n_id.has_value()) {
-      const auto label_t = std::move(data.label_t.value());
+      const auto label_time = std::move(data.label_time.value());
       const auto label_n_id = std::move(data.label_n_id.value());
-      const auto label_y_true = std::move(data.label_y_true.value());
+      const auto label_target = std::move(data.label_target.value());
 
-      // Find unique timestamps in label_t (assumed sorted)
+      // Find unique timestamps in label_time (assumed sorted)
       const auto [unique_ts, inverse_indices, counts] =
-          torch::unique_consecutive(label_t, /*return_inverse=*/true,
+          torch::unique_consecutive(label_time, /*return_inverse=*/true,
                                     /*return_counts=*/true);
 
       auto find_e_id_at_time = [&](std::int64_t time) -> std::size_t {
@@ -98,7 +98,7 @@ class TGStoreImpl final : public TGStore {
         // Group the nodes/labels for this timestamp
         label_events_.push_back(LabelEvent{
             .n_id = label_n_id.slice(0, offset, offset + count),
-            .y_true = label_y_true.slice(0, offset, offset + count)});
+            .target = label_target.slice(0, offset, offset + count)});
 
         // Find the Edge Stop Index (first edge index where t >= label_time)
         stop_e_ids_.push_back(find_e_id_at_time(event_time));
@@ -173,10 +173,10 @@ class TGStoreImpl final : public TGStore {
     }
   }
 
-  [[nodiscard]] auto num_edges() const -> std::size_t override {
+  [[nodiscard]] auto edge_count() const -> std::size_t override {
     return num_edges_;
   }
-  [[nodiscard]] auto num_nodes() const -> std::size_t override {
+  [[nodiscard]] auto node_count() const -> std::size_t override {
     return num_nodes_;
   }
   [[nodiscard]] auto msg_dim() const -> std::size_t override {
@@ -243,7 +243,7 @@ class TGStoreImpl final : public TGStore {
     return msg_.index_select(0, e_id.flatten());
   }
 
-  [[nodiscard]] auto get_stop_e_id_for_label_event(std::size_t l_id) const
+  [[nodiscard]] auto get_edge_cutoff_for_label_event(std::size_t l_id) const
       -> std::size_t override {
     return stop_e_ids_.at(l_id);
   }
@@ -279,8 +279,8 @@ class TGStoreImpl final : public TGStore {
   }
   if (data.label_n_id.has_value()) {
     bytes += data.label_n_id->nbytes();
-    bytes += data.label_t->nbytes();
-    bytes += data.label_y_true->nbytes();
+    bytes += data.label_time->nbytes();
+    bytes += data.label_target->nbytes();
   }
   return bytes;
 }
@@ -296,15 +296,17 @@ class TGStoreImpl final : public TGStore {
   return std::make_shared<detail::TGStoreImpl>(std::move(data));
 }
 
-[[nodiscard]] auto TGStore::from_tguf(const TGUFOptions& opts)
+[[nodiscard]] auto TGStore::from_tguf(const std::string& path,
+                                      std::optional<std::size_t> val_start,
+                                      std::optional<std::size_t> test_start)
     -> std::shared_ptr<TGStore> {
-  TGN_LOG_INFO("TGStore: Mapping TGUF file: {}", opts.path);
-  auto fd = open(opts.path.c_str(), O_RDONLY);
+  TGN_LOG_INFO("TGStore: Mapping TGUF file: {}", path);
+  auto fd = open(path.c_str(), O_RDONLY);
   if (fd == -1) {
-    throw std::runtime_error("Could not open file: " + opts.path);
+    throw std::runtime_error("Could not open file: " + path);
   }
 
-  const auto file_size = std::filesystem::file_size(opts.path);
+  const auto file_size = std::filesystem::file_size(path);
   if (file_size < sizeof(TGUFHeader)) {
     close(fd);
     throw std::runtime_error("File too small to contain TGUF header");
@@ -313,7 +315,7 @@ class TGStoreImpl final : public TGStore {
   auto* addr = mmap(nullptr, file_size, PROT_READ, MAP_PRIVATE, fd, 0);
   if (addr == MAP_FAILED) {
     close(fd);
-    throw std::runtime_error("Mmap failed for: " + opts.path);
+    throw std::runtime_error("Mmap failed for: " + path);
   }
 
   auto* header = static_cast<TGUFHeader*>(addr);
@@ -371,10 +373,10 @@ class TGStoreImpl final : public TGStore {
                : std::nullopt;
   };
 
-  TGData data{.val_start =
-                  resolve_split(opts.val_start, header->val_start, "val_start"),
-              .test_start = resolve_split(opts.test_start, header->test_start,
-                                          "test_start")};
+  TGData data{
+      .val_start = resolve_split(val_start, header->val_start, "val_start"),
+      .test_start =
+          resolve_split(test_start, header->test_start, "test_start")};
 
   const auto n_edges = static_cast<std::int64_t>(header->num_edges);
   const auto m_dim = static_cast<std::int64_t>(header->msg_dim);
@@ -394,9 +396,9 @@ class TGStoreImpl final : public TGStore {
   if (header->num_labels > 0) {
     data.label_n_id =
         mmap_tensor(header->label_n_id_offset, {n_labels}, torch::kLong);
-    data.label_t =
+    data.label_time =
         mmap_tensor(header->label_t_offset, {n_labels}, torch::kLong);
-    data.label_y_true = mmap_tensor(header->label_y_true_offset,
+    data.label_target = mmap_tensor(header->label_y_true_offset,
                                     {n_labels, l_dim}, torch::kFloat32);
   }
 
@@ -432,13 +434,13 @@ auto TGData::validate() const -> void {
 
   if (label_n_id.has_value()) {
     TORCH_CHECK(
-        label_t.has_value() && label_y_true.has_value(),
-        "If label_n_id is provided, label_t and label_y_true must exist");
+        label_time.has_value() && label_target.has_value(),
+        "If label_n_id is provided, label_time and label_target must exist");
 
     const auto n_labels = label_n_id->size(0);
-    TORCH_CHECK(label_t->size(0) == n_labels, "label_t size mismatch");
-    TORCH_CHECK(label_y_true->size(0) == n_labels,
-                "label_y_true size mismatch");
+    TORCH_CHECK(label_time->size(0) == n_labels, "label_time size mismatch");
+    TORCH_CHECK(label_target->size(0) == n_labels,
+                "label_target size mismatch");
   }
 }
 
