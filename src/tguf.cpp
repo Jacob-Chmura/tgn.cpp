@@ -1,6 +1,7 @@
 #include "tguf.h"
 
 #include <fcntl.h>
+#include <unistd.h>
 #include <sys/mman.h>
 #include <torch/types.h>
 #include <unistd.h>
@@ -87,10 +88,35 @@ struct TGUFBuilder::Impl {
     if (fd == -1) {
       throw std::runtime_error("Failed to create file");
     }
+
+#ifdef __APPLE__
+    fstore_t store = {};
+    store.fst_flags = F_ALLOCATECONTIG;      // try contiguous first
+    store.fst_posmode = F_PEOFPOSMODE;
+    store.fst_offset = 0;
+    store.fst_length = total_mapped_size;
+    store.fst_bytesalloc = 0;
+
+    if (fcntl(fd, F_PREALLOCATE, &store) == -1) {
+        // Fall back to non-contiguous allocation
+        store.fst_flags = F_ALLOCATEALL;
+        if (fcntl(fd, F_PREALLOCATE, &store) == -1) {
+            close(fd);
+            throw std::runtime_error("Failed to preallocate disk space (macOS)");
+        }
+    }
+
+    // Set the logical file size
+    if (ftruncate(fd, total_mapped_size) != 0) {
+      close(fd);
+      throw std::runtime_error("Failed to set file size (macOS)");
+    }
+#else
     if (posix_fallocate(fd, 0, total_mapped_size) != 0) {
       close(fd);
-      throw std::runtime_error("Failed to allocate disk space");
+      throw std::runtime_error("Failed to allocate disk space (Linux)");
     }
+#endif
 
     base_ptr = mmap(nullptr, total_mapped_size, PROT_READ | PROT_WRITE,
                     MAP_SHARED, fd, 0);

@@ -61,14 +61,17 @@ auto process_edge_batch(const StreamHeader& h, const tgn::TGUFBuilder& builder,
       .t = torch::from_blob(scratch.i64.data() + (bsize * 2), {bsize},
                             torch::kInt64)
                .clone(),
-      .msg = torch::from_blob(scratch.f32.data(), {bsize, h.m_dim},
+      .msg = torch::from_blob(scratch.f32.data(),
+                              {bsize, static_cast<std::int64_t>(h.m_dim)},
                               torch::kFloat32)
                  .clone()};
 
   if (h.n_neg > 0) {
-    batch.neg_dst = torch::from_blob(scratch.i64.data() + (bsize * 3),
-                                     {bsize, h.n_neg}, torch::kInt64)
-                        .clone();
+    batch.neg_dst =
+        torch::from_blob(scratch.i64.data() + (bsize * 3),
+                         {bsize, static_cast<std::int64_t>(h.n_neg)},
+                         torch::kInt64)
+            .clone();
   }
   builder.append_edges(batch);
 }
@@ -83,7 +86,9 @@ auto process_label_batch(const StreamHeader& h, const tgn::TGUFBuilder& builder,
       torch::from_blob(scratch.i64.data(), {bsize}, torch::kInt64).clone(),
       torch::from_blob(scratch.i64.data() + bsize, {bsize}, torch::kInt64)
           .clone(),
-      torch::from_blob(scratch.f32.data(), {bsize, h.l_dim}, torch::kFloat32)
+      torch::from_blob(scratch.f32.data(),
+                       {bsize, static_cast<std::int64_t>(h.l_dim)},
+                       torch::kFloat32)
           .clone());
 }
 
