@@ -13,18 +13,18 @@
 namespace tgn {
 
 struct TGNConfig {
-  const std::size_t embedding_dim = 100;
-  const std::size_t memory_dim = 100;
-  const std::size_t time_dim = 100;
-  const std::size_t num_heads = 2;
-  const std::size_t num_nbrs = 10;
-  const float dropout = 0.1;
+  std::size_t embedding_dim = 100;
+  std::size_t memory_dim = 100;
+  std::size_t time_dim = 100;
+  std::size_t num_heads = 2;
+  std::size_t num_nbrs = 10;
+  float dropout = 0.1;
 };
 
 struct Batch {
   torch::Tensor src;
   torch::Tensor dst;
-  torch::Tensor t;
+  torch::Tensor time;
   torch::Tensor msg;
   std::optional<torch::Tensor> neg_dst;
 };
@@ -60,7 +60,7 @@ struct LabelEvent {
 struct TGData {
   torch::Tensor src;
   torch::Tensor dst;
-  torch::Tensor t;
+  torch::Tensor time;
   torch::Tensor msg;
   std::optional<torch::Tensor> neg_dst = std::nullopt;
   std::optional<std::size_t> val_start = std::nullopt;
@@ -153,7 +153,8 @@ class TGNImpl : public torch::nn::Module {
   auto detach_memory() -> void;
   auto reset_state() -> void;
   auto update_state(const torch::Tensor& src, const torch::Tensor& dst,
-                    const torch::Tensor& t, const torch::Tensor& msg) -> void;
+                    const torch::Tensor& time, const torch::Tensor& msg)
+      -> void;
 
   template <typename... Ts>
   auto forward(const Ts&... inputs) {

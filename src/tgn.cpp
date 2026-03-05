@@ -378,9 +378,9 @@ auto TGNImpl::reset_state() -> void {
 }
 
 auto TGNImpl::update_state(const torch::Tensor& src, const torch::Tensor& dst,
-                           const torch::Tensor& t, const torch::Tensor& msg)
+                           const torch::Tensor& time, const torch::Tensor& msg)
     -> void {
-  impl_->memory_->update_state(src, dst, t, msg);
+  impl_->memory_->update_state(src, dst, time, msg);
   impl_->nbr_loader_.insert(src, dst);
 }
 

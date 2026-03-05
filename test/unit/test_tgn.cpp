@@ -36,7 +36,7 @@ class TGNTest : public ::testing::Test {
     const auto data =
         tgn::TGData{.src = torch::randint(0, 100, {n}, torch::kLong),
                     .dst = torch::randint(0, 100, {n}, torch::kLong),
-                    .t = torch::linspace(0, 100, n).to(torch::kLong),
+                    .time = torch::linspace(0, 100, n).to(torch::kLong),
                     .msg = torch::randn({n, d}),
                     .neg_dst = std::nullopt};
     store = tgn::TGStore::from_memory(std::move(data));

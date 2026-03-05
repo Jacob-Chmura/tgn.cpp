@@ -81,7 +81,7 @@ auto train(tgn::TGN& encoder, NodePredictor& decoder, torch::optim::Adam& opt,
       const auto num_edges_to_process = stop_e_id - e_id;
       const auto batch = store->get_batch(e_id, num_edges_to_process);
 
-      encoder->update_state(batch.src, batch.dst, batch.t, batch.msg);
+      encoder->update_state(batch.src, batch.dst, batch.time, batch.msg);
       e_id = stop_e_id;
     }
 
@@ -99,12 +99,12 @@ auto train(tgn::TGN& encoder, NodePredictor& decoder, torch::optim::Adam& opt,
 
     encoder->detach_memory();
 
-    const auto running_loss =
-        total_loss / std::max<float>(1.0f, (l_id - l_range.start()));
     util::progress_bar(
         e_id - e_range.start(), e_range.size(), start_time,
         std::format("Epoch {:2d}/{:2d} [Train]", current_epoch, num_epochs),
-        std::format("Loss:    {:.3f}", running_loss));
+        std::format("Loss: {:.3f}",
+                    total_loss / static_cast<float>(std::max<std::size_t>(
+                                     1, l_id - l_range.start()))));
   }
   std::cout << std::endl;
 }
@@ -130,7 +130,7 @@ auto eval(tgn::TGN& encoder, NodePredictor& decoder,
       const auto num_edges_to_process = stop_e_id - e_id;
       const auto batch = store->get_batch(e_id, num_edges_to_process);
 
-      encoder->update_state(batch.src, batch.dst, batch.t, batch.msg);
+      encoder->update_state(batch.src, batch.dst, batch.time, batch.msg);
       e_id = stop_e_id;
     }
 
@@ -139,13 +139,12 @@ auto eval(tgn::TGN& encoder, NodePredictor& decoder,
     const auto y_pred = decoder->forward(z);
     perf_list.push_back(compute_ndcg(y_pred, label_event.y_true));
 
-    const auto running_ndcg =
-        std::accumulate(perf_list.begin(), perf_list.end(), 0.0F) /
-        perf_list.size();
     util::progress_bar(
         e_id - e_range.start(), e_range.size(), start_time,
         std::format("            [Valid]", current_epoch, num_epochs),
-        std::format("NDCG@10: {:.3f}", running_ndcg));
+        std::format("NDCG@10: {:.3f}",
+                    std::accumulate(perf_list.begin(), perf_list.end(), 0.0F) /
+                        static_cast<float>(perf_list.size())));
   }
   std::cout << std::endl;
 }

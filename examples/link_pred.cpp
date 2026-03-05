@@ -85,15 +85,15 @@ auto train(tgn::TGN& encoder, LinkPredictor& decoder, torch::optim::Adam& opt,
     opt.step();
     total_loss += loss.item<float>();
 
-    encoder->update_state(batch.src, batch.dst, batch.t, batch.msg);
+    encoder->update_state(batch.src, batch.dst, batch.time, batch.msg);
     encoder->detach_memory();
 
-    const auto running_loss =
-        total_loss / std::max<float>(1.0f, e_id - e_range.start());
     util::progress_bar(
         e_id - e_range.start(), e_range.size(), start_time,
         std::format("Epoch {:2d}/{:2d} [Train]", current_epoch, num_epochs),
-        std::format("Loss: {:.3f}", running_loss));
+        std::format("Loss: {:.3f}",
+                    total_loss / static_cast<float>(std::max<std::size_t>(
+                                     1, e_id - e_range.start()))));
   }
   std::cout << std::endl;
 }
@@ -128,15 +128,14 @@ auto eval(tgn::TGN& encoder, LinkPredictor& decoder,
         decoder->forward(z_src_expanded, z_neg.reshape({-1, D})).sigmoid();
 
     perf_list.push_back(compute_mrr(pred_pos, pred_neg));
-    encoder->update_state(batch.src, batch.dst, batch.t, batch.msg);
+    encoder->update_state(batch.src, batch.dst, batch.time, batch.msg);
 
-    const auto running_mrr =
-        std::accumulate(perf_list.begin(), perf_list.end(), 0.0F) /
-        perf_list.size();
     util::progress_bar(
         e_id - e_range.start(), e_range.size(), start_time,
         std::format("            [Valid]", current_epoch, num_epochs),
-        std::format("MRR:  {:.3f}", running_mrr));
+        std::format("MRR:  {:.3f}",
+                    std::accumulate(perf_list.begin(), perf_list.end(), 0.0F) /
+                        static_cast<float>(perf_list.size())));
   }
   std::cout << std::endl;
 }

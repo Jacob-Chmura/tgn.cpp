@@ -40,7 +40,6 @@ TEST_F(TGUFBuilderTest, PhysicalLayoutAndAlignment) {
       .val_start = 70,
       .test_start = 85,
   };
-
   tgn::TGUFBuilder builder(schema);
   builder.finalize();
 
@@ -83,7 +82,7 @@ TEST_F(TGUFBuilderTest, AppendEdges) {
   auto batch = tgn::Batch{
       .src = torch::tensor({1, 2}, torch::kLong),
       .dst = torch::tensor({3, 4}, torch::kLong),
-      .t = torch::tensor({10, 11}, torch::kLong),
+      .time = torch::tensor({10, 11}, torch::kLong),
       .msg = torch::tensor({{1.0f, 2.0f}, {3.0f, 4.0f}}, torch::kFloat)};
 
   builder.append_edges(batch);
@@ -146,7 +145,7 @@ TEST_F(TGUFBuilderTest, FailureAppendEdgesAfterFinalize) {
 
   auto batch = tgn::Batch{.src = torch::zeros({1}, torch::kLong),
                           .dst = torch::zeros({1}, torch::kLong),
-                          .t = torch::zeros({1}, torch::kLong),
+                          .time = torch::zeros({1}, torch::kLong),
                           .msg = torch::zeros({1, 1})};
   EXPECT_THROW(builder.append_edges(batch), std::runtime_error);
 }
@@ -181,7 +180,7 @@ TEST_F(TGUFBuilderTest, FailureEdgeExceedCapacity) {
 
   auto batch = tgn::Batch{.src = torch::zeros({3}, torch::kLong),  // Size 3
                           .dst = torch::zeros({3}, torch::kLong),
-                          .t = torch::zeros({3}, torch::kLong),
+                          .time = torch::zeros({3}, torch::kLong),
                           .msg = torch::zeros({3, 1})};
   EXPECT_THROW(builder.append_edges(batch), std::runtime_error);
 }
@@ -217,7 +216,7 @@ TEST_F(TGUFBuilderTest, FailureEdgeMsgDimMismatch) {
 
   auto batch = tgn::Batch{.src = torch::zeros({1}, torch::kLong),
                           .dst = torch::zeros({1}, torch::kLong),
-                          .t = torch::zeros({1}, torch::kLong),
+                          .time = torch::zeros({1}, torch::kLong),
                           .msg = torch::zeros({1, 64})};  // Got 64
 
   EXPECT_THROW(builder.append_edges(batch), std::invalid_argument);
@@ -254,7 +253,7 @@ TEST_F(TGUFBuilderTest, FailureNegDstMissing) {
 
   auto batch = tgn::Batch{.src = torch::zeros({1}, torch::kLong),
                           .dst = torch::zeros({1}, torch::kLong),
-                          .t = torch::zeros({1}, torch::kLong),
+                          .time = torch::zeros({1}, torch::kLong),
                           .msg = torch::zeros({1, 4}),
                           .neg_dst = std::nullopt};  // Expected neg dst
 
@@ -274,7 +273,7 @@ TEST_F(TGUFBuilderTest, FailureNegDstDimMisMatch) {
 
   auto batch = tgn::Batch{.src = torch::zeros({1}, torch::kLong),
                           .dst = torch::zeros({1}, torch::kLong),
-                          .t = torch::zeros({1}, torch::kLong),
+                          .time = torch::zeros({1}, torch::kLong),
                           .msg = torch::zeros({1, 4}),
                           .neg_dst = torch::zeros({1, 3})};  // Expected 5, got
 

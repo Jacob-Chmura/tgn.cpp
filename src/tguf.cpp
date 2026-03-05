@@ -195,7 +195,7 @@ auto TGUFBuilder::append_edges(const Batch& batch) const -> void {
   impl_->to_mmap(impl_->header.dst_offset, impl_->written_edges,
                  sizeof(std::int64_t), batch.dst);
   impl_->to_mmap(impl_->header.t_offset, impl_->written_edges,
-                 sizeof(std::int64_t), batch.t);
+                 sizeof(std::int64_t), batch.time);
   impl_->to_mmap(impl_->header.msg_offset, impl_->written_edges,
                  impl_->header.msg_dim * sizeof(float), batch.msg);
 

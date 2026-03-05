@@ -37,7 +37,7 @@ class TGStoreImpl final : public TGStore {
   explicit TGStoreImpl(TGData data)
       : src_(std::move(data.src)),
         dst_(std::move(data.dst)),
-        t_(std::move(data.t)),
+        t_(std::move(data.time)),
         msg_(std::move(data.msg)),
         neg_dst_(std::move(data.neg_dst)),
         num_edges_(static_cast<std::size_t>(src_.size(0))),
@@ -228,7 +228,7 @@ class TGStoreImpl final : public TGStore {
 
     return Batch{.src = src_.slice(0, s, e),
                  .dst = dst_.slice(0, s, e),
-                 .t = t_.slice(0, s, e),
+                 .time = t_.slice(0, s, e),
                  .msg = msg_.slice(0, s, e),
                  .neg_dst = batch_neg};
   }
@@ -272,7 +272,7 @@ class TGStoreImpl final : public TGStore {
 
 [[nodiscard]] static auto get_data_size_bytes(const TGData& data)
     -> std::size_t {
-  auto bytes = data.src.nbytes() + data.dst.nbytes() + data.t.nbytes() +
+  auto bytes = data.src.nbytes() + data.dst.nbytes() + data.time.nbytes() +
                data.msg.nbytes();
   if (data.neg_dst.has_value()) {
     bytes += data.neg_dst->nbytes();
@@ -384,7 +384,7 @@ class TGStoreImpl final : public TGStore {
 
   data.src = mmap_tensor(header->src_offset, {n_edges}, torch::kLong);
   data.dst = mmap_tensor(header->dst_offset, {n_edges}, torch::kLong);
-  data.t = mmap_tensor(header->t_offset, {n_edges}, torch::kLong);
+  data.time = mmap_tensor(header->t_offset, {n_edges}, torch::kLong);
   data.msg = mmap_tensor(header->msg_offset, {n_edges, m_dim}, torch::kFloat32);
 
   if (header->neg_dst_offset > 0 && header->n_neg > 0) {
@@ -411,12 +411,12 @@ auto TGData::validate() const -> void {
 
   TORCH_CHECK(src.dim() == 1, "src must be 1D");
   TORCH_CHECK(dst.dim() == 1 && dst.size(0) == n, "dst must be [num_edges]");
-  TORCH_CHECK(t.dim() == 1 && t.size(0) == n, "t must be [n]");
+  TORCH_CHECK(time.dim() == 1 && time.size(0) == n, "t must be [n]");
   TORCH_CHECK(msg.dim() == 2 && msg.size(0) == n, "msg must be [num_edges, d]");
 
   TORCH_CHECK(!src.is_floating_point(), "src must be integral");
   TORCH_CHECK(!dst.is_floating_point(), "dst must be integral");
-  TORCH_CHECK(!t.is_floating_point(), "timestamps must be integral");
+  TORCH_CHECK(!time.is_floating_point(), "timestamps must be integral");
 
   if (neg_dst.has_value()) {
     const auto num_nodes = n > 0 ? 1 + std::max(src.max().item<std::int64_t>(),
