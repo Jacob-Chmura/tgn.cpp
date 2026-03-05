@@ -58,9 +58,9 @@ auto process_edge_batch(const StreamHeader& h, const tgn::TGUFBuilder& builder,
       .dst =
           torch::from_blob(scratch.i64.data() + bsize, {bsize}, torch::kInt64)
               .clone(),
-      .t = torch::from_blob(scratch.i64.data() + (bsize * 2), {bsize},
-                            torch::kInt64)
-               .clone(),
+      .time = torch::from_blob(scratch.i64.data() + (bsize * 2), {bsize},
+                               torch::kInt64)
+                  .clone(),
       .msg = torch::from_blob(scratch.f32.data(),
                               {bsize, static_cast<std::int64_t>(h.m_dim)},
                               torch::kFloat32)

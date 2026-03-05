@@ -39,9 +39,9 @@ TEST_F(CSV_TGUF_RoundtripTest, Verify) {
   EXPECT_EQ(batch.dst[1].item<std::int64_t>(), 30);
   EXPECT_EQ(batch.dst[2].item<std::int64_t>(), 10);
 
-  EXPECT_EQ(batch.t[0].item<std::int64_t>(), 5);
-  EXPECT_EQ(batch.t[1].item<std::int64_t>(), 10);
-  EXPECT_EQ(batch.t[2].item<std::int64_t>(), 15);
+  EXPECT_EQ(batch.time[0].item<std::int64_t>(), 5);
+  EXPECT_EQ(batch.time[1].item<std::int64_t>(), 10);
+  EXPECT_EQ(batch.time[2].item<std::int64_t>(), 15);
 
   EXPECT_FLOAT_EQ(batch.msg[0][0].item<float>(), 0.11F);
   EXPECT_FLOAT_EQ(batch.msg[2][0].item<float>(), 0.31F);
