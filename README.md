@@ -7,7 +7,7 @@ C++ Port of "Temporal Graph Networks for Deep Learning on Dynamic Graphs".
 
 ### Prerequisites
 
-You can just use the provided [Dockerfile](./Dockerfile). If you prefer to install dependencies manually on your host OS, see below.
+You can just use the provided [Dockerfile](./Dockerfile). If you prefer to install dependencies manually, see below.
 
 ##### Linux
 
