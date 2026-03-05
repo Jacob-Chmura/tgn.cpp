@@ -1,7 +1,6 @@
 #include "tguf.h"
 
 #include <fcntl.h>
-#include <unistd.h>
 #include <sys/mman.h>
 #include <torch/types.h>
 #include <unistd.h>
@@ -56,6 +55,8 @@ struct TGUFBuilder::Impl {
         header.msg_offset + align(n_edges * m_dim * sizeof(float));
 
     if (n_neg > 0) {
+      // TODO(kuba): This over allocs since we only have pre-allocated negatives
+      // starting at validation split (at least in TGB)
       header.neg_dst_offset = last_offset;
       last_offset += align(n_edges * n_neg * sizeof(std::int64_t));
     }
@@ -91,19 +92,19 @@ struct TGUFBuilder::Impl {
 
 #ifdef __APPLE__
     fstore_t store = {};
-    store.fst_flags = F_ALLOCATECONTIG;      // try contiguous first
+    store.fst_flags = F_ALLOCATECONTIG;  // try contiguous first
     store.fst_posmode = F_PEOFPOSMODE;
     store.fst_offset = 0;
     store.fst_length = total_mapped_size;
     store.fst_bytesalloc = 0;
 
     if (fcntl(fd, F_PREALLOCATE, &store) == -1) {
-        // Fall back to non-contiguous allocation
-        store.fst_flags = F_ALLOCATEALL;
-        if (fcntl(fd, F_PREALLOCATE, &store) == -1) {
-            close(fd);
-            throw std::runtime_error("Failed to preallocate disk space (macOS)");
-        }
+      // Fall back to non-contiguous allocation
+      store.fst_flags = F_ALLOCATEALL;
+      if (fcntl(fd, F_PREALLOCATE, &store) == -1) {
+        close(fd);
+        throw std::runtime_error("Failed to preallocate disk space (macOS)");
+      }
     }
 
     // Set the logical file size
@@ -141,13 +142,11 @@ struct TGUFBuilder::Impl {
   }
 };
 
-TGUFBuilder::TGUFBuilder(const std::string& path, std::size_t n_edges,
-                         std::size_t n_labels, std::size_t m_dim,
-                         std::size_t l_dim, std::size_t n_neg,
-                         std::optional<std::size_t> val_start,
-                         std::optional<std::size_t> test_start)
-    : impl_(std::make_unique<Impl>(path, n_edges, n_labels, m_dim, l_dim, n_neg,
-                                   val_start, test_start)) {}
+TGUFBuilder::TGUFBuilder(const TGUFSchema& schema)
+    : impl_(std::make_unique<Impl>(schema.path, schema.edge_capacity,
+                                   schema.label_capacity, schema.msg_dim,
+                                   schema.label_dim, schema.num_negatives,
+                                   schema.val_start, schema.test_start)) {}
 TGUFBuilder::~TGUFBuilder() = default;
 
 auto TGUFBuilder::append_edges(const Batch& batch) const -> void {

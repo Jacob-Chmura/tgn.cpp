@@ -104,8 +104,18 @@ auto main(int argc, char** argv) -> int {
     StreamHeader h;
     read_exactly(&h, sizeof(StreamHeader));
 
-    tgn::TGUFBuilder builder(out_path, h.n_edges, h.n_labels, h.m_dim, h.l_dim,
-                             h.n_neg, h.val_start, h.test_start);
+    tgn::TGUFSchema schema{
+        .path = out_path,
+        .edge_capacity = h.n_edges,
+        .label_capacity = h.n_labels,
+        .msg_dim = h.m_dim,
+        .label_dim = h.l_dim,
+        .num_negatives = h.n_neg,
+        .val_start = h.val_start,
+        .test_start = h.test_start,
+    };
+
+    tgn::TGUFBuilder builder(schema);
     Scratch scratch;
     char cmd;
     std::int64_t bsize;

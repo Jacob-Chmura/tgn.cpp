@@ -79,13 +79,23 @@ struct TGUFOptions {
   std::optional<std::size_t> test_start = std::nullopt;
 };
 
+struct TGUFSchema {
+  std::string path;
+
+  std::size_t edge_capacity;
+  std::size_t label_capacity;
+
+  std::size_t msg_dim;
+  std::size_t label_dim;
+  std::size_t num_negatives;
+
+  std::optional<std::size_t> val_start = std::nullopt;
+  std::optional<std::size_t> test_start = std::nullopt;
+};
+
 class TGUFBuilder {
  public:
-  explicit TGUFBuilder(const std::string& path, std::size_t n_edges,
-                       std::size_t n_labels, std::size_t m_dim,
-                       std::size_t l_dim, std::size_t n_neg,
-                       std::optional<std::size_t> val_start = std::nullopt,
-                       std::optional<std::size_t> test_start = std::nullopt);
+  explicit TGUFBuilder(const TGUFSchema& schema);
   ~TGUFBuilder();
 
   auto append_edges(const Batch& batch) const -> void;
