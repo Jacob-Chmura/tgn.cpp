@@ -66,6 +66,10 @@ jobs:
         with:
           enable-cache: true
 
+      - name: Install OpenMP (MacOS)
+        if: runner.os == 'macOS'
+        run: brew install libomp
+
       - name: Run Link Prediction
         run: make run-link-${{ matrix.dataset }}
 
@@ -97,6 +101,10 @@ jobs:
         with:
           enable-cache: true
 
+      - name: Install OpenMP (MacOS)
+        if: runner.os == 'macOS'
+        run: brew install libomp
+
       - name: Run Node Prediction
         run: make run-node-${{ matrix.dataset }}
 
@@ -126,6 +134,10 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
+
+      - name: Install OpenMP (MacOS)
+        if: runner.os == 'macOS'
+        run: brew install libomp
 
       - name: Run Integration Tests
         run: make test-integration
