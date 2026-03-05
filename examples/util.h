@@ -9,7 +9,6 @@
 #include <string>
 
 namespace util {
-
 inline auto progress_bar = [](std::size_t current, std::size_t total,
                               std::chrono::steady_clock::time_point start_time,
                               const std::string& prefix = "",
