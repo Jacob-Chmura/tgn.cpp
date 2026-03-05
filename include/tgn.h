@@ -29,6 +29,11 @@ struct Batch {
   std::optional<torch::Tensor> neg_dst;
 };
 
+struct LabelEvent {
+  torch::Tensor n_id;
+  torch::Tensor target;
+};
+
 enum class NegStrategy {
   None,         // Node Prop or Inference
   Random,       // Link Prop Training (1:1 random negatives)
@@ -52,11 +57,6 @@ struct Range {
   std::size_t end_{0};
 };
 
-struct LabelEvent {
-  torch::Tensor n_id;
-  torch::Tensor y_true;
-};
-
 struct TGData {
   torch::Tensor src;
   torch::Tensor dst;
@@ -67,16 +67,10 @@ struct TGData {
   std::optional<std::size_t> test_start = std::nullopt;
 
   std::optional<torch::Tensor> label_n_id = std::nullopt;
-  std::optional<torch::Tensor> label_t = std::nullopt;
-  std::optional<torch::Tensor> label_y_true = std::nullopt;
+  std::optional<torch::Tensor> label_time = std::nullopt;
+  std::optional<torch::Tensor> label_target = std::nullopt;
 
   auto validate() const -> void;
-};
-
-struct TGUFOptions {
-  std::string path;
-  std::optional<std::size_t> val_start = std::nullopt;
-  std::optional<std::size_t> test_start = std::nullopt;
 };
 
 struct TGUFSchema {
@@ -84,10 +78,9 @@ struct TGUFSchema {
 
   std::size_t edge_capacity;
   std::size_t label_capacity;
-
   std::size_t msg_dim;
   std::size_t label_dim;
-  std::size_t num_negatives;
+  std::size_t negatives_per_edge;
 
   std::optional<std::size_t> val_start = std::nullopt;
   std::optional<std::size_t> test_start = std::nullopt;
@@ -99,8 +92,8 @@ class TGUFBuilder {
   ~TGUFBuilder();
 
   auto append_edges(const Batch& batch) const -> void;
-  auto append_labels(const torch::Tensor& n_id, const torch::Tensor& t,
-                     const torch::Tensor& y_true) const -> void;
+  auto append_labels(const torch::Tensor& n_id, const torch::Tensor& time,
+                     const torch::Tensor& target) const -> void;
   auto finalize() -> void;
 
  private:
@@ -114,11 +107,14 @@ class TGStore {
 
   [[nodiscard]] static auto from_memory(TGData data)
       -> std::shared_ptr<TGStore>;
-  [[nodiscard]] static auto from_tguf(const TGUFOptions& opts)
+  [[nodiscard]] static auto from_tguf(
+      const std::string& path,
+      std::optional<std::size_t> val_start = std::nullopt,
+      std::optional<std::size_t> test_start = std::nullopt)
       -> std::shared_ptr<TGStore>;
 
-  [[nodiscard]] virtual auto num_edges() const -> std::size_t = 0;
-  [[nodiscard]] virtual auto num_nodes() const -> std::size_t = 0;
+  [[nodiscard]] virtual auto edge_count() const -> std::size_t = 0;
+  [[nodiscard]] virtual auto node_count() const -> std::size_t = 0;
   [[nodiscard]] virtual auto msg_dim() const -> std::size_t = 0;
   [[nodiscard]] virtual auto label_dim() const -> std::size_t = 0;
 
@@ -138,7 +134,7 @@ class TGStore {
   [[nodiscard]] virtual auto gather_msgs(const torch::Tensor& e_id) const
       -> torch::Tensor = 0;
 
-  [[nodiscard]] virtual auto get_stop_e_id_for_label_event(
+  [[nodiscard]] virtual auto get_edge_cutoff_for_label_event(
       std::size_t l_id) const -> std::size_t = 0;
 
   [[nodiscard]] virtual auto get_label_event(std::size_t l_id) const

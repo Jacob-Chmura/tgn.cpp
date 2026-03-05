@@ -39,11 +39,13 @@ class TgufTGStoreFixture : public TGStoreFixture {
   }
 
   auto make_store(tgn::TGData data) -> std::shared_ptr<tgn::TGStore> override {
-    return make_store_with_opts(std::move(data), std::nullopt);
+    return make_store_with_opts(std::move(data));
   }
 
-  auto make_store_with_opts(tgn::TGData data,
-                            std::optional<tgn::TGUFOptions> opts_override)
+  auto make_store_with_opts(
+      tgn::TGData data,
+      std::optional<std::size_t> val_start_override = std::nullopt,
+      std::optional<std::size_t> test_start_override = std::nullopt)
       -> std::shared_ptr<tgn::TGStore> {
     const tgn::TGUFSchema schema{
         .path = tguf_path_.string(),
@@ -53,12 +55,13 @@ class TgufTGStoreFixture : public TGStoreFixture {
                 ? static_cast<std::size_t>(data.label_n_id->size(0))
                 : 0,
         .msg_dim = static_cast<std::size_t>(data.msg.size(1)),
-        .label_dim = data.label_y_true.has_value()
-                         ? static_cast<std::size_t>(data.label_y_true->size(1))
+        .label_dim = data.label_target.has_value()
+                         ? static_cast<std::size_t>(data.label_target->size(1))
                          : 0,
-        .num_negatives = data.neg_dst.has_value()
-                             ? static_cast<std::size_t>(data.neg_dst->size(1))
-                             : 0,
+        .negatives_per_edge =
+            data.neg_dst.has_value()
+                ? static_cast<std::size_t>(data.neg_dst->size(1))
+                : 0,
         .val_start = data.val_start,
         .test_start = data.test_start,
     };
@@ -70,20 +73,15 @@ class TgufTGStoreFixture : public TGStoreFixture {
                                     .msg = data.msg,
                                     .neg_dst = data.neg_dst});
     if (data.label_n_id.has_value()) {
-      builder.append_labels(*data.label_n_id, *data.label_t,
-                            *data.label_y_true);
+      builder.append_labels(*data.label_n_id, *data.label_time,
+                            *data.label_target);
     }
     builder.finalize();
-
-    if (opts_override.has_value()) {
-      opts_override->path = tguf_path_.string();
-      return tgn::TGStore::from_tguf(*opts_override);
-    }
-
-    return tgn::TGStore::from_tguf(
-        tgn::TGUFOptions{.path = tguf_path_.string(),
-                         .val_start = data.val_start,
-                         .test_start = data.test_start});
+    const auto val_start =
+        val_start_override.has_value() ? val_start_override : data.val_start;
+    const auto test_start =
+        test_start_override.has_value() ? test_start_override : data.test_start;
+    return tgn::TGStore::from_tguf(tguf_path_, val_start, test_start);
   }
 
  private:
@@ -107,10 +105,10 @@ TYPED_TEST(TGStoreTest, MakeStoreInit) {
                   .msg = torch::randn({n, d}),
                   .neg_dst = torch::randint(0, 6, {n, m}, torch::kLong)});
   ASSERT_NE(store, nullptr);
-  EXPECT_EQ(store->num_edges(), n);
+  EXPECT_EQ(store->edge_count(), n);
   EXPECT_EQ(store->msg_dim(), d);
   EXPECT_EQ(store->label_dim(), 0);
-  EXPECT_EQ(store->num_nodes(), 6);  // Max ID 5 + 1
+  EXPECT_EQ(store->node_count(), 6);  // Max ID 5 + 1
 }
 
 TYPED_TEST(TGStoreTest, GetBatchNegStrategyNone) {
@@ -281,8 +279,8 @@ TYPED_TEST(TGStoreTest, HandlesEmptyInputs) {
                                    .time = torch::empty({0}, torch::kLong),
                                    .msg = torch::empty({0, 4}),
                                    .neg_dst = std::nullopt});
-  EXPECT_EQ(store->num_edges(), 0);
-  EXPECT_EQ(store->num_nodes(), 0);
+  EXPECT_EQ(store->edge_count(), 0);
+  EXPECT_EQ(store->node_count(), 0);
 }
 
 TYPED_TEST(TGStoreTest, SplitsWithCustomBoundaries) {
@@ -337,8 +335,8 @@ TYPED_TEST(TGStoreTest, LabelSplitThreeDistinct) {
                   .time = torch::tensor({10, 20, 30, 40, 50}, torch::kLong),
                   .msg = torch::zeros({5, 1}),
                   .label_n_id = torch::zeros({3}, torch::kLong),
-                  .label_t = torch::tensor({15, 25, 45}, torch::kLong),
-                  .label_y_true = torch::zeros({3, 1})});
+                  .label_time = torch::tensor({15, 25, 45}, torch::kLong),
+                  .label_target = torch::zeros({3, 1})});
   EXPECT_EQ(store->train_label_split().size(), 3);
   EXPECT_EQ(store->val_label_split().size(), 0);
   EXPECT_EQ(store->test_label_split().size(), 0);
@@ -352,8 +350,8 @@ TYPED_TEST(TGStoreTest, LabelSplitThreeGrouped) {
                   .time = torch::tensor({10, 20, 30, 40, 50}, torch::kLong),
                   .msg = torch::zeros({5, 1}),
                   .label_n_id = torch::zeros({3}, torch::kLong),
-                  .label_t = torch::tensor({15, 15, 25}, torch::kLong),
-                  .label_y_true = torch::zeros({3, 1})});
+                  .label_time = torch::tensor({15, 15, 25}, torch::kLong),
+                  .label_target = torch::zeros({3, 1})});
   EXPECT_EQ(store->train_label_split().size(), 2);  // 2 unique timestamps
   EXPECT_EQ(store->val_label_split().size(), 0);
   EXPECT_EQ(store->test_label_split().size(), 0);
@@ -367,8 +365,8 @@ TYPED_TEST(TGStoreTest, LabelSplitSingle) {
                   .time = torch::tensor({10, 20, 30, 40, 50}, torch::kLong),
                   .msg = torch::zeros({5, 1}),
                   .label_n_id = torch::zeros({1}, torch::kLong),
-                  .label_t = torch::tensor({15}, torch::kLong),
-                  .label_y_true = torch::zeros({1, 1})});
+                  .label_time = torch::tensor({15}, torch::kLong),
+                  .label_target = torch::zeros({1, 1})});
   EXPECT_EQ(store->train_label_split().size(), 1);
   EXPECT_EQ(store->val_label_split().size(), 0);
   EXPECT_EQ(store->test_label_split().size(), 0);
@@ -392,8 +390,8 @@ TYPED_TEST(TGStoreTest, LabelSplitsWithCustomBoundaries) {
                   // t=75 (Index 1) -> Val   (70 <= 75 < 90)
                   // t=95 (Index 2) -> Test  (95 >= 90)
                   .label_n_id = torch::tensor({1, 2, 3}, torch::kLong),
-                  .label_t = torch::tensor({15, 75, 95}, torch::kLong),
-                  .label_y_true = torch::zeros({3, 1})});
+                  .label_time = torch::tensor({15, 75, 95}, torch::kLong),
+                  .label_target = torch::zeros({3, 1})});
 
   EXPECT_EQ(store->train_label_split().start(), 0);
   EXPECT_EQ(store->train_label_split().end(), 1);
@@ -406,56 +404,56 @@ TYPED_TEST(TGStoreTest, LabelSplitsWithCustomBoundaries) {
   EXPECT_EQ(store->label_dim(), 1);
 }
 
-TYPED_TEST(TGStoreTest, GetStopEIdEmptyThrows) {
+TYPED_TEST(TGStoreTest, GetEdgeCutoffEmptyThrows) {
   const auto store =
       this->make_store(tgn::TGData{.src = torch::zeros({5}, torch::kLong),
                                    .dst = torch::zeros({5}, torch::kLong),
                                    .time = torch::arange(5, torch::kLong),
                                    .msg = torch::zeros({5, 1})});
-  EXPECT_THROW(store->get_stop_e_id_for_label_event(0), std::out_of_range);
+  EXPECT_THROW(store->get_edge_cutoff_for_label_event(0), std::out_of_range);
 }
 
-TYPED_TEST(TGStoreTest, GetStopEIdThreeDistinct) {
+TYPED_TEST(TGStoreTest, GetEdgeCutoffThreeDistinct) {
   const auto store = this->make_store(
       tgn::TGData{.src = torch::zeros({5}, torch::kLong),
                   .dst = torch::zeros({5}, torch::kLong),
                   .time = torch::tensor({10, 20, 30, 40, 50}, torch::kLong),
                   .msg = torch::zeros({5, 1}),
                   .label_n_id = torch::zeros({3}, torch::kLong),
-                  .label_t = torch::tensor({15, 25, 45}, torch::kLong),
-                  .label_y_true = torch::zeros({3, 1})});
-  EXPECT_EQ(store->get_stop_e_id_for_label_event(0), 1);  // Before t=20
-  EXPECT_EQ(store->get_stop_e_id_for_label_event(1), 2);  // Before t=30
-  EXPECT_EQ(store->get_stop_e_id_for_label_event(2), 4);  // Before t=50
+                  .label_time = torch::tensor({15, 25, 45}, torch::kLong),
+                  .label_target = torch::zeros({3, 1})});
+  EXPECT_EQ(store->get_edge_cutoff_for_label_event(0), 1);  // Before t=20
+  EXPECT_EQ(store->get_edge_cutoff_for_label_event(1), 2);  // Before t=30
+  EXPECT_EQ(store->get_edge_cutoff_for_label_event(2), 4);  // Before t=50
 }
 
-TYPED_TEST(TGStoreTest, GetStopEIdThreeGrouped) {
+TYPED_TEST(TGStoreTest, GetEdgeCutoffThreeGrouped) {
   const auto store = this->make_store(
       tgn::TGData{.src = torch::zeros({5}, torch::kLong),
                   .dst = torch::zeros({5}, torch::kLong),
                   .time = torch::tensor({10, 20, 30, 40, 50}, torch::kLong),
                   .msg = torch::zeros({5, 1}),
                   .label_n_id = torch::zeros({3}, torch::kLong),
-                  .label_t = torch::tensor({15, 15, 25}, torch::kLong),
-                  .label_y_true = torch::zeros({3, 1})});
+                  .label_time = torch::tensor({15, 15, 25}, torch::kLong),
+                  .label_target = torch::zeros({3, 1})});
 
   // Stop ID for the first group (t=15)
-  EXPECT_EQ(store->get_stop_e_id_for_label_event(0), 1);
+  EXPECT_EQ(store->get_edge_cutoff_for_label_event(0), 1);
 
   // Stop ID for the second group (t=25)
-  EXPECT_EQ(store->get_stop_e_id_for_label_event(1), 2);
+  EXPECT_EQ(store->get_edge_cutoff_for_label_event(1), 2);
 }
 
-TYPED_TEST(TGStoreTest, GetStopEIdSingle) {
+TYPED_TEST(TGStoreTest, GetEdgeCutoffSingle) {
   const auto store = this->make_store(
       tgn::TGData{.src = torch::zeros({2}, torch::kLong),
                   .dst = torch::zeros({2}, torch::kLong),
                   .time = torch::tensor({10, 20}, torch::kLong),
                   .msg = torch::zeros({2, 1}),
                   .label_n_id = torch::zeros({1}, torch::kLong),
-                  .label_t = torch::tensor({25}, torch::kLong),
-                  .label_y_true = torch::zeros({1, 1})});
-  EXPECT_EQ(store->get_stop_e_id_for_label_event(0),
+                  .label_time = torch::tensor({25}, torch::kLong),
+                  .label_target = torch::zeros({1, 1})});
+  EXPECT_EQ(store->get_edge_cutoff_for_label_event(0),
             2);  // Matches end of edges
 }
 TYPED_TEST(TGStoreTest, GetLabelEventEmptyThrows) {
@@ -474,15 +472,18 @@ TYPED_TEST(TGStoreTest, GetLabelEventThreeDistinct) {
                   .time = torch::arange(5, torch::kLong),
                   .msg = torch::zeros({5, 1}),
                   .label_n_id = torch::tensor({100, 200, 300}, torch::kLong),
-                  .label_t = torch::tensor({1, 2, 3}, torch::kLong),
-                  .label_y_true = torch::zeros({3, 1})});
-  EXPECT_EQ(store->get_label_event(0).n_id[0].template item<int64_t>(), 100);
-  EXPECT_EQ(store->get_label_event(1).n_id[0].template item<int64_t>(), 200);
-  EXPECT_EQ(store->get_label_event(2).n_id[0].template item<int64_t>(), 300);
+                  .label_time = torch::tensor({1, 2, 3}, torch::kLong),
+                  .label_target = torch::zeros({3, 1})});
+  EXPECT_EQ(store->get_label_event(0).n_id[0].template item<std::int64_t>(),
+            100);
+  EXPECT_EQ(store->get_label_event(1).n_id[0].template item<std::int64_t>(),
+            200);
+  EXPECT_EQ(store->get_label_event(2).n_id[0].template item<std::int64_t>(),
+            300);
 
-  EXPECT_EQ(store->get_label_event(0).y_true[0].template item<float>(), 0);
-  EXPECT_EQ(store->get_label_event(1).y_true[0].template item<float>(), 0);
-  EXPECT_EQ(store->get_label_event(2).y_true[0].template item<float>(), 0);
+  EXPECT_EQ(store->get_label_event(0).target[0].template item<float>(), 0);
+  EXPECT_EQ(store->get_label_event(1).target[0].template item<float>(), 0);
+  EXPECT_EQ(store->get_label_event(2).target[0].template item<float>(), 0);
 }
 
 TYPED_TEST(TGStoreTest, GetLabelEventThreeGrouped) {
@@ -492,16 +493,16 @@ TYPED_TEST(TGStoreTest, GetLabelEventThreeGrouped) {
                   .time = torch::arange(5, torch::kLong),
                   .msg = torch::zeros({5, 1}),
                   .label_n_id = torch::tensor({1, 2, 3}, torch::kLong),
-                  .label_t = torch::tensor({10, 10, 20}, torch::kLong),
-                  .label_y_true = torch::zeros({3, 1})});
+                  .label_time = torch::tensor({10, 10, 20}, torch::kLong),
+                  .label_target = torch::zeros({3, 1})});
   auto event = store->get_label_event(0);
   EXPECT_EQ(event.n_id.size(0), 2);  // Groups node 1 and 2
-  EXPECT_EQ(event.n_id[0].template item<int64_t>(), 1);
-  EXPECT_EQ(event.n_id[1].template item<int64_t>(), 2);
+  EXPECT_EQ(event.n_id[0].template item<std::int64_t>(), 1);
+  EXPECT_EQ(event.n_id[1].template item<std::int64_t>(), 2);
 
   event = store->get_label_event(1);
   EXPECT_EQ(event.n_id.size(0), 1);  // Groups node 1 and 2
-  EXPECT_EQ(event.n_id[0].template item<int64_t>(), 3);
+  EXPECT_EQ(event.n_id[0].template item<std::int64_t>(), 3);
 }
 
 TYPED_TEST(TGStoreTest, GetLabelEventSingle) {
@@ -511,10 +512,11 @@ TYPED_TEST(TGStoreTest, GetLabelEventSingle) {
                   .time = torch::arange(5, torch::kLong),
                   .msg = torch::zeros({5, 1}),
                   .label_n_id = torch::tensor({999}, torch::kLong),
-                  .label_t = torch::tensor({10}, torch::kLong),
-                  .label_y_true = torch::zeros({1, 1})});
-  EXPECT_EQ(store->get_label_event(0).n_id[0].template item<int64_t>(), 999);
-  EXPECT_EQ(store->get_label_event(0).y_true[0].template item<float>(), 0);
+                  .label_time = torch::tensor({10}, torch::kLong),
+                  .label_target = torch::zeros({1, 1})});
+  EXPECT_EQ(store->get_label_event(0).n_id[0].template item<std::int64_t>(),
+            999);
+  EXPECT_EQ(store->get_label_event(0).target[0].template item<float>(), 0);
 }
 
 TYPED_TEST(TGStoreTest, ValidateRejectsInvalidShapes) {
@@ -597,15 +599,14 @@ TEST_F(TgufTGStoreFixture, SplitResolutionUsesHeaderWhenOptsEmpty) {
   };
 
   // Load without splits in opts
-  tgn::TGUFOptions empty_opts;
-  const auto store = make_store_with_opts(std::move(data), empty_opts);
+  const auto store = make_store_with_opts(std::move(data));
 
   // Verify it fell back to header values
   EXPECT_EQ(store->val_split().start(), 2);
   EXPECT_EQ(store->test_split().start(), 4);
 }
 
-TEST_F(TgufTGStoreFixture, SplitResolutionUsesOptsToOverrideHeader) {
+TEST_F(TgufTGStoreFixture, SplitResolutionOverrideHeader) {
   const std::int64_t n = 10;
   tgn::TGData data{
       .src = torch::zeros({n}, torch::kLong),
@@ -617,13 +618,14 @@ TEST_F(TgufTGStoreFixture, SplitResolutionUsesOptsToOverrideHeader) {
   };
 
   // User explicitly provides different splits in opts
-  tgn::TGUFOptions override_opts{.val_start = 6, .test_start = 9};
-
-  const auto store = make_store_with_opts(std::move(data), override_opts);
+  const auto val_start = 6;
+  const auto test_start = 9;
+  const auto store =
+      make_store_with_opts(std::move(data), val_start, test_start);
 
   // Verify Options took precedence over Header
-  EXPECT_EQ(store->val_split().start(), 6);
-  EXPECT_EQ(store->test_split().start(), 9);
+  EXPECT_EQ(store->val_split().start(), val_start);
+  EXPECT_EQ(store->test_split().start(), test_start);
 }
 
 TEST(TGRange, ValidRange) {

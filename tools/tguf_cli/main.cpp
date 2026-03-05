@@ -110,7 +110,7 @@ auto main(int argc, char** argv) -> int {
         .label_capacity = h.n_labels,
         .msg_dim = h.m_dim,
         .label_dim = h.l_dim,
-        .num_negatives = h.n_neg,
+        .negatives_per_edge = h.n_neg,
         .val_start = h.val_start,
         .test_start = h.test_start,
     };

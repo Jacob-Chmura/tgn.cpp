@@ -145,7 +145,7 @@ struct TGUFBuilder::Impl {
 TGUFBuilder::TGUFBuilder(const TGUFSchema& schema)
     : impl_(std::make_unique<Impl>(schema.path, schema.edge_capacity,
                                    schema.label_capacity, schema.msg_dim,
-                                   schema.label_dim, schema.num_negatives,
+                                   schema.label_dim, schema.negatives_per_edge,
                                    schema.val_start, schema.test_start)) {}
 TGUFBuilder::~TGUFBuilder() = default;
 
@@ -207,8 +207,8 @@ auto TGUFBuilder::append_edges(const Batch& batch) const -> void {
 }
 
 auto TGUFBuilder::append_labels(const torch::Tensor& n_id,
-                                const torch::Tensor& t,
-                                const torch::Tensor& y_true) const -> void {
+                                const torch::Tensor& time,
+                                const torch::Tensor& target) const -> void {
   if (impl_->finalized) {
     throw std::runtime_error(
         "TGUFBuilder::append_labels: Cannot append labels to a finalized "
@@ -229,19 +229,19 @@ auto TGUFBuilder::append_labels(const torch::Tensor& n_id,
         " slots remain.");
   }
 
-  if (y_true.size(1) != static_cast<std::int64_t>(impl_->header.label_dim)) {
+  if (target.size(1) != static_cast<std::int64_t>(impl_->header.label_dim)) {
     throw std::invalid_argument(
         "TGUFBuilder::append_labels: Label dimension mismatch. Expected " +
         std::to_string(impl_->header.label_dim) + ", got " +
-        std::to_string(y_true.size(1)));
+        std::to_string(target.size(1)));
   }
 
   impl_->to_mmap(impl_->header.label_n_id_offset, impl_->written_labels,
                  sizeof(std::int64_t), n_id);
   impl_->to_mmap(impl_->header.label_t_offset, impl_->written_labels,
-                 sizeof(std::int64_t), t);
+                 sizeof(std::int64_t), time);
   impl_->to_mmap(impl_->header.label_y_true_offset, impl_->written_labels,
-                 impl_->header.label_dim * sizeof(float), y_true);
+                 impl_->header.label_dim * sizeof(float), target);
   impl_->written_labels += count;
 }
 

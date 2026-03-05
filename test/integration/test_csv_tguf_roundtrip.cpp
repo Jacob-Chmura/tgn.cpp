@@ -20,11 +20,11 @@ class CSV_TGUF_RoundtripTest : public ::testing::Test {
 };
 
 TEST_F(CSV_TGUF_RoundtripTest, Verify) {
-  auto store = tgn::TGStore::from_tguf({.path = output_tguf});
+  auto store = tgn::TGStore::from_tguf(output_tguf);
 
   // TODO(kuba): Would be nice to read in expect out from resources
-  EXPECT_EQ(store->num_edges(), 3);
-  EXPECT_EQ(store->num_nodes(), 31);
+  EXPECT_EQ(store->edge_count(), 3);
+  EXPECT_EQ(store->node_count(), 31);
   EXPECT_EQ(store->msg_dim(), 2);
   EXPECT_EQ(store->label_dim(), 2);
 
@@ -57,17 +57,17 @@ TEST_F(CSV_TGUF_RoundtripTest, Verify) {
   // Check labels
   auto label0 = store->get_label_event(0);
   EXPECT_EQ(label0.n_id[0].item<std::int64_t>(), 1);
-  EXPECT_FLOAT_EQ(label0.y_true[0][0].item<float>(), 1.0F);
-  EXPECT_FLOAT_EQ(label0.y_true[0][1].item<float>(), 0.0F);
+  EXPECT_FLOAT_EQ(label0.target[0][0].item<float>(), 1.0F);
+  EXPECT_FLOAT_EQ(label0.target[0][1].item<float>(), 0.0F);
 
   auto label1 = store->get_label_event(1);
   EXPECT_EQ(label1.n_id[0].item<std::int64_t>(), 2);
-  EXPECT_FLOAT_EQ(label1.y_true[0][0].item<float>(), 0.0F);
-  EXPECT_FLOAT_EQ(label1.y_true[0][1].item<float>(), 1.0F);
+  EXPECT_FLOAT_EQ(label1.target[0][0].item<float>(), 0.0F);
+  EXPECT_FLOAT_EQ(label1.target[0][1].item<float>(), 1.0F);
 
   // Check Edge-Label Synchronization (Stop IDs)
   // Label 0 (t=12) sees edges before 12 (Index 0, 1) -> Stop ID = 2
-  EXPECT_EQ(store->get_stop_e_id_for_label_event(0), 2);
+  EXPECT_EQ(store->get_edge_cutoff_for_label_event(0), 2);
   // Label 1 (t=24) sees all edges (Index 0, 1, 2) -> Stop ID = 3
-  EXPECT_EQ(store->get_stop_e_id_for_label_event(1), 3);
+  EXPECT_EQ(store->get_edge_cutoff_for_label_event(1), 3);
 }

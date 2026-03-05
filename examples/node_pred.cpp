@@ -76,7 +76,7 @@ auto train(tgn::TGN& encoder, NodePredictor& decoder, torch::optim::Adam& opt,
 
   while (l_id < l_range.end()) {
     // Catch up all edge events before current label event
-    const auto stop_e_id = store->get_stop_e_id_for_label_event(l_id);
+    const auto stop_e_id = store->get_edge_cutoff_for_label_event(l_id);
     if (e_id < stop_e_id) {
       const auto num_edges_to_process = stop_e_id - e_id;
       const auto batch = store->get_batch(e_id, num_edges_to_process);
@@ -92,7 +92,7 @@ auto train(tgn::TGN& encoder, NodePredictor& decoder, torch::optim::Adam& opt,
     const auto y_pred = decoder->forward(z);
 
     auto loss =
-        torch::nn::functional::cross_entropy(y_pred, label_event.y_true);
+        torch::nn::functional::cross_entropy(y_pred, label_event.target);
     loss.backward();
     opt.step();
     total_loss += loss.item<float>();
@@ -125,7 +125,7 @@ auto eval(tgn::TGN& encoder, NodePredictor& decoder,
   auto l_id = l_range.start();
 
   while (l_id < l_range.end()) {
-    const auto stop_e_id = store->get_stop_e_id_for_label_event(l_id);
+    const auto stop_e_id = store->get_edge_cutoff_for_label_event(l_id);
     if (e_id < stop_e_id) {
       const auto num_edges_to_process = stop_e_id - e_id;
       const auto batch = store->get_batch(e_id, num_edges_to_process);
@@ -137,7 +137,7 @@ auto eval(tgn::TGN& encoder, NodePredictor& decoder,
     const auto label_event = store->get_label_event(l_id++);
     const auto [z] = encoder->forward(label_event.n_id);
     const auto y_pred = decoder->forward(z);
-    perf_list.push_back(compute_ndcg(y_pred, label_event.y_true));
+    perf_list.push_back(compute_ndcg(y_pred, label_event.target));
 
     util::progress_bar(
         e_id - e_range.start(), e_range.size(), start_time,
@@ -159,8 +159,7 @@ auto main(int argc, char** argv) -> int {
   const std::string tguf_path = argv[1];
   TGN_LOG_INFO("Running Node Property Prediction ({})", tguf_path);
 
-  tgn::TGUFOptions opts{.path = tguf_path};
-  const auto store = tgn::TGStore::from_tguf(opts);
+  const auto store = tgn::TGStore::from_tguf(tguf_path);
   const auto cfg = tgn::TGNConfig{};
 
   tgn::TGN encoder(cfg, store);

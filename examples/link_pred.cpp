@@ -150,8 +150,7 @@ auto main(int argc, char** argv) -> int {
   const std::string tguf_path = argv[1];
   TGN_LOG_INFO("Running LinkPrediction ({})", tguf_path);
 
-  tgn::TGUFOptions opts{.path = tguf_path};
-  const auto store = tgn::TGStore::from_tguf(opts);
+  const auto store = tgn::TGStore::from_tguf(tguf_path);
   const auto cfg = tgn::TGNConfig{};
 
   tgn::TGN encoder(cfg, store);

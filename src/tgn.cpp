@@ -339,15 +339,15 @@ struct TGNImpl::Impl {
   Impl(const TGNConfig& cfg, const std::shared_ptr<TGStore>& store)
       : cfg_(cfg),
         store_(store),
-        nbr_loader_(cfg.num_nbrs, store->num_nodes()),
-        assoc_(torch::full({static_cast<std::int64_t>(store->num_nodes())}, -1,
+        nbr_loader_(cfg.num_nbrs, store->node_count()),
+        assoc_(torch::full({static_cast<std::int64_t>(store->node_count())}, -1,
                            torch::dtype(torch::kLong))) {
     time_encoder_ = detail::TimeEncoder(cfg.time_dim);
     conv_ = detail::TransformerConv(cfg.memory_dim, cfg.embedding_dim / 2,
                                     store->msg_dim() + cfg.time_dim,
                                     cfg.num_heads, cfg.dropout);
     memory_ = detail::TGNMemory(cfg, time_encoder_, store->msg_dim(),
-                                store->num_nodes());
+                                store->node_count());
   }
 
   const TGNConfig cfg_;
