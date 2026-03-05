@@ -47,13 +47,18 @@ class TgufTGStoreFixture : public TGStoreFixture {
       -> std::shared_ptr<tgn::TGStore> {
     const tgn::TGUFSchema schema{
         .path = tguf_path_.string(),
-        .edge_capacity = data.src.size(0),
+        .edge_capacity = static_cast<std::size_t>(data.src.size(0)),
         .label_capacity =
-            data.label_n_id.has_value() ? data.label_n_id->size(0) : 0,
-        .msg_dim = data.msg.size(1),
-        .label_dim =
-            data.label_y_true.has_value() ? data.label_y_true->size(1) : 0,
-        .num_negatives = data.neg_dst.has_value() ? data.neg_dst->size(1) : 0,
+            data.label_n_id.has_value()
+                ? static_cast<std::size_t>(data.label_n_id->size(0))
+                : 0,
+        .msg_dim = static_cast<std::size_t>(data.msg.size(1)),
+        .label_dim = data.label_y_true.has_value()
+                         ? static_cast<std::size_t>(data.label_y_true->size(1))
+                         : 0,
+        .num_negatives = data.neg_dst.has_value()
+                             ? static_cast<std::size_t>(data.neg_dst->size(1))
+                             : 0,
         .val_start = data.val_start,
         .test_start = data.test_start,
     };
