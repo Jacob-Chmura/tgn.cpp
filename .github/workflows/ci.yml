@@ -85,7 +85,7 @@ jobs:
           style: "file" # Use .clang-format config file
           tidy-checks: "" # Use .clang-tidy config file
 
-  container-test:
+  test-on-container:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -142,7 +142,7 @@ jobs:
       - name: Run Integration Tests
         run: make test-integration
 
-  container-integration:
+  node-pred-on-container:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
