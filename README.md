@@ -7,11 +7,23 @@ C++ Port of "Temporal Graph Networks for Deep Learning on Dynamic Graphs".
 
 #### Prerequisites
 
+##### Linux
+
 ```sh
 # C++ Toolchain: Clang w/ C++20 and the LLVM STL
-apt-get install -y clang libc++-dev libc++abi-dev
+sudo apt-get install -y clang libc++-dev libc++abi-dev
+```
 
-# TGUF Conversion Python Scripts use uv:
+##### MacOS
+
+```sh
+# OpenMP runtime
+brew install libomp
+```
+
+##### TGUF Conversion Python Scripts use uv:
+
+```sh
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
