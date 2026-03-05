@@ -5,7 +5,7 @@ C++ Port of "Temporal Graph Networks for Deep Learning on Dynamic Graphs".
 > \[!Note\]
 > Tested on Linux (Ubuntu 22.04+) and macOS (Apple Silicon)
 
-#### Prerequisites
+### Prerequisites
 
 ##### Linux
 
@@ -27,7 +27,7 @@ brew install libomp
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-#### Usage
+### Usage
 
 ```sh
 git clone git@github.com:Jacob-Chmura/tgn.cpp.git && cd tgn.cpp
