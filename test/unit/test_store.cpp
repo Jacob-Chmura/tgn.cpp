@@ -13,9 +13,12 @@
 
 struct TestData {
   torch::Tensor src, dst, time, msg;
-  std::optional<torch::Tensor> neg_dst;
-  std::optional<torch::Tensor> label_n_id, label_time, label_target;
-  std::optional<std::size_t> val_start, test_start;
+  std::optional<torch::Tensor> neg_dst = std::nullopt;
+  std::optional<torch::Tensor> label_n_id = std::nullopt,
+                               label_time = std::nullopt,
+                               label_target = std::nullopt;
+  std::optional<std::size_t> val_start = std::nullopt,
+                             test_start = std::nullopt;
 };
 
 class TGStoreFixture : public ::testing::Test {
@@ -111,12 +114,13 @@ TYPED_TEST(TGStoreTest, MakeStoreInit) {
   const std::int64_t n = 10;
   const std::int64_t d = 8;
   const std::int64_t m = 3;
-  const auto store = this->make_store(
-      TestData{.src = torch::zeros({n}, torch::kLong),
-               .dst = torch::full({n}, 5, torch::kLong),
-               .time = torch::arange(n, torch::kLong),
-               .msg = torch::randn({n, d}),
-               .neg_dst = torch::randint(0, 6, {n, m}, torch::kLong)});
+  const auto store = this->make_store(TestData{
+      .src = torch::zeros({n}, torch::kLong),
+      .dst = torch::full({n}, 5, torch::kLong),
+      .time = torch::arange(n, torch::kLong),
+      .msg = torch::randn({n, d}),
+      .neg_dst = torch::randint(0, 6, {n, m}, torch::kLong),
+  });
   ASSERT_NE(store, nullptr);
   EXPECT_EQ(store->edge_count(), n);
   EXPECT_EQ(store->msg_dim(), d);
@@ -579,7 +583,8 @@ TYPED_TEST(TGStoreTest, ValidateRejectsFloatingPointIDs) {
   const auto t = torch::zeros({n}, torch::kLong);
   const auto msg = torch::zeros({n, 4});
 
-  const auto edges = tgn::Batch{.src = src, .dst = dst, .time = t, .msg = msg};
+  const auto edges = tgn::Batch{
+      .src = src, .dst = dst, .time = t, .msg = msg, .neg_dst = std::nullopt};
   EXPECT_THROW(std::ignore = tgn::TGStore::from_memory(edges), c10::Error);
 }
 
@@ -590,7 +595,8 @@ TYPED_TEST(TGStoreTest, ValidateRejectsFloatingPointTimestamps) {
   const auto t = torch::zeros({n});  // Float instead of long
   const auto msg = torch::zeros({n, 4});
 
-  const auto edges = tgn::Batch{.src = src, .dst = dst, .time = t, .msg = msg};
+  const auto edges = tgn::Batch{
+      .src = src, .dst = dst, .time = t, .msg = msg, .neg_dst = std::nullopt};
   EXPECT_THROW(std::ignore = tgn::TGStore::from_memory(edges), c10::Error);
 }
 

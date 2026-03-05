@@ -7,8 +7,6 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
-#include <fstream>
-#include <iostream>
 #include <memory>
 #include <optional>
 #include <string>
@@ -39,26 +37,40 @@ struct TGData {
   auto validate() const -> void {
     const auto n = src.size(0);
 
+    TORCH_CHECK(src.device().is_cpu(), "src must be on CPU");
+    TORCH_CHECK(dst.device().is_cpu(), "dst must be on CPU");
+    TORCH_CHECK(time.device().is_cpu(), "time must be on CPU");
+    TORCH_CHECK(msg.device().is_cpu(), "msg must be on CPU");
+
+    TORCH_CHECK(!src.is_floating_point(), "src must be integral");
+    TORCH_CHECK(!dst.is_floating_point(), "dst must be integral");
+    TORCH_CHECK(!time.is_floating_point(), "timestamps must be integral");
+    TORCH_CHECK(src.scalar_type() == torch::kLong, "src must be torch::kLong");
+    TORCH_CHECK(dst.scalar_type() == torch::kLong, "dst must be torch::kLong");
+    TORCH_CHECK(time.scalar_type() == torch::kLong,
+                "time must be torch::kLong");
+    TORCH_CHECK(msg.scalar_type() == torch::kFloat32,
+                "msg must be torch::kFloat32");
+
     TORCH_CHECK(src.dim() == 1, "src must be 1D");
     TORCH_CHECK(dst.dim() == 1 && dst.size(0) == n, "dst must be [num_edges]");
     TORCH_CHECK(time.dim() == 1 && time.size(0) == n, "t must be [n]");
     TORCH_CHECK(msg.dim() == 2 && msg.size(0) == n,
                 "msg must be [num_edges, d]");
 
-    TORCH_CHECK(!src.is_floating_point(), "src must be integral");
-    TORCH_CHECK(!dst.is_floating_point(), "dst must be integral");
-    TORCH_CHECK(!time.is_floating_point(), "timestamps must be integral");
-
     if (neg_dst.has_value()) {
+      TORCH_CHECK(neg_dst->device().is_cpu(), "neg_dst must be on CPU");
+      TORCH_CHECK(neg_dst->scalar_type() == torch::kLong,
+                  "neg_dst must be torch::Long");
+
       const auto num_nodes = n > 0
                                  ? 1 + std::max(src.max().item<std::int64_t>(),
                                                 dst.max().item<std::int64_t>())
                                  : 0;
-      const auto& neg = neg_dst.value();
-      TORCH_CHECK(neg.dim() == 2 && neg.size(0) == n,
+      TORCH_CHECK(neg_dst->dim() == 2 && neg_dst->size(0) == n,
                   "neg_dst must be [num_edges, m]");
-      TORCH_CHECK(!neg.is_floating_point(), "neg_dst must be integral");
-      TORCH_CHECK(neg.max().item<std::int64_t>() < num_nodes,
+      TORCH_CHECK(!neg_dst->is_floating_point(), "neg_dst must be integral");
+      TORCH_CHECK(neg_dst->max().item<std::int64_t>() < num_nodes,
                   "neg_dst contains IDs outside the range of src/dst");
     }
 
@@ -67,6 +79,16 @@ struct TGData {
           label_time.has_value() && label_target.has_value(),
           "If label_n_id is provided, label_time and label_target must exist");
 
+      TORCH_CHECK(label_n_id->device().is_cpu(), "label_n_id must be on CPU");
+      TORCH_CHECK(label_time->device().is_cpu(), "label_time must be on CPU");
+      TORCH_CHECK(label_target->device().is_cpu(),
+                  "label_target must be on CPU");
+
+      TORCH_CHECK(label_n_id->scalar_type() == torch::kLong,
+                  "label_n_id must be torch::kLong");
+      TORCH_CHECK(label_time->scalar_type() == torch::kLong,
+                  "label_time must be torch::kLong");
+
       const auto n_labels = label_n_id->size(0);
       TORCH_CHECK(label_time->size(0) == n_labels, "label_time size mismatch");
       TORCH_CHECK(label_target->size(0) == n_labels,
@@ -74,7 +96,7 @@ struct TGData {
     }
   }
 
-  [[nodiscard]] auto get_size_bytes() -> std::size_t {
+  [[nodiscard]] auto get_size_bytes() const -> std::size_t {
     auto bytes = src.nbytes() + dst.nbytes() + time.nbytes() + msg.nbytes();
     if (neg_dst.has_value()) {
       bytes += neg_dst->nbytes();
@@ -128,6 +150,7 @@ class TGStoreImpl final : public TGStore {
     TGN_LOG_INFO("TGStore: Edge Splits Train[{}:{}] Val[{}:{}] Test[{}:{}]",
                  train_.start(), train_.end(), val_.start(), val_.end(),
                  test_.start(), test_.end());
+
     if (train_.size() > 0) {
       const auto train_dst =
           dst_.slice(0, 0, static_cast<std::int64_t>(train_.end()));
@@ -440,32 +463,32 @@ class TGStoreImpl final : public TGStore {
                : std::nullopt;
   };
 
-  detail::TGData data{
-      .val_start = resolve_split(val_start, header->val_start, "val_start"),
-      .test_start =
-          resolve_split(test_start, header->test_start, "test_start")};
+  detail::TGData data{};
+  data.val_start = resolve_split(val_start, header->val_start, "val_start");
+  data.test_start = resolve_split(test_start, header->test_start, "test_start");
 
   const auto n_edges = static_cast<std::int64_t>(header->num_edges);
   const auto m_dim = static_cast<std::int64_t>(header->msg_dim);
-  const auto n_neg = static_cast<std::int64_t>(header->n_neg);
+  const auto negatives_per_edge =
+      static_cast<std::int64_t>(header->negatives_per_edge);
   const auto n_labels = static_cast<std::int64_t>(header->num_labels);
   const auto l_dim = static_cast<std::int64_t>(header->label_dim);
 
   data.src = mmap_tensor(header->src_offset, {n_edges}, torch::kLong);
   data.dst = mmap_tensor(header->dst_offset, {n_edges}, torch::kLong);
-  data.time = mmap_tensor(header->t_offset, {n_edges}, torch::kLong);
+  data.time = mmap_tensor(header->time_offset, {n_edges}, torch::kLong);
   data.msg = mmap_tensor(header->msg_offset, {n_edges, m_dim}, torch::kFloat32);
 
-  if (header->neg_dst_offset > 0 && header->n_neg > 0) {
-    data.neg_dst =
-        mmap_tensor(header->neg_dst_offset, {n_edges, n_neg}, torch::kLong);
+  if (header->neg_dst_offset > 0 && header->negatives_per_edge > 0) {
+    data.neg_dst = mmap_tensor(header->neg_dst_offset,
+                               {n_edges, negatives_per_edge}, torch::kLong);
   }
   if (header->num_labels > 0) {
     data.label_n_id =
         mmap_tensor(header->label_n_id_offset, {n_labels}, torch::kLong);
     data.label_time =
-        mmap_tensor(header->label_t_offset, {n_labels}, torch::kLong);
-    data.label_target = mmap_tensor(header->label_y_true_offset,
+        mmap_tensor(header->label_time_offset, {n_labels}, torch::kLong);
+    data.label_target = mmap_tensor(header->label_target_offset,
                                     {n_labels, l_dim}, torch::kFloat32);
   }
 

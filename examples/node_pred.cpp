@@ -158,6 +158,7 @@ auto main(int argc, char** argv) -> int {
   }
   const std::string tguf_path = argv[1];
   TGN_LOG_INFO("Running Node Property Prediction ({})", tguf_path);
+  util::log_torch_backend_info();
 
   const auto store = tgn::TGStore::from_tguf(tguf_path);
   const auto cfg = tgn::TGNConfig{};

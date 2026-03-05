@@ -46,7 +46,7 @@ TEST_F(TGUFBuilderTest, PhysicalLayoutAndAlignment) {
   auto h = read_header();
   EXPECT_EQ(h.magic, tgn::TGUF_MAGIC);
   EXPECT_EQ(h.msg_dim, schema.msg_dim);
-  EXPECT_EQ(h.n_neg, schema.negatives_per_edge);
+  EXPECT_EQ(h.negatives_per_edge, schema.negatives_per_edge);
   EXPECT_EQ(h.val_start, schema.val_start);
   EXPECT_EQ(h.test_start, schema.test_start);
 
@@ -57,13 +57,13 @@ TEST_F(TGUFBuilderTest, PhysicalLayoutAndAlignment) {
   EXPECT_TRUE(is_aligned(h.label_n_id_offset));
   EXPECT_GE(h.dst_offset,
             h.src_offset + (schema.edge_capacity * sizeof(std::int64_t)));
-  EXPECT_GE(h.t_offset,
+  EXPECT_GE(h.time_offset,
             h.dst_offset + (schema.edge_capacity * sizeof(std::int64_t)));
   EXPECT_GE(h.msg_offset,
-            h.t_offset + (schema.edge_capacity * sizeof(std::int64_t)));
+            h.time_offset + (schema.edge_capacity * sizeof(std::int64_t)));
 
   std::uint64_t expected_min_size =
-      h.label_y_true_offset +
+      h.label_target_offset +
       (schema.label_capacity * schema.label_dim * sizeof(float));
   EXPECT_GE(std::filesystem::file_size(tguf_path_), expected_min_size);
 }
@@ -83,7 +83,8 @@ TEST_F(TGUFBuilderTest, AppendEdges) {
       .src = torch::tensor({1, 2}, torch::kLong),
       .dst = torch::tensor({3, 4}, torch::kLong),
       .time = torch::tensor({10, 11}, torch::kLong),
-      .msg = torch::tensor({{1.0f, 2.0f}, {3.0f, 4.0f}}, torch::kFloat)};
+      .msg = torch::tensor({{1.0F, 2.0F}, {3.0F, 4.0F}}, torch::kFloat),
+      .neg_dst = std::nullopt};
 
   builder.append_edges(batch);
   builder.finalize();
@@ -95,7 +96,7 @@ TEST_F(TGUFBuilderTest, AppendEdges) {
   EXPECT_EQ(h.num_labels, schema.label_capacity);
   EXPECT_EQ(h.msg_dim, schema.msg_dim);
   EXPECT_EQ(h.label_dim, schema.label_dim);
-  EXPECT_EQ(h.n_neg, schema.negatives_per_edge);
+  EXPECT_EQ(h.negatives_per_edge, schema.negatives_per_edge);
   EXPECT_EQ(h.val_start, 0);
   EXPECT_EQ(h.test_start, 0);
 }
@@ -114,7 +115,7 @@ TEST_F(TGUFBuilderTest, AppendLabels) {
   auto n_id = torch::tensor({100, 200}, torch::kLong);
   auto t = torch::tensor({50, 60}, torch::kLong);
   auto y =
-      torch::tensor({{1.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}}, torch::kFloat);
+      torch::tensor({{1.0F, 0.0F, 0.0F}, {0.0F, 1.0F, 0.0F}}, torch::kFloat);
 
   builder.append_labels(n_id, t, y);
   builder.finalize();
@@ -126,7 +127,7 @@ TEST_F(TGUFBuilderTest, AppendLabels) {
   EXPECT_EQ(h.num_labels, schema.label_capacity);
   EXPECT_EQ(h.msg_dim, schema.msg_dim);
   EXPECT_EQ(h.label_dim, schema.label_dim);
-  EXPECT_EQ(h.n_neg, schema.negatives_per_edge);
+  EXPECT_EQ(h.negatives_per_edge, schema.negatives_per_edge);
   EXPECT_EQ(h.val_start, 0);
   EXPECT_EQ(h.test_start, 0);
 }
@@ -146,7 +147,8 @@ TEST_F(TGUFBuilderTest, FailureAppendEdgesAfterFinalize) {
   auto batch = tgn::Batch{.src = torch::zeros({1}, torch::kLong),
                           .dst = torch::zeros({1}, torch::kLong),
                           .time = torch::zeros({1}, torch::kLong),
-                          .msg = torch::zeros({1, 1})};
+                          .msg = torch::zeros({1, 1}),
+                          .neg_dst = std::nullopt};
   EXPECT_THROW(builder.append_edges(batch), std::runtime_error);
 }
 
@@ -181,7 +183,8 @@ TEST_F(TGUFBuilderTest, FailureEdgeExceedCapacity) {
   auto batch = tgn::Batch{.src = torch::zeros({3}, torch::kLong),  // Size 3
                           .dst = torch::zeros({3}, torch::kLong),
                           .time = torch::zeros({3}, torch::kLong),
-                          .msg = torch::zeros({3, 1})};
+                          .msg = torch::zeros({3, 1}),
+                          .neg_dst = std::nullopt};
   EXPECT_THROW(builder.append_edges(batch), std::runtime_error);
 }
 
@@ -217,7 +220,8 @@ TEST_F(TGUFBuilderTest, FailureEdgeMsgDimMismatch) {
   auto batch = tgn::Batch{.src = torch::zeros({1}, torch::kLong),
                           .dst = torch::zeros({1}, torch::kLong),
                           .time = torch::zeros({1}, torch::kLong),
-                          .msg = torch::zeros({1, 64})};  // Got 64
+                          .msg = torch::zeros({1, 64}),  // Got 64
+                          .neg_dst = std::nullopt};
 
   EXPECT_THROW(builder.append_edges(batch), std::invalid_argument);
 }
