@@ -1,5 +1,8 @@
 #pragma once
 
+#include <logging.h>
+#include <torch/torch.h>
+
 #include <chrono>
 #include <cmath>
 #include <iostream>
@@ -62,7 +65,22 @@ inline auto progress_bar = [](std::size_t current, std::size_t total,
   if (!suffix.empty()) {
     std::cout << " │ " << suffix;
   }
-
   std::cout << std::flush;
 };
+
+inline auto log_torch_backend_info() -> void {
+  TGN_LOG_INFO("LibTorch Backend | Intra-op threads: {}",
+               torch::get_num_threads());
+  TGN_LOG_INFO("LibTorch Backend | Inter-op threads: {}",
+               torch::get_num_interop_threads());
+  TGN_LOG_INFO("LibTorch Backend | CPU Capability: {}",
+               torch::get_cpu_capability());
+
+#ifdef AT_MKL_ENABLED
+  TGN_LOG_INFO("LibTorch Backend | BLAS: Intel MKL (Enabled)");
+#else
+  TGN_LOG_WARN("LibTorch Backend | BLAS: Intel MKL not found");
+#endif
+};
+
 }  // namespace util

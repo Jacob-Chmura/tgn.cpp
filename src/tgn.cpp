@@ -59,7 +59,7 @@ struct TransformerConvImpl : torch::nn::Module {
   }
 
   auto forward(const torch::Tensor& x, const torch::Tensor& edge_index,
-               const torch::Tensor& edge_attr) -> torch::Tensor {
+               const torch::Tensor& edge_feat) -> torch::Tensor {
     // Cold Start short-circuit (no edges sampled for this batch)
     if (edge_index.size(1) == 0) {
       TGN_LOG_DEBUG(
@@ -79,7 +79,7 @@ struct TransformerConvImpl : torch::nn::Module {
     const auto q = w_q_->forward(x).view({B, H, C});
     const auto k = w_k_->forward(x).view({B, H, C});
     const auto v = w_v_->forward(x).view({B, H, C});
-    const auto e = w_e_->forward(edge_attr).view({E, H, C});
+    const auto e = w_e_->forward(edge_feat).view({E, H, C});
 
     // Attention scores
     const auto src = edge_index[0];  // src is the sender
@@ -403,8 +403,8 @@ auto TGNImpl::forward_internal(const std::vector<torch::Tensor>& input_list)
   const auto rel_t = last_update.index_select(0, edge_index[0]) - t_edges;
   const auto rel_t_z =
       impl_->time_encoder_->forward(rel_t.to(raw_msgs.dtype()));
-  const auto edge_attr = torch::cat({rel_t_z, raw_msgs}, -1);
-  const auto z = impl_->conv_->forward(x, edge_index, edge_attr);
+  const auto edge_feat = torch::cat({rel_t_z, raw_msgs}, -1);
+  const auto z = impl_->conv_->forward(x, edge_index, edge_feat);
 
   // Map computed local embeddings back to global id input_list
   std::vector<torch::Tensor> outputs;
