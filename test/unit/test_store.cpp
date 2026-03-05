@@ -45,28 +45,30 @@ class TgufTGStoreFixture : public TGStoreFixture {
   auto make_store_with_opts(tgn::TGData data,
                             std::optional<tgn::TGUFOptions> opts_override)
       -> std::shared_ptr<tgn::TGStore> {
-    const auto n_edges = data.src.size(0);
-    const auto m_dim = data.msg.size(1);
-    const auto n_neg = data.neg_dst.has_value() ? data.neg_dst->size(1) : 0;
-    const auto n_labels =
-        data.label_n_id.has_value() ? data.label_n_id->size(0) : 0;
-    const auto l_dim =
-        data.label_y_true.has_value() ? data.label_y_true->size(1) : 0;
+    const tgn::TGUFSchema schema{
+        .path = tguf_path_.string(),
+        .edge_capacity = data.src.size(0),
+        .label_capacity =
+            data.label_n_id.has_value() ? data.label_n_id->size(0) : 0,
+        .msg_dim = data.msg.size(1),
+        .label_dim =
+            data.label_y_true.has_value() ? data.label_y_true->size(1) : 0,
+        .num_negatives = data.neg_dst.has_value() ? data.neg_dst->size(1) : 0,
+        .val_start = data.val_start,
+        .test_start = data.test_start,
+    };
+    tgn::TGUFBuilder builder(schema);
 
-    {
-      tgn::TGUFBuilder builder(tguf_path_.string(), n_edges, n_labels, m_dim,
-                               l_dim, n_neg, data.val_start, data.test_start);
-      builder.append_edges(tgn::Batch{.src = data.src,
-                                      .dst = data.dst,
-                                      .t = data.t,
-                                      .msg = data.msg,
-                                      .neg_dst = data.neg_dst});
-      if (data.label_n_id.has_value()) {
-        builder.append_labels(*data.label_n_id, *data.label_t,
-                              *data.label_y_true);
-      }
-      builder.finalize();
+    builder.append_edges(tgn::Batch{.src = data.src,
+                                    .dst = data.dst,
+                                    .t = data.t,
+                                    .msg = data.msg,
+                                    .neg_dst = data.neg_dst});
+    if (data.label_n_id.has_value()) {
+      builder.append_labels(*data.label_n_id, *data.label_t,
+                            *data.label_y_true);
     }
+    builder.finalize();
 
     if (opts_override.has_value()) {
       opts_override->path = tguf_path_.string();
