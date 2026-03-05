@@ -141,3 +141,17 @@ jobs:
 
       - name: Run Integration Tests
         run: make test-integration
+
+  node-pred-on-container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build TGN Container
+        run: docker build -t tgn-dev .
+
+      - name: Run Node Prediction
+        run: |
+          docker run --rm \
+            -v "$(pwd):/workspace:Z" \
+            tgn-dev /bin/bash -c "make run-node-tgbn-trade"

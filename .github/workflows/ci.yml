@@ -84,3 +84,17 @@ jobs:
           database: "build"
           style: "file" # Use .clang-format config file
           tidy-checks: "" # Use .clang-tidy config file
+
+  test-on-container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build TGN Container
+        run: docker build -t tgn-dev .
+
+      - name: Run Tests inside Container
+        run: |
+          docker run --rm \
+          -v "$(pwd):/workspace:Z" \
+            tgn-dev /bin/bash -c "make test"
