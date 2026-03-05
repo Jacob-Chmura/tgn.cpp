@@ -42,9 +42,6 @@ struct TGData {
     TORCH_CHECK(time.device().is_cpu(), "time must be on CPU");
     TORCH_CHECK(msg.device().is_cpu(), "msg must be on CPU");
 
-    TORCH_CHECK(!src.is_floating_point(), "src must be integral");
-    TORCH_CHECK(!dst.is_floating_point(), "dst must be integral");
-    TORCH_CHECK(!time.is_floating_point(), "timestamps must be integral");
     TORCH_CHECK(src.scalar_type() == torch::kLong, "src must be torch::kLong");
     TORCH_CHECK(dst.scalar_type() == torch::kLong, "dst must be torch::kLong");
     TORCH_CHECK(time.scalar_type() == torch::kLong,
@@ -69,7 +66,6 @@ struct TGData {
                                  : 0;
       TORCH_CHECK(neg_dst->dim() == 2 && neg_dst->size(0) == n,
                   "neg_dst must be [num_edges, m]");
-      TORCH_CHECK(!neg_dst->is_floating_point(), "neg_dst must be integral");
       TORCH_CHECK(neg_dst->max().item<std::int64_t>() < num_nodes,
                   "neg_dst contains IDs outside the range of src/dst");
     }
