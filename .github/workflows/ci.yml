@@ -69,7 +69,7 @@ jobs:
       - name: Download Debug Build
         uses: actions/download-artifact@v4
         with:
-          name: build-${{ matrix.os }}-Debug
+          name: build-ubuntu-latest-Debug
           path: build/
 
       - uses: cpp-linter/cpp-linter-action@v2
