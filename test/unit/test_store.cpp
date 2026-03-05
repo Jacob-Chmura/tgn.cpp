@@ -66,7 +66,7 @@ class TgufTGStoreFixture : public TGStoreFixture {
 
     builder.append_edges(tgn::Batch{.src = data.src,
                                     .dst = data.dst,
-                                    .time = data.t,
+                                    .time = data.time,
                                     .msg = data.msg,
                                     .neg_dst = data.neg_dst});
     if (data.label_n_id.has_value()) {
