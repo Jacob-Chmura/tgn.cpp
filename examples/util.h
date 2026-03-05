@@ -47,7 +47,7 @@ inline auto progress_bar = [](std::size_t current, std::size_t total,
             << static_cast<int>(std::round(progress * 100.0)) << "% "
             << "(" << format_val(current) << " / " << format_val(total) << ")";
 
-  auto total_sec = static_cast<long>(std::round(elapsed_sec));
+  auto total_sec = static_cast<std::int64_t>(std::round(elapsed_sec));
   std::cout << " │ Time: " << std::setfill('0') << std::setw(2)
             << (total_sec / 60) << ":" << std::setfill('0') << std::setw(2)
             << (total_sec % 60) << std::setfill(' ');

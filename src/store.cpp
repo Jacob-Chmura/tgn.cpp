@@ -22,6 +22,72 @@
 namespace tgn {
 namespace detail {
 
+struct TGData {
+  torch::Tensor src;
+  torch::Tensor dst;
+  torch::Tensor time;
+  torch::Tensor msg;
+  std::optional<torch::Tensor> neg_dst = std::nullopt;
+
+  std::optional<torch::Tensor> label_n_id = std::nullopt;
+  std::optional<torch::Tensor> label_time = std::nullopt;
+  std::optional<torch::Tensor> label_target = std::nullopt;
+
+  std::optional<std::size_t> val_start = std::nullopt;
+  std::optional<std::size_t> test_start = std::nullopt;
+
+  auto validate() const -> void {
+    const auto n = src.size(0);
+
+    TORCH_CHECK(src.dim() == 1, "src must be 1D");
+    TORCH_CHECK(dst.dim() == 1 && dst.size(0) == n, "dst must be [num_edges]");
+    TORCH_CHECK(time.dim() == 1 && time.size(0) == n, "t must be [n]");
+    TORCH_CHECK(msg.dim() == 2 && msg.size(0) == n,
+                "msg must be [num_edges, d]");
+
+    TORCH_CHECK(!src.is_floating_point(), "src must be integral");
+    TORCH_CHECK(!dst.is_floating_point(), "dst must be integral");
+    TORCH_CHECK(!time.is_floating_point(), "timestamps must be integral");
+
+    if (neg_dst.has_value()) {
+      const auto num_nodes = n > 0
+                                 ? 1 + std::max(src.max().item<std::int64_t>(),
+                                                dst.max().item<std::int64_t>())
+                                 : 0;
+      const auto& neg = neg_dst.value();
+      TORCH_CHECK(neg.dim() == 2 && neg.size(0) == n,
+                  "neg_dst must be [num_edges, m]");
+      TORCH_CHECK(!neg.is_floating_point(), "neg_dst must be integral");
+      TORCH_CHECK(neg.max().item<std::int64_t>() < num_nodes,
+                  "neg_dst contains IDs outside the range of src/dst");
+    }
+
+    if (label_n_id.has_value()) {
+      TORCH_CHECK(
+          label_time.has_value() && label_target.has_value(),
+          "If label_n_id is provided, label_time and label_target must exist");
+
+      const auto n_labels = label_n_id->size(0);
+      TORCH_CHECK(label_time->size(0) == n_labels, "label_time size mismatch");
+      TORCH_CHECK(label_target->size(0) == n_labels,
+                  "label_target size mismatch");
+    }
+  }
+
+  [[nodiscard]] auto get_size_bytes() -> std::size_t {
+    auto bytes = src.nbytes() + dst.nbytes() + time.nbytes() + msg.nbytes();
+    if (neg_dst.has_value()) {
+      bytes += neg_dst->nbytes();
+    }
+    if (label_n_id.has_value()) {
+      bytes += label_n_id->nbytes();
+      bytes += label_time->nbytes();
+      bytes += label_target->nbytes();
+    }
+    return bytes;
+  }
+};
+
 class TGStoreImpl final : public TGStore {
  private:
   struct RandomNegSampler {
@@ -114,9 +180,9 @@ class TGStoreImpl final : public TGStore {
       };
 
       auto calculate_label_range = [&](std::int64_t start_t,
-                                       std::int64_t end_t) -> Range {
+                                       std::int64_t end_t) -> IndexRange {
         if (label_events_.empty() || start_t >= end_t) {
-          return Range{};
+          return IndexRange{};
         }
 
         // The 'round-trip' from train split edge start/end indices to
@@ -148,7 +214,7 @@ class TGStoreImpl final : public TGStore {
             "[{}:{}]",
             start_t, end_t, start_e_pos, end_e_pos, start, end);
 
-        return Range{start, end};
+        return IndexRange{start, end};
       };
 
       TGN_LOG_INFO(
@@ -185,16 +251,18 @@ class TGStoreImpl final : public TGStore {
   [[nodiscard]] auto label_dim() const -> std::size_t override {
     return label_dim_;
   }
-  [[nodiscard]] auto train_split() const -> Range override { return train_; }
-  [[nodiscard]] auto val_split() const -> Range override { return val_; }
-  [[nodiscard]] auto test_split() const -> Range override { return test_; }
-  [[nodiscard]] auto train_label_split() const -> Range override {
+  [[nodiscard]] auto train_split() const -> IndexRange override {
+    return train_;
+  }
+  [[nodiscard]] auto val_split() const -> IndexRange override { return val_; }
+  [[nodiscard]] auto test_split() const -> IndexRange override { return test_; }
+  [[nodiscard]] auto train_label_split() const -> IndexRange override {
     return train_label_;
   }
-  [[nodiscard]] auto val_label_split() const -> Range override {
+  [[nodiscard]] auto val_label_split() const -> IndexRange override {
     return val_label_;
   }
-  [[nodiscard]] auto test_label_split() const -> Range override {
+  [[nodiscard]] auto test_label_split() const -> IndexRange override {
     return test_label_;
   }
 
@@ -217,9 +285,9 @@ class TGStoreImpl final : public TGStore {
     } else if (strategy == NegStrategy::PreComputed) {
       TGN_LOG_DEBUG("TGStore: get_batch [{}:{}] (NegStrategy::PreComputed)",
                     start, end);
-      TORCH_CHECK(
-          neg_dst_.has_value(),
-          "NegStrategy::PreComputed requested but no neg_dst tensor available");
+      TORCH_CHECK(neg_dst_.has_value(),
+                  "NegStrategy::PreComputed requested but no neg_dst tensor "
+                  "available");
       batch_neg = neg_dst_->slice(0, s, e);
     } else {
       TGN_LOG_DEBUG("TGStore: get_batch [{}:{}] (NegStrategy::None)", start,
@@ -262,37 +330,36 @@ class TGStoreImpl final : public TGStore {
   std::size_t msg_dim_{0};
   std::size_t label_dim_{0};
 
-  Range train_, val_, test_;
-  Range train_label_, val_label_, test_label_;
+  IndexRange train_, val_, test_;
+  IndexRange train_label_, val_label_, test_label_;
   std::optional<RandomNegSampler> sampler_;
 
   std ::vector<LabelEvent> label_events_;
   std ::vector<std::size_t> stop_e_ids_;
 };
 
-[[nodiscard]] static auto get_data_size_bytes(const TGData& data)
-    -> std::size_t {
-  auto bytes = data.src.nbytes() + data.dst.nbytes() + data.time.nbytes() +
-               data.msg.nbytes();
-  if (data.neg_dst.has_value()) {
-    bytes += data.neg_dst->nbytes();
-  }
-  if (data.label_n_id.has_value()) {
-    bytes += data.label_n_id->nbytes();
-    bytes += data.label_time->nbytes();
-    bytes += data.label_target->nbytes();
-  }
-  return bytes;
-}
-
 }  // namespace detail
 
-[[nodiscard]] auto TGStore::from_memory(TGData data)
+[[nodiscard]] auto TGStore::from_memory(
+    const Batch& edges, const std::optional<torch::Tensor>& label_n_id,
+    const std::optional<torch::Tensor>& label_time,
+    const std::optional<torch::Tensor>& label_target,
+    std::optional<std::size_t> val_start, std::optional<std::size_t> test_start)
     -> std::shared_ptr<TGStore> {
+  auto data = detail::TGData{.src = edges.src,
+                             .dst = edges.dst,
+                             .time = edges.time,
+                             .msg = edges.msg,
+                             .neg_dst = edges.neg_dst,
+                             .label_n_id = label_n_id,
+                             .label_time = label_time,
+                             .label_target = label_target,
+                             .val_start = val_start,
+                             .test_start = test_start};
   data.validate();
 
   TGN_LOG_INFO("TGStore: Initialized from memory (~{:.2f} GiB allocated)",
-               detail::get_data_size_bytes(data) / (1024.0 * 1024.0 * 1024.0));
+               data.get_size_bytes() / (1024.0 * 1024.0 * 1024.0));
   return std::make_shared<detail::TGStoreImpl>(std::move(data));
 }
 
@@ -373,7 +440,7 @@ class TGStoreImpl final : public TGStore {
                : std::nullopt;
   };
 
-  TGData data{
+  detail::TGData data{
       .val_start = resolve_split(val_start, header->val_start, "val_start"),
       .test_start =
           resolve_split(test_start, header->test_start, "test_start")};
@@ -404,44 +471,8 @@ class TGStoreImpl final : public TGStore {
 
   data.validate();
   TGN_LOG_INFO("TGStore: Initialized from TGUF (~{:.2f} GiB Memory-Mapped)",
-               detail::get_data_size_bytes(data) / (1024.0 * 1024.0 * 1024.0));
+               data.get_size_bytes() / (1024.0 * 1024.0 * 1024.0));
   return std::make_shared<detail::TGStoreImpl>(std::move(data));
-}
-
-auto TGData::validate() const -> void {
-  const auto n = src.size(0);
-
-  TORCH_CHECK(src.dim() == 1, "src must be 1D");
-  TORCH_CHECK(dst.dim() == 1 && dst.size(0) == n, "dst must be [num_edges]");
-  TORCH_CHECK(time.dim() == 1 && time.size(0) == n, "t must be [n]");
-  TORCH_CHECK(msg.dim() == 2 && msg.size(0) == n, "msg must be [num_edges, d]");
-
-  TORCH_CHECK(!src.is_floating_point(), "src must be integral");
-  TORCH_CHECK(!dst.is_floating_point(), "dst must be integral");
-  TORCH_CHECK(!time.is_floating_point(), "timestamps must be integral");
-
-  if (neg_dst.has_value()) {
-    const auto num_nodes = n > 0 ? 1 + std::max(src.max().item<std::int64_t>(),
-                                                dst.max().item<std::int64_t>())
-                                 : 0;
-    const auto& neg = neg_dst.value();
-    TORCH_CHECK(neg.dim() == 2 && neg.size(0) == n,
-                "neg_dst must be [num_edges, m]");
-    TORCH_CHECK(!neg.is_floating_point(), "neg_dst must be integral");
-    TORCH_CHECK(neg.max().item<std::int64_t>() < num_nodes,
-                "neg_dst contains IDs outside the range of src/dst");
-  }
-
-  if (label_n_id.has_value()) {
-    TORCH_CHECK(
-        label_time.has_value() && label_target.has_value(),
-        "If label_n_id is provided, label_time and label_target must exist");
-
-    const auto n_labels = label_n_id->size(0);
-    TORCH_CHECK(label_time->size(0) == n_labels, "label_time size mismatch");
-    TORCH_CHECK(label_target->size(0) == n_labels,
-                "label_target size mismatch");
-  }
 }
 
 }  // namespace tgn
