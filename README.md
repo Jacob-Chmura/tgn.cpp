@@ -21,7 +21,7 @@ sudo apt-get install -y clang libc++-dev libc++abi-dev
 brew install libomp
 ```
 
-##### TGUF Conversion Python Scripts use uv:
+##### TGUF Conversion Scripts use [uv](https://docs.astral.sh/uv/):
 
 ```sh
 curl -LsSf https://astral.sh/uv/install.sh | sh
