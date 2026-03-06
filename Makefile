@@ -1,8 +1,11 @@
 BUILD_DIR := build
+PROFILE_DIR := build-profile
 CMAKE_FLAGS := -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 NPROCS := $(shell nproc 2>/dev/null || sysctl -n hw.logicalcpu)
 EXAMPLE_LINK := $(BUILD_DIR)/examples/tgn_link_pred
 EXAMPLE_NODE := $(BUILD_DIR)/examples/tgn_node_pred
+EXAMPLE_LINK_PROF := $(PROFILE_DIR)/examples/tgn_link_pred
+EXAMPLE_NODE_PROF := $(PROFILE_DIR)/examples/tgn_node_pred
 
 MAKEFLAGS += --no-print-directory
 BUILD_TYPE ?= Release
@@ -33,6 +36,10 @@ help:
 	@echo "  make run-link-<ds>       - Link prediction (e.g., make run-link-tgbl-wiki)"
 	@echo "  make run-node-<ds>       - Node prediction (e.g., make run-node-tgbn-trade)"
 	@echo ""
+	@echo "Profiling Targets (Requires perf + sudo):"
+	@echo "  make perf-link-<ds>       - Profile Link prediction (e.g., make perf-link-tgbl-wiki)"
+	@echo "  make perf-node-<ds>       - Profile Node prediction (e.g., make perf-node-tgbn-trade)"
+	@echo ""
 	@echo "Data Targets:"
 	@echo "  make download-<ds>       - Download TGB dataset (e.g., make download-tgbl-wiki)"
 	@echo "========================================================================"
@@ -40,6 +47,10 @@ help:
 $(BUILD_DIR)/CMakeCache.txt:
 	@mkdir -p $(BUILD_DIR)
 	@cd $(BUILD_DIR) && cmake $(CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) ..
+
+$(PROFILE_DIR)/CMakeCache.txt:
+	@mkdir -p $(PROFILE_DIR)
+	@cd $(PROFILE_DIR) && cmake $(CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=RelWithDebInfo -DTGN_BUILD_EXAMPLES=ON ..
 
 .PHONY: config
 config: $(BUILD_DIR)/CMakeCache.txt
@@ -96,6 +107,18 @@ run-link-%: examples data/%.tguf
 .PHONY: run-node-%
 run-node-%: examples data/%.tguf
 	@$(EXAMPLE_NODE) data/$*.tguf
+
+.PHONY: profile-build
+profile-build: $(PROFILE_DIR)/CMakeCache.txt
+	@cmake --build $(PROFILE_DIR) --parallel $(NPROCS)
+
+.PHONY: perf-link-%
+perf-link-%: profile-build data/%.tguf
+	@bash scripts/profile_tgn.sh $(EXAMPLE_LINK_PROF) data/$*.tguf
+
+.PHONY: perf-node-%
+perf-node-%: profile-build data/%.tguf
+	@bash scripts/profile_tgn.sh $(EXAMPLE_NODE_PROF) data/$*.tguf
 
 .PHONY: download-%
 download-%: data/%.tguf

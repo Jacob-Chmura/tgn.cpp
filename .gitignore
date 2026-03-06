@@ -9,6 +9,7 @@ __pycache__/
 # Distribution / packaging
 .Python
 build/
+build-profile/
 develop-eggs/
 dist/
 downloads/
@@ -267,3 +268,7 @@ libtorch/
 
 # Custom data
 data/
+
+# Perf results
+third_party/
+perf_results/
