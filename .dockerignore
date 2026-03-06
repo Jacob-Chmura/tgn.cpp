@@ -8,6 +8,7 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+build-profile/
 *.whl
 
 # Virtual environments
@@ -44,3 +45,5 @@ htmlcov/
 checkpoints/
 logs/
 data/
+third_party/
+perf_results/
