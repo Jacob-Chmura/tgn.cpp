@@ -72,10 +72,8 @@ auto train(tgn::TGN& encoder, LinkPredictor& decoder, torch::optim::Adam& opt,
        e_id += args.batch_size) {
     opt.zero_grad();
 
-    auto t_batch_start = std::chrono::steady_clock::now();
     const auto batch = store->get_batch(e_id, args.batch_size,
                                         tgn::TGStore::NegStrategy::Random);
-    auto d_batch = get_us(t_batch_start);
 
     auto t_enc_start = std::chrono::steady_clock::now();
     const auto [z_src, z_dst, z_neg] =
@@ -83,10 +81,8 @@ auto train(tgn::TGN& encoder, LinkPredictor& decoder, torch::optim::Adam& opt,
     auto d_enc = get_us(t_enc_start);
 
     // Assumes training negatives are 1:1 with positives
-    auto t_dec_start = std::chrono::steady_clock::now();
     const auto pos_out = decoder->forward(z_src, z_dst);
     const auto neg_out = decoder->forward(z_src, z_neg);
-    auto d_dec = get_us(t_dec_start);
 
     auto t_loss_start = std::chrono::steady_clock::now();
     auto loss = torch::nn::functional::binary_cross_entropy_with_logits(
@@ -101,14 +97,15 @@ auto train(tgn::TGN& encoder, LinkPredictor& decoder, torch::optim::Adam& opt,
     auto t_upd_start = std::chrono::steady_clock::now();
     encoder->update_state(batch.src, batch.dst, batch.time, batch.msg);
     auto d_upd = get_us(t_upd_start);
-    auto t_det_start = std::chrono::steady_clock::now();
     encoder->detach_memory();
-    auto d_det = get_us(t_det_start);
-    if (e_id % (args.batch_size * 10) == 0) {
+    if (e_id % (args.batch_size * 5) == 0) {
+      auto total_batch = d_enc + d_loss + d_upd;
       std::cout << std::format(
-                       "\r[Batch: {}us][Enc: {}us][Dec: {}us][Loss/BW: "
-                       "{}us][Upd: {}us][Detach: {}us]\n",
-                       d_batch, d_enc, d_dec, d_loss, d_upd, d_det)
+                       "\n=== Batch Summary [Total: {}us / {:.2f}ms] ===\n"
+                       "|-- Encoder Forward: {:7d}us\n"
+                       "|-- Loss & Backward: {:7d}us\n"
+                       "|-- State Update   : {:7d}us\n",
+                       total_batch, total_batch / 1000.0, d_enc, d_loss, d_upd)
                 << std::flush;
     }
 

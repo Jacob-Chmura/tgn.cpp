@@ -118,14 +118,12 @@ struct TransformerConvImpl : torch::nn::Module {
     auto d_aggr = get_us(t_aggr);
 
     // 5. Skip connection
-    auto t_skip = std::chrono::steady_clock::now();
     auto final_out = out + w_skip_->forward(x);
-    auto d_skip = get_us(t_skip);
 
     std::cout << std::format(
-                     "\r[Conv] Proj: {}us | Score: {}us | Softmax: {}us | "
-                     "Aggr: {}us | Skip: {}us\n",
-                     d_proj, d_score, d_soft, d_aggr, d_skip)
+                     "        |-- [Conv-Deep] Proj: {:5d}us | Score: {:5d}us | "
+                     "Soft: {:5d}us | Aggr: {:5d}us\n",
+                     d_proj, d_score, d_soft, d_aggr)
               << std::flush;
 
     return final_out;
@@ -256,11 +254,9 @@ struct TGNMemoryImpl : torch::nn::Module {
     auto d_msg = get_us(t_msg);
 
     // 3. Concatenation
-    auto t_cat = std::chrono::steady_clock::now();
     const auto idx = torch::cat({src_s, src_d}, 0);
     const auto msg = torch::cat({msg_s, msg_d}, 0);
     const auto t = torch::cat({t_s, t_d}, 0);
-    auto d_cat = get_us(t_cat);
 
     // 4. Aggregation (last_aggr)
     auto t_aggr = std::chrono::steady_clock::now();
@@ -274,15 +270,13 @@ struct TGNMemoryImpl : torch::nn::Module {
     auto d_gru = get_us(t_gru);
 
     // 6. Last Update Calculation (Scatter Max)
-    auto t_last = std::chrono::steady_clock::now();
     auto updated_last_update_full = scatter_max(t, idx, last_update_.size(0));
     auto updated_last_update = updated_last_update_full.index_select(0, n_id);
-    auto d_last = get_us(t_last);
 
     std::cout << std::format(
-                     "\r[MemUpd] Assoc: {}us | Msg: {}us | Aggr: {}us | GRU: "
-                     "{}us | Scat: {}us\n",
-                     d_assoc, d_msg, d_aggr, d_gru, d_last)
+                     "        |-- [Mem-Deep] Msg: {:5d}us | Aggr: {:5d}us | "
+                     "GRU: {:5d}us\n",
+                     d_msg, d_aggr, d_gru)
               << std::flush;
 
     return {updated_memory, updated_last_update};
@@ -440,7 +434,9 @@ auto TGNImpl::update_state(const torch::Tensor& src, const torch::Tensor& dst,
   auto t_nbr_start = std::chrono::steady_clock::now();
   impl_->nbr_loader_.insert(src, dst);
   auto d_nbr = get_ms(t_nbr_start);
-  std::cout << std::format("\n\t[Mem Upd: {}us][Nbr Upd: {}us]\n", d_ids, d_nbr)
+  std::cout << std::format(
+                   "    |-- [Upd-Detail] Mem Upd: {:5d}us | Nbr Upd: {:5d}us\n",
+                   d_ids, d_nbr)
             << std::flush;
 }
 
@@ -452,10 +448,8 @@ auto TGNImpl::forward_internal(const std::vector<torch::Tensor>& input_list)
         .count();
   };
 
-  auto t_ids_start = std::chrono::steady_clock::now();
   const auto all_global_ids = torch::cat(input_list).view({-1});
   const auto [unique_global_ids, _] = at::_unique(all_global_ids);
-  auto d_ids = get_ms(t_ids_start);
 
   // Load neighbors and fetch memory
   auto t_nbr_start = std::chrono::steady_clock::now();
@@ -466,10 +460,8 @@ auto TGNImpl::forward_internal(const std::vector<torch::Tensor>& input_list)
   auto d_mem = get_ms(t_mem_start);
 
   // Update global-to-local buffer
-  auto t_assoc_start = std::chrono::steady_clock::now();
   impl_->assoc_.index_put_(
       {n_id}, torch::arange(n_id.size(0), impl_->assoc_.options()));
-  auto d_assoc = get_ms(t_assoc_start);
 
   // Transformer conv with relative time encoding
   auto t_gather_start = std::chrono::steady_clock::now();
@@ -494,10 +486,9 @@ auto TGNImpl::forward_internal(const std::vector<torch::Tensor>& input_list)
     outputs.push_back(z.index_select(0, local_indices));
   }
   std::cout << std::format(
-                   "\n\t[IDs: {}us][Nbr: {}us][Mem: {}us][Assoc: {}us][Gather: "
-                   "{}us][Edge: "
-                   "{}us][Conv: {}us]",
-                   d_ids, d_nbr, d_mem, d_assoc, d_gather, d_edge_const, d_conv)
+                   "    |-- [Enc-Detail] Nbr: {:5d}us | Mem: {:5d}us | Gather: "
+                   "{:5d}us | Edge: {:5d}us | Conv: {:5d}us\n",
+                   d_nbr, d_mem, d_gather, d_edge_const, d_conv)
             << std::flush;
 
   return outputs;
