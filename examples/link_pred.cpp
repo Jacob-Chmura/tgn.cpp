@@ -59,6 +59,12 @@ auto train(tgn::TGN& encoder, LinkPredictor& decoder, torch::optim::Adam& opt,
   decoder->train();
   encoder->reset_state();
 
+  auto get_us = [](auto start) {
+    return std::chrono::duration_cast<std::chrono::microseconds>(
+               std::chrono::steady_clock::now() - start)
+        .count();
+  };
+
   float total_loss{0};
   const auto e_range = store->train_split();
 
@@ -66,32 +72,52 @@ auto train(tgn::TGN& encoder, LinkPredictor& decoder, torch::optim::Adam& opt,
        e_id += args.batch_size) {
     opt.zero_grad();
 
+    auto t_batch_start = std::chrono::steady_clock::now();
     const auto batch = store->get_batch(e_id, args.batch_size,
                                         tgn::TGStore::NegStrategy::Random);
+    auto d_batch = get_us(t_batch_start);
+
+    auto t_enc_start = std::chrono::steady_clock::now();
     const auto [z_src, z_dst, z_neg] =
         encoder->forward(batch.src, batch.dst, batch.neg_dst->flatten());
+    auto d_enc = get_us(t_enc_start);
 
     // Assumes training negatives are 1:1 with positives
+    auto t_dec_start = std::chrono::steady_clock::now();
     const auto pos_out = decoder->forward(z_src, z_dst);
     const auto neg_out = decoder->forward(z_src, z_neg);
+    auto d_dec = get_us(t_dec_start);
 
+    auto t_loss_start = std::chrono::steady_clock::now();
     auto loss = torch::nn::functional::binary_cross_entropy_with_logits(
                     pos_out, torch::ones_like(pos_out)) +
                 torch::nn::functional::binary_cross_entropy_with_logits(
                     neg_out, torch::zeros_like(neg_out));
     loss.backward();
     opt.step();
+    auto d_loss = get_us(t_loss_start);
     total_loss += loss.item<float>();
 
+    auto t_upd_start = std::chrono::steady_clock::now();
     encoder->update_state(batch.src, batch.dst, batch.time, batch.msg);
+    auto d_upd = get_us(t_upd_start);
+    auto t_det_start = std::chrono::steady_clock::now();
     encoder->detach_memory();
+    auto d_det = get_us(t_det_start);
+    if (e_id % (args.batch_size * 10) == 0) {
+      std::cout << std::format(
+                       "\r[Batch: {}us][Enc: {}us][Dec: {}us][Loss/BW: "
+                       "{}us][Upd: {}us][Detach: {}us]\n",
+                       d_batch, d_enc, d_dec, d_loss, d_upd, d_det)
+                << std::flush;
+    }
 
-    util::progress_bar(
-        e_id - e_range.start(), e_range.size(), start_time,
-        std::format("Epoch {:2d}/{:2d} [Train]", current_epoch, args.epochs),
-        std::format("Loss: {:.3f}",
-                    total_loss / static_cast<float>(std::max<std::size_t>(
-                                     1, e_id - e_range.start()))));
+    // util::progress_bar(
+    //     e_id - e_range.start(), e_range.size(), start_time,
+    //     std::format("Epoch {:2d}/{:2d} [Train]", current_epoch, args.epochs),
+    //     std::format("Loss: {:.3f}",
+    //                 total_loss / static_cast<float>(std::max<std::size_t>(
+    //                                  1, e_id - e_range.start()))));
   }
   std::cout << std::endl;
 }
@@ -163,6 +189,7 @@ auto main(int argc, char** argv) -> int {
 
   while (current_epoch <= args.epochs) {
     train(encoder, decoder, opt, store);
+    return 1;
     eval(encoder, decoder, store);
     ++current_epoch;
   }

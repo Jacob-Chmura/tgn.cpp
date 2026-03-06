@@ -60,54 +60,75 @@ struct TransformerConvImpl : torch::nn::Module {
 
   auto forward(const torch::Tensor& x, const torch::Tensor& edge_index,
                const torch::Tensor& edge_feat) -> torch::Tensor {
-    // Cold Start short-circuit (no edges sampled for this batch)
+    auto get_us = [](auto start) {
+      return std::chrono::duration_cast<std::chrono::microseconds>(
+                 std::chrono::steady_clock::now() - start)
+          .count();
+    };
+
+    // Cold Start short-circuit
     if (edge_index.size(1) == 0) {
-      TGN_LOG_DEBUG(
-          "TransformerConv: Cold start on forward (0 edges). Using "
-          "skip-connection only.");
       return w_skip_->forward(x);
     }
 
-    // TODO(kuba): implement 2d scatter ops to avoid these huge flatten ops
     const auto B = x.size(0);
     const auto E = edge_index.size(1);
     const auto H = heads_;
     const auto C = out_channels_;
-    const auto opts = edge_index.options();  // torch::LongTensor
+    const auto opts = edge_index.options();
 
-    // Projections
+    // 1. Projections (Q, K, V, E)
+    auto t_proj = std::chrono::steady_clock::now();
     const auto q = w_q_->forward(x).view({B, H, C});
     const auto k = w_k_->forward(x).view({B, H, C});
     const auto v = w_v_->forward(x).view({B, H, C});
     const auto e = w_e_->forward(edge_feat).view({E, H, C});
+    auto d_proj = get_us(t_proj);
 
-    // Attention scores
-    const auto src = edge_index[0];  // src is the sender
-    const auto dst = edge_index[1];  // dst is the receiver
+    // 2. Attention Score Calculation (Dot products)
+    auto t_score = std::chrono::steady_clock::now();
+    const auto src = edge_index[0];
+    const auto dst = edge_index[1];
 
     const auto k_src = k.index_select(0, src) + e;
     const auto q_dst = q.index_select(0, dst);
     auto alpha = (q_dst * k_src).sum(-1) / std::sqrt(static_cast<double>(C));
-    alpha = alpha.view(-1);  // flatten for 2-d scatter [E * H]
+    alpha = alpha.view(-1);
+    auto d_score = get_us(t_score);
 
-    // Scatter-softmax attention
+    // 3. Scatter-Softmax (The first potential bottleneck)
+    auto t_soft = std::chrono::steady_clock::now();
     const auto H_offset = torch::arange(H, opts).repeat({E});
     auto scatter_idx = (dst.repeat_interleave(H) * H) + H_offset;
 
     alpha = scatter_softmax(alpha, scatter_idx, B * H);
     alpha = torch::dropout(alpha, dropout_, is_training());
+    auto d_soft = get_us(t_soft);
 
-    // Scatter-add message aggregation
+    // 4. Message Aggregation (The "Huge Flatten" and Scatter-Add)
+    auto t_aggr = std::chrono::steady_clock::now();
     auto msgs = (v.index_select(0, src) + e) * alpha.view({E, H, 1});
-    msgs = msgs.view(-1);  // flatten for 3-d scatter [E * H * C]
+    msgs = msgs.view(-1);
 
     const auto C_offset = torch::arange(C, opts).repeat({E * H});
-    scatter_idx = (scatter_idx.repeat_interleave(C) * C) + C_offset;
+    auto scatter_idx_aggr = (scatter_idx.repeat_interleave(C) * C) + C_offset;
 
-    auto out = scatter_add(msgs, scatter_idx, B * H * C);
+    auto out = scatter_add(msgs, scatter_idx_aggr, B * H * C);
     out = out.view({B, H * C});
+    auto d_aggr = get_us(t_aggr);
 
-    return out + w_skip_->forward(x);
+    // 5. Skip connection
+    auto t_skip = std::chrono::steady_clock::now();
+    auto final_out = out + w_skip_->forward(x);
+    auto d_skip = get_us(t_skip);
+
+    std::cout << std::format(
+                     "\r[Conv] Proj: {}us | Score: {}us | Softmax: {}us | "
+                     "Aggr: {}us | Skip: {}us\n",
+                     d_proj, d_score, d_soft, d_aggr, d_skip)
+              << std::flush;
+
+    return final_out;
   }
 
  private:
@@ -217,25 +238,53 @@ struct TGNMemoryImpl : torch::nn::Module {
 
   auto get_updated_memory(const torch::Tensor& n_id)
       -> std::tuple<torch::Tensor, torch::Tensor> {
-    assoc_.index_put_({n_id}, torch::arange(n_id.size(0)));
+    auto get_us = [](auto start) {
+      return std::chrono::duration_cast<std::chrono::microseconds>(
+                 std::chrono::steady_clock::now() - start)
+          .count();
+    };
 
-    // Compute messages (src -> dst), then (dst -> src).
+    // 1. Assoc Update
+    auto t_assoc = std::chrono::steady_clock::now();
+    assoc_.index_put_({n_id}, torch::arange(n_id.size(0), assoc_.options()));
+    auto d_assoc = get_us(t_assoc);
+
+    // 2. Message Computation (Src and Dst)
+    auto t_msg = std::chrono::steady_clock::now();
     const auto [msg_s, t_s, src_s] = compute_msg(n_id, true);
     const auto [msg_d, t_d, src_d] = compute_msg(n_id, false);
+    auto d_msg = get_us(t_msg);
 
-    // Aggregate messages.
+    // 3. Concatenation
+    auto t_cat = std::chrono::steady_clock::now();
     const auto idx = torch::cat({src_s, src_d}, 0);
     const auto msg = torch::cat({msg_s, msg_d}, 0);
     const auto t = torch::cat({t_s, t_d}, 0);
+    auto d_cat = get_us(t_cat);
 
+    // 4. Aggregation (last_aggr)
+    auto t_aggr = std::chrono::steady_clock::now();
     const auto aggr =
         last_aggr(msg, assoc_.index_select(0, idx), t, n_id.size(0));
+    auto d_aggr = get_us(t_aggr);
 
-    // Get local copy of updated memory, and then last_update.
+    // 5. GRU / Memory Update
+    auto t_gru = std::chrono::steady_clock::now();
     auto updated_memory = gru_->forward(aggr, memory_.index_select(0, n_id));
-    auto updated_last_update = scatter_max(t, idx, last_update_.size(0));
+    auto d_gru = get_us(t_gru);
 
-    updated_last_update = updated_last_update.index_select(0, n_id);
+    // 6. Last Update Calculation (Scatter Max)
+    auto t_last = std::chrono::steady_clock::now();
+    auto updated_last_update_full = scatter_max(t, idx, last_update_.size(0));
+    auto updated_last_update = updated_last_update_full.index_select(0, n_id);
+    auto d_last = get_us(t_last);
+
+    std::cout << std::format(
+                     "\r[MemUpd] Assoc: {}us | Msg: {}us | Aggr: {}us | GRU: "
+                     "{}us | Scat: {}us\n",
+                     d_assoc, d_msg, d_aggr, d_gru, d_last)
+              << std::flush;
+
     return {updated_memory, updated_last_update};
   }
 
@@ -380,31 +429,62 @@ auto TGNImpl::reset_state() -> void {
 auto TGNImpl::update_state(const torch::Tensor& src, const torch::Tensor& dst,
                            const torch::Tensor& time, const torch::Tensor& msg)
     -> void {
+  auto get_ms = [](auto start) {
+    return std::chrono::duration_cast<std::chrono::microseconds>(
+               std::chrono::steady_clock::now() - start)
+        .count();
+  };
+  auto t_ids_start = std::chrono::steady_clock::now();
   impl_->memory_->update_state(src, dst, time, msg);
+  auto d_ids = get_ms(t_ids_start);
+  auto t_nbr_start = std::chrono::steady_clock::now();
   impl_->nbr_loader_.insert(src, dst);
+  auto d_nbr = get_ms(t_nbr_start);
+  std::cout << std::format("\n\t[Mem Upd: {}us][Nbr Upd: {}us]\n", d_ids, d_nbr)
+            << std::flush;
 }
 
 auto TGNImpl::forward_internal(const std::vector<torch::Tensor>& input_list)
     -> std::vector<torch::Tensor> {
+  auto get_ms = [](auto start) {
+    return std::chrono::duration_cast<std::chrono::microseconds>(
+               std::chrono::steady_clock::now() - start)
+        .count();
+  };
+
+  auto t_ids_start = std::chrono::steady_clock::now();
   const auto all_global_ids = torch::cat(input_list).view({-1});
   const auto [unique_global_ids, _] = at::_unique(all_global_ids);
+  auto d_ids = get_ms(t_ids_start);
 
   // Load neighbors and fetch memory
+  auto t_nbr_start = std::chrono::steady_clock::now();
   const auto [n_id, edge_index, e_id] = impl_->nbr_loader_(unique_global_ids);
+  auto d_nbr = get_ms(t_nbr_start);
+  auto t_mem_start = std::chrono::steady_clock::now();
   const auto [x, last_update] = impl_->memory_->forward(n_id);
+  auto d_mem = get_ms(t_mem_start);
 
   // Update global-to-local buffer
+  auto t_assoc_start = std::chrono::steady_clock::now();
   impl_->assoc_.index_put_(
       {n_id}, torch::arange(n_id.size(0), impl_->assoc_.options()));
+  auto d_assoc = get_ms(t_assoc_start);
 
   // Transformer conv with relative time encoding
+  auto t_gather_start = std::chrono::steady_clock::now();
   const auto t_edges = impl_->store_->gather_timestamps(e_id);
   const auto raw_msgs = impl_->store_->gather_msgs(e_id);
+  auto d_gather = get_ms(t_gather_start);
+  auto t_edge_const_start = std::chrono::steady_clock::now();
   const auto rel_t = last_update.index_select(0, edge_index[0]) - t_edges;
   const auto rel_t_z =
       impl_->time_encoder_->forward(rel_t.to(raw_msgs.dtype()));
   const auto edge_feat = torch::cat({rel_t_z, raw_msgs}, -1);
+  auto d_edge_const = get_ms(t_edge_const_start);
+  auto t_conv_start = std::chrono::steady_clock::now();
   const auto z = impl_->conv_->forward(x, edge_index, edge_feat);
+  auto d_conv = get_ms(t_conv_start);
 
   // Map computed local embeddings back to global id input_list
   std::vector<torch::Tensor> outputs;
@@ -413,6 +493,12 @@ auto TGNImpl::forward_internal(const std::vector<torch::Tensor>& input_list)
     const auto local_indices = impl_->assoc_.index({inp});
     outputs.push_back(z.index_select(0, local_indices));
   }
+  std::cout << std::format(
+                   "\n\t[IDs: {}us][Nbr: {}us][Mem: {}us][Assoc: {}us][Gather: "
+                   "{}us][Edge: "
+                   "{}us][Conv: {}us]",
+                   d_ids, d_nbr, d_mem, d_assoc, d_gather, d_edge_const, d_conv)
+            << std::flush;
 
   return outputs;
 }
