@@ -7,18 +7,15 @@
 #include <memory>
 #include <numeric>
 #include <string>
-#include <utility>
 #include <vector>
 
 #include "logging.h"
 #include "tgn.h"
 #include "util.h"
 
-constexpr std::size_t num_epochs = 10;
-constexpr double learning_rate = 1e-4;
-
 namespace {
 
+util::TGNArgs args{};
 std::size_t current_epoch = 1;
 
 struct NodePredictorImpl : torch::nn::Module {
@@ -101,7 +98,7 @@ auto train(tgn::TGN& encoder, NodePredictor& decoder, torch::optim::Adam& opt,
 
     util::progress_bar(
         e_id - e_range.start(), e_range.size(), start_time,
-        std::format("Epoch {:2d}/{:2d} [Train]", current_epoch, num_epochs),
+        std::format("Epoch {:2d}/{:2d} [Train]", current_epoch, args.epochs),
         std::format("Loss: {:.3f}",
                     total_loss / static_cast<float>(std::max<std::size_t>(
                                      1, l_id - l_range.start()))));
@@ -141,7 +138,7 @@ auto eval(tgn::TGN& encoder, NodePredictor& decoder,
 
     util::progress_bar(
         e_id - e_range.start(), e_range.size(), start_time,
-        std::format("            [Valid]", current_epoch, num_epochs),
+        std::format("            [Valid]", current_epoch, args.epochs),
         std::format("NDCG@10: {:.3f}",
                     std::accumulate(perf_list.begin(), perf_list.end(), 0.0F) /
                         static_cast<float>(perf_list.size())));
@@ -152,27 +149,27 @@ auto eval(tgn::TGN& encoder, NodePredictor& decoder,
 }  // namespace
 
 auto main(int argc, char** argv) -> int {
-  if (argc < 2) {
-    std::cerr << "Usage: " << argv[0] << " <path_to_tguf>" << std::endl;
-    return 1;
-  }
-  const std::string tguf_path = argv[1];
-  TGN_LOG_INFO("Running Node Property Prediction ({})", tguf_path);
+  TGN_LOG_INFO("Running Node Prediction");
+  args = util::parse_args(argc, argv);
   util::log_torch_backend_info();
 
-  const auto store = tgn::TGStore::from_tguf(tguf_path);
-  const auto cfg = tgn::TGNConfig{};
-
+  const auto store = tgn::TGStore::from_tguf(args.tguf_path);
+  const auto cfg = tgn::TGNConfig{.embedding_dim = args.embedding_dim,
+                                  .memory_dim = args.memory_dim,
+                                  .time_dim = args.time_dim,
+                                  .num_heads = args.num_heads,
+                                  .num_nbrs = args.num_nbrs,
+                                  .dropout = args.dropout};
   tgn::TGN encoder(cfg, store);
-  const auto num_classes = store->label_dim();
-  NodePredictor decoder{cfg.embedding_dim, num_classes};
+  NodePredictor decoder{cfg.embedding_dim,
+                        store->label_dim() /* num_classes */};
 
   auto params = encoder->parameters();
   auto dec_params = decoder->parameters();
   params.insert(params.end(), dec_params.begin(), dec_params.end());
-  torch::optim::Adam opt(params, torch::optim::AdamOptions(learning_rate));
+  torch::optim::Adam opt(params, torch::optim::AdamOptions(args.lr));
 
-  while (current_epoch <= num_epochs) {
+  while (current_epoch <= args.epochs) {
     train(encoder, decoder, opt, store);
     eval(encoder, decoder, store);
     ++current_epoch;
