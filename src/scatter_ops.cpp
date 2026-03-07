@@ -3,23 +3,37 @@
 #include <torch/types.h>
 
 #include <cstdint>
+#include <utility>
+#include <vector>
 
 namespace tgn {
 
+auto inline prepare_scatter(const torch::Tensor& src,
+                            const torch::Tensor& index, std::int64_t dim_size)
+    -> std::pair<std::vector<std::int64_t>, torch::Tensor> {
+  std::vector<std::int64_t> out_shape = {dim_size};
+  auto idx = index;
+  if (src.dim() == 2) {
+    out_shape.push_back(src.size(1));
+    idx = index.unsqueeze(-1).expand_as(src);
+  }
+  return {out_shape, idx};
+}
+
 auto scatter_max(const torch::Tensor& src, const torch::Tensor& index,
                  std::int64_t dim_size) -> torch::Tensor {
-  return torch::zeros({dim_size}, src.options())
-      .scatter_reduce_(/*dim*/ 0, index, src,
-                       /* reduce */ "amax",
-                       /* include_self*/ false);
+  const auto [shape, idx] = prepare_scatter(src, index, dim_size);
+  auto out = torch::zeros(shape, src.options());
+  out.scatter_reduce_(0, idx, src, "amax", false);
+  return out;
 }
 
 auto scatter_add(const torch::Tensor& src, const torch::Tensor& index,
                  std::int64_t dim_size) -> torch::Tensor {
-  return torch::zeros({dim_size}, src.options())
-      .scatter_reduce_(/*dim*/ 0, index, src,
-                       /* reduce */ "sum",
-                       /* include_self*/ false);
+  const auto [shape, idx] = prepare_scatter(src, index, dim_size);
+  auto out = torch::zeros(shape, src.options());
+  out.scatter_add_(0, idx, src);
+  return out;
 }
 
 auto scatter_softmax(const torch::Tensor& src, const torch::Tensor& index,

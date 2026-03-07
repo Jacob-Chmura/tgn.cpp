@@ -39,17 +39,16 @@ struct TransformerConvImpl : torch::nn::Module {
                       std::size_t edge_dim, std::size_t heads,
                       float dropout = 0.0)
       : dropout_(dropout),
-        out_channels_(static_cast<std::int64_t>(out_channels)),
-        heads_(static_cast<std::int64_t>(heads)) {
+        H_(static_cast<std::int64_t>(heads)),
+        C_(static_cast<std::int64_t>(out_channels)),
+        O_(static_cast<std::int64_t>(heads * out_channels)) {
     const auto in_dim = static_cast<std::int64_t>(in_channels);
-    const auto out_dim = heads_ * out_channels_;
-    w_kqv_ = register_module("w_qkv_", torch::nn::Linear(in_dim, 3 * out_dim));
-    w_skip_ = register_module("w_skip_", torch::nn::Linear(in_dim, out_dim));
+    w_kqv_ = register_module("w_qkv_", torch::nn::Linear(in_dim, 3 * O_));
+    w_skip_ = register_module("w_skip_", torch::nn::Linear(in_dim, O_));
     w_e_ = register_module(
-        "w_e_",
-        torch::nn::Linear(torch::nn::LinearOptions(
-                              static_cast<std::int64_t>(edge_dim), out_dim)
-                              .bias(false)));
+        "w_e_", torch::nn::Linear(torch::nn::LinearOptions(
+                                      static_cast<std::int64_t>(edge_dim), O_)
+                                      .bias(false)));
     TGN_LOG_INFO(
         "TransformerConv: Initialized (in_channels={}, out_channels={}, "
         "heads={}, edge_dim={}, dropout={:.2f})",
@@ -58,53 +57,34 @@ struct TransformerConvImpl : torch::nn::Module {
 
   auto forward(const torch::Tensor& x, const torch::Tensor& edge_index,
                const torch::Tensor& edge_feat) -> torch::Tensor {
-    // Cold Start short-circuit (no edges sampled for this batch)
     if (edge_index.size(1) == 0) {
-      TGN_LOG_DEBUG(
-          "TransformerConv: Cold start on forward (0 edges). Using "
-          "skip-connection only.");
       return w_skip_->forward(x);
     }
 
-    // TODO(kuba): implement 2d scatter ops to avoid these huge flatten ops
     const auto B = x.size(0);
     const auto E = edge_index.size(1);
-    const auto H = heads_;
-    const auto C = out_channels_;
-    const auto opts = edge_index.options();  // torch::LongTensor
-
-    // Projections
-    const auto qkv = w_kqv_->forward(x).view({B, 3, H, C});
-    const auto q = qkv.select(1, 0);
-    const auto k = qkv.select(1, 1);
-    const auto v = qkv.select(1, 2);
-    const auto e = w_e_->forward(edge_feat).view({E, H, C});
-
-    // Attention scores
     const auto src = edge_index[0];  // src is the sender
     const auto dst = edge_index[1];  // dst is the receiver
 
+    // Projections
+    const auto qkv = w_kqv_->forward(x);
+    const auto q = qkv.narrow(1, 0, O_).view({B, H_, C_});
+    const auto k = qkv.narrow(1, O_, O_).view({B, H_, C_});
+    const auto v = qkv.narrow(1, 2 * O_, O_).view({B, H_, C_});
+    const auto e = w_e_->forward(edge_feat).view({E, H_, C_});
+
+    // Attention scores
     const auto k_src = k.index_select(0, src) + e;
     const auto q_dst = q.index_select(0, dst);
-    auto alpha = (q_dst * k_src).sum(-1) / std::sqrt(static_cast<double>(C));
-    alpha = alpha.view(-1);  // flatten for 2-d scatter [E * H]
+    auto alpha = (q_dst * k_src).sum(-1).div(std::sqrt(C_));
 
     // Scatter-softmax attention
-    const auto H_offset = torch::arange(H, opts).repeat({E});
-    auto scatter_idx = (dst.repeat_interleave(H) * H) + H_offset;
-
-    alpha = scatter_softmax(alpha, scatter_idx, B * H);
+    alpha = scatter_softmax(alpha, dst, B);
     alpha = torch::dropout(alpha, dropout_, is_training());
 
     // Scatter-add message aggregation
-    auto msgs = (v.index_select(0, src) + e) * alpha.view({E, H, 1});
-    msgs = msgs.view(-1);  // flatten for 3-d scatter [E * H * C]
-
-    const auto C_offset = torch::arange(C, opts).repeat({E * H});
-    scatter_idx = (scatter_idx.repeat_interleave(C) * C) + C_offset;
-
-    auto out = scatter_add(msgs, scatter_idx, B * H * C);
-    out = out.view({B, H * C});
+    const auto msgs = (v.index_select(0, src) + e) * alpha.view({E, H_, 1});
+    const auto out = scatter_add(msgs.reshape({E, O_}), dst, B);
 
     return out + w_skip_->forward(x);
   }
@@ -112,8 +92,7 @@ struct TransformerConvImpl : torch::nn::Module {
  private:
   torch::nn::Linear w_kqv_{nullptr}, w_e_{nullptr}, w_skip_{nullptr};
   float dropout_{};
-  std::int64_t out_channels_{};
-  std::int64_t heads_{};
+  std::int64_t H_{}, C_{}, O_{};
 };
 TORCH_MODULE(TransformerConv);
 
