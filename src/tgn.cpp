@@ -60,9 +60,6 @@ struct TransformerConvImpl : torch::nn::Module {
                const torch::Tensor& edge_feat) -> torch::Tensor {
     // Cold Start short-circuit (no edges sampled for this batch)
     if (edge_index.size(1) == 0) {
-      TGN_LOG_DEBUG(
-          "TransformerConv: Cold start on forward (0 edges). Using "
-          "skip-connection only.");
       return w_skip_->forward(x);
     }
 
@@ -86,12 +83,13 @@ struct TransformerConvImpl : torch::nn::Module {
 
     const auto k_src = k.index_select(0, src) + e;
     const auto q_dst = q.index_select(0, dst);
-    auto alpha = (q_dst * k_src).sum(-1) / std::sqrt(static_cast<double>(C));
+    auto alpha = (q_dst * k_src).sum(-1).div(std::sqrt(C));
     alpha = alpha.view(-1);  // flatten for 2-d scatter [E * H]
 
     // Scatter-softmax attention
-    const auto H_offset = torch::arange(H, opts).repeat({E});
-    auto scatter_idx = (dst.repeat_interleave(H) * H) + H_offset;
+    const auto H_offset = torch::arange(H, opts).expand({E, H}).reshape(-1);
+    auto scatter_idx =
+        (dst.unsqueeze(-1).expand({E, H}).reshape(-1) * H) + H_offset;
 
     alpha = scatter_softmax(alpha, scatter_idx, B * H);
     alpha = torch::dropout(alpha, dropout_, is_training());
@@ -100,8 +98,10 @@ struct TransformerConvImpl : torch::nn::Module {
     auto msgs = (v.index_select(0, src) + e) * alpha.view({E, H, 1});
     msgs = msgs.view(-1);  // flatten for 3-d scatter [E * H * C]
 
-    const auto C_offset = torch::arange(C, opts).repeat({E * H});
-    scatter_idx = (scatter_idx.repeat_interleave(C) * C) + C_offset;
+    const auto C_offset = torch::arange(C, opts).expand({E * H, C}).reshape(-1);
+    scatter_idx =
+        (scatter_idx.unsqueeze(-1).expand({E * H, C}).reshape(-1) * C) +
+        C_offset;
 
     auto out = scatter_add(msgs, scatter_idx, B * H * C);
     out = out.view({B, H * C});
