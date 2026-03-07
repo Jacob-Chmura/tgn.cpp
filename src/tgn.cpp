@@ -190,7 +190,8 @@ struct TGNMemoryImpl : torch::nn::Module {
     TGN_LOG_DEBUG("TGNMemory: Resetting state");
     memory_.zero_();
     last_update_.zero_();
-    reset_msg_store();
+    src_store_.reset();
+    dst_store_.reset();
   }
 
   auto detach() -> void { memory_.detach_(); }
@@ -209,11 +210,11 @@ struct TGNMemoryImpl : torch::nn::Module {
 
     if (is_training()) {
       update_memory(n_id);
-      update_msg_store(src, dst, t, raw_msg, true);
-      update_msg_store(dst, src, t, raw_msg, false);
+      src_store_.update(src, dst, t, raw_msg);
+      dst_store_.update(dst, src, t, raw_msg);
     } else {
-      update_msg_store(src, dst, t, raw_msg, true);
-      update_msg_store(dst, src, t, raw_msg, false);
+      src_store_.update(src, dst, t, raw_msg);
+      dst_store_.update(dst, src, t, raw_msg);
       update_memory(n_id);
     }
   }
@@ -225,17 +226,13 @@ struct TGNMemoryImpl : torch::nn::Module {
           "TGNMemory: Switching to Eval. Flushing memory for all {} nodes",
           num_nodes_);
       update_memory(torch::arange(static_cast<std::int64_t>(num_nodes_)));
-      reset_msg_store();
+      src_store_.reset();
+      dst_store_.reset();
     }
     torch::nn::Module::train(mode);
   }
 
  private:
-  auto reset_msg_store() -> void {
-    src_store_.reset();
-    dst_store_.reset();
-  }
-
   auto update_memory(const torch::Tensor& n_id) -> void {
     auto [memory_nid, last_update_nid] = get_updated_memory(n_id);
     memory_.index_put_({n_id}, memory_nid);
@@ -255,6 +252,23 @@ struct TGNMemoryImpl : torch::nn::Module {
     const auto msg = torch::cat({msg_s, msg_d}, 0);
     const auto t = torch::cat({t_s, t_d}, 0);
 
+    auto last_aggr = [&](const torch::Tensor& _msg, const torch::Tensor& _index,
+                         const torch::Tensor& _t,
+                         std::int64_t _dim_size) -> torch::Tensor {
+      auto out = torch::zeros({_dim_size, _msg.size(-1)});
+
+      // Number of messages is t.numel();
+      if (_t.numel() > 0) {
+        const auto argmax = scatter_argmax(_t, _index, _dim_size);
+        const auto mask =
+            argmax < _msg.size(0);  // Items with at least one entry
+        const auto latest_msgs = _msg.index_select(0, argmax.index({mask}));
+        out.index_put_({mask}, latest_msgs);
+      }
+
+      return out;
+    };
+
     const auto aggr =
         last_aggr(msg, assoc_.index_select(0, idx), t, n_id.size(0));
 
@@ -264,16 +278,6 @@ struct TGNMemoryImpl : torch::nn::Module {
 
     updated_last_update = updated_last_update.index_select(0, n_id);
     return {updated_memory, updated_last_update};
-  }
-
-  auto update_msg_store(const torch::Tensor& src, const torch::Tensor& dst,
-                        const torch::Tensor& t, const torch::Tensor& raw_msg,
-                        bool is_src_store) -> void {
-    if (is_src_store) {
-      src_store_.update(src, dst, t, raw_msg);
-    } else {
-      dst_store_.update(src, dst, t, raw_msg);
-    }
   }
 
   auto compute_msg(const torch::Tensor& n_id, bool is_src_store)
@@ -300,22 +304,6 @@ struct TGNMemoryImpl : torch::nn::Module {
     const auto msg = torch::cat({mem_src, mem_dst, raw_msg, rel_t_z}, 1);
 
     return std::make_tuple(msg, t, src);
-  }
-
-  static auto last_aggr(const torch::Tensor& msg, const torch::Tensor& index,
-                        const torch::Tensor& t, std::int64_t dim_size)
-      -> torch::Tensor {
-    auto out = torch::zeros({dim_size, msg.size(-1)});
-
-    // Number of messages is t.numel();
-    if (t.numel() > 0) {
-      const auto argmax = scatter_argmax(t, index, dim_size);
-      const auto mask = argmax < msg.size(0);  // Items with at least one entry
-      const auto latest_msgs = msg.index_select(0, argmax.index({mask}));
-      out.index_put_({mask}, latest_msgs);
-    }
-
-    return out;
   }
 
   std::size_t msg_dim_{};
