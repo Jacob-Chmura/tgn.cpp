@@ -41,6 +41,11 @@ struct TransformerConvImpl : torch::nn::Module {
       : dropout_(dropout),
         out_channels_(static_cast<std::int64_t>(out_channels)),
         heads_(static_cast<std::int64_t>(heads)) {
+    H_offsets_ =
+        register_buffer("H_offsets", torch::arange(heads, torch::kLong));
+    C_offsets_ =
+        register_buffer("C_offsets", torch::arange(out_channels, torch::kLong));
+
     const auto in_dim = static_cast<std::int64_t>(in_channels);
     const auto out_dim = heads_ * out_channels_;
     w_kqv_ = register_module("w_qkv_", torch::nn::Linear(in_dim, 3 * out_dim));
@@ -68,7 +73,6 @@ struct TransformerConvImpl : torch::nn::Module {
     const auto E = edge_index.size(1);
     const auto H = heads_;
     const auto C = out_channels_;
-    const auto opts = edge_index.options();  // torch::LongTensor
 
     // Projections
     const auto qkv = w_kqv_->forward(x).view({B, 3, H, C});
@@ -87,7 +91,7 @@ struct TransformerConvImpl : torch::nn::Module {
     alpha = alpha.view(-1);  // flatten for 2-d scatter [E * H]
 
     // Scatter-softmax attention
-    const auto H_offset = torch::arange(H, opts).expand({E, H}).reshape(-1);
+    const auto H_offset = H_offsets_.expand({E, H}).reshape(-1);
     auto scatter_idx =
         (dst.unsqueeze(-1).expand({E, H}).reshape(-1) * H) + H_offset;
 
@@ -98,7 +102,7 @@ struct TransformerConvImpl : torch::nn::Module {
     auto msgs = (v.index_select(0, src) + e) * alpha.view({E, H, 1});
     msgs = msgs.view(-1);  // flatten for 3-d scatter [E * H * C]
 
-    const auto C_offset = torch::arange(C, opts).expand({E * H, C}).reshape(-1);
+    const auto C_offset = C_offsets_.expand({E * H, C}).reshape(-1);
     scatter_idx =
         (scatter_idx.unsqueeze(-1).expand({E * H, C}).reshape(-1) * C) +
         C_offset;
@@ -110,6 +114,7 @@ struct TransformerConvImpl : torch::nn::Module {
   }
 
  private:
+  torch::Tensor H_offsets_, C_offsets_;
   torch::nn::Linear w_kqv_{nullptr}, w_e_{nullptr}, w_skip_{nullptr};
   float dropout_{};
   std::int64_t out_channels_{};
