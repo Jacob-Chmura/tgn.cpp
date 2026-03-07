@@ -177,8 +177,14 @@ struct TGNMemoryImpl : torch::nn::Module {
 
     reset_state();
 
-    const auto bytes =
-        memory_.nbytes() + last_update_.nbytes() + assoc_.nbytes();
+    auto get_store_bytes = [](const MsgStore& s) {
+      return s.src_.nbytes() + s.dst_.nbytes() + s.time_.nbytes() +
+             s.msg_.nbytes();
+    };
+
+    const auto bytes = memory_.nbytes() + last_update_.nbytes() +
+                       assoc_.nbytes() + get_store_bytes(src_store_) +
+                       get_store_bytes(dst_store_);
     TGN_LOG_INFO(
         "TGNMemory: ~{:.2f} MiB allocated ({} nodes, memory_dim: {}, msg_dim: "
         "{}, gru_cell_dim: {})",
