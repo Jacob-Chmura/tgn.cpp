@@ -39,15 +39,13 @@ struct TransformerConvImpl : torch::nn::Module {
                       std::size_t edge_dim, std::size_t heads,
                       float dropout = 0.0)
       : dropout_(dropout),
-        out_channels_(static_cast<std::int64_t>(out_channels)),
-        heads_(static_cast<std::int64_t>(heads)) {
-    H_offsets_ =
-        register_buffer("H_offsets", torch::arange(heads, torch::kLong));
-    C_offsets_ =
-        register_buffer("C_offsets", torch::arange(out_channels, torch::kLong));
+        H_(static_cast<std::int64_t>(heads)),
+        C_(static_cast<std::int64_t>(out_channels)) {
+    H_offsets_ = register_buffer("H_offsets", torch::arange(H_, torch::kLong));
+    C_offsets_ = register_buffer("C_offsets", torch::arange(C_, torch::kLong));
 
     const auto in_dim = static_cast<std::int64_t>(in_channels);
-    const auto out_dim = heads_ * out_channels_;
+    const auto out_dim = H_ * C_;
     w_kqv_ = register_module("w_qkv_", torch::nn::Linear(in_dim, 3 * out_dim));
     w_skip_ = register_module("w_skip_", torch::nn::Linear(in_dim, out_dim));
     w_e_ = register_module(
@@ -71,44 +69,40 @@ struct TransformerConvImpl : torch::nn::Module {
     // TODO(kuba): implement 2d scatter ops to avoid these huge flatten ops
     const auto B = x.size(0);
     const auto E = edge_index.size(1);
-    const auto H = heads_;
-    const auto C = out_channels_;
 
     // Projections
-    const auto qkv = w_kqv_->forward(x).view({B, 3, H, C});
-    const auto q = qkv.select(1, 0);
-    const auto k = qkv.select(1, 1);
-    const auto v = qkv.select(1, 2);
-    const auto e = w_e_->forward(edge_feat).view({E, H, C});
+    const auto qkv = w_kqv_->forward(x).view({B, 3, H_, C_});
+    const auto e = w_e_->forward(edge_feat).view({E, H_, C_});
 
     // Attention scores
     const auto src = edge_index[0];  // src is the sender
     const auto dst = edge_index[1];  // dst is the receiver
 
-    const auto k_src = k.index_select(0, src) + e;
-    const auto q_dst = q.index_select(0, dst);
-    auto alpha = (q_dst * k_src).sum(-1).div(std::sqrt(C));
+    const auto k_src = qkv.select(1, 0).index_select(0, src) + e;
+    const auto q_dst = qkv.select(1, 1).index_select(0, dst);
+    auto alpha = (q_dst * k_src).sum(-1).div(std::sqrt(C_));
     alpha = alpha.view(-1);  // flatten for 2-d scatter [E * H]
 
     // Scatter-softmax attention
-    const auto H_offset = H_offsets_.expand({E, H}).reshape(-1);
+    const auto H_offset = H_offsets_.expand({E, H_}).reshape(-1);
     auto scatter_idx =
-        (dst.unsqueeze(-1).expand({E, H}).reshape(-1) * H) + H_offset;
+        (dst.unsqueeze(-1).expand({E, H_}).reshape(-1) * H_) + H_offset;
 
-    alpha = scatter_softmax(alpha, scatter_idx, B * H);
+    alpha = scatter_softmax(alpha, scatter_idx, B * H_);
     alpha = torch::dropout(alpha, dropout_, is_training());
 
     // Scatter-add message aggregation
-    auto msgs = (v.index_select(0, src) + e) * alpha.view({E, H, 1});
+    auto msgs =
+        (qkv.select(1, 2).index_select(0, src) + e) * alpha.view({E, H_, 1});
     msgs = msgs.view(-1);  // flatten for 3-d scatter [E * H * C]
 
-    const auto C_offset = C_offsets_.expand({E * H, C}).reshape(-1);
+    const auto C_offset = C_offsets_.expand({E * H_, C_}).reshape(-1);
     scatter_idx =
-        (scatter_idx.unsqueeze(-1).expand({E * H, C}).reshape(-1) * C) +
+        (scatter_idx.unsqueeze(-1).expand({E * H_, C_}).reshape(-1) * C_) +
         C_offset;
 
-    auto out = scatter_add(msgs, scatter_idx, B * H * C);
-    out = out.view({B, H * C});
+    auto out = scatter_add(msgs, scatter_idx, B * H_ * C_);
+    out = out.view({B, H_ * C_});
 
     return out + w_skip_->forward(x);
   }
@@ -117,8 +111,7 @@ struct TransformerConvImpl : torch::nn::Module {
   torch::Tensor H_offsets_, C_offsets_;
   torch::nn::Linear w_kqv_{nullptr}, w_e_{nullptr}, w_skip_{nullptr};
   float dropout_{};
-  std::int64_t out_channels_{};
-  std::int64_t heads_{};
+  std::int64_t H_{}, C_{};
 };
 TORCH_MODULE(TransformerConv);
 
