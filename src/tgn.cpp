@@ -43,9 +43,7 @@ struct TransformerConvImpl : torch::nn::Module {
         heads_(static_cast<std::int64_t>(heads)) {
     const auto in_dim = static_cast<std::int64_t>(in_channels);
     const auto out_dim = heads_ * out_channels_;
-    w_k_ = register_module("w_k_", torch::nn::Linear(in_dim, out_dim));
-    w_q_ = register_module("w_q_", torch::nn::Linear(in_dim, out_dim));
-    w_v_ = register_module("w_v_", torch::nn::Linear(in_dim, out_dim));
+    w_kqv_ = register_module("w_qkv_", torch::nn::Linear(in_dim, 3 * out_dim));
     w_skip_ = register_module("w_skip_", torch::nn::Linear(in_dim, out_dim));
     w_e_ = register_module(
         "w_e_",
@@ -76,9 +74,10 @@ struct TransformerConvImpl : torch::nn::Module {
     const auto opts = edge_index.options();  // torch::LongTensor
 
     // Projections
-    const auto q = w_q_->forward(x).view({B, H, C});
-    const auto k = w_k_->forward(x).view({B, H, C});
-    const auto v = w_v_->forward(x).view({B, H, C});
+    const auto qkv = w_kqv_->forward(x).view({B, 3, H, C});
+    const auto q = qkv.select(1, 0);
+    const auto k = qkv.select(1, 1);
+    const auto v = qkv.select(1, 2);
     const auto e = w_e_->forward(edge_feat).view({E, H, C});
 
     // Attention scores
@@ -111,8 +110,7 @@ struct TransformerConvImpl : torch::nn::Module {
   }
 
  private:
-  torch::nn::Linear w_k_{nullptr}, w_q_{nullptr}, w_v_{nullptr}, w_e_{nullptr},
-      w_skip_{nullptr};
+  torch::nn::Linear w_kqv_{nullptr}, w_e_{nullptr}, w_skip_{nullptr};
   float dropout_{};
   std::int64_t out_channels_{};
   std::int64_t heads_{};
