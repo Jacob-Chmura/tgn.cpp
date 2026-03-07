@@ -42,8 +42,6 @@ struct TransformerConvImpl : torch::nn::Module {
         H_(static_cast<std::int64_t>(heads)),
         C_(static_cast<std::int64_t>(out_channels)),
         O_(static_cast<std::int64_t>(heads * out_channels)) {
-    H_offsets_ = register_buffer("H_offsets", torch::arange(H_, torch::kLong));
-
     const auto in_dim = static_cast<std::int64_t>(in_channels);
     w_kqv_ = register_module("w_qkv_", torch::nn::Linear(in_dim, 3 * O_));
     w_skip_ = register_module("w_skip_", torch::nn::Linear(in_dim, O_));
@@ -59,14 +57,11 @@ struct TransformerConvImpl : torch::nn::Module {
 
   auto forward(const torch::Tensor& x, const torch::Tensor& edge_index,
                const torch::Tensor& edge_feat) -> torch::Tensor {
-    // Cold Start short-circuit (no edges sampled for this batch)
-    if (edge_index.size(1) == 0) {
-      return w_skip_->forward(x);
-    }
-
-    // TODO(kuba): implement 2d scatter ops to avoid these huge flatten ops
     const auto B = x.size(0);
     const auto E = edge_index.size(1);
+    if (E == 0) {
+      return w_skip_->forward(x);
+    }
 
     // Projections
     const auto qkv = w_kqv_->forward(x);
@@ -82,27 +77,28 @@ struct TransformerConvImpl : torch::nn::Module {
     const auto k_src = k.index_select(0, src) + e;
     const auto q_dst = q.index_select(0, dst);
     auto alpha = (q_dst * k_src).sum(-1).div(std::sqrt(C_));
-    alpha = alpha.view(-1);  // flatten for 2-d scatter [E * H]
 
     // Scatter-softmax attention
-    const auto H_offset = H_offsets_.expand({E, H_}).reshape(-1);
-    auto scatter_idx =
-        (dst.unsqueeze(-1).expand({E, H_}).reshape(-1) * H_) + H_offset;
+    const auto dst_idx_H = dst.unsqueeze(-1).expand({E, H_});
+    auto alpha_max = torch::full({B, H_}, -1e38, alpha.options());
+    alpha_max.scatter_reduce_(0, dst_idx_H, alpha, "amax", false);
+    alpha = (alpha - alpha_max.index_select(0, dst)).exp();
+    auto alpha_sum = torch::zeros({B, H_}, alpha.options());
+    alpha_sum.scatter_add_(0, dst_idx_H, alpha);
+    alpha = alpha / (alpha_sum.index_select(0, dst) + 1e-16);
 
-    alpha = scatter_softmax(alpha, scatter_idx, B * H_);
     alpha = torch::dropout(alpha, dropout_, is_training());
 
     // Scatter-add message aggregation
+    const auto dst_idx_O = dst.unsqueeze(-1).expand({E, O_});
     const auto msgs = (v.index_select(0, src) + e) * alpha.view({E, H_, 1});
-    const auto dst_idx_2d = dst.unsqueeze(-1).expand({E, O_});
     auto out = torch::zeros({B, O_}, x.options());
-    out.scatter_add_(0, dst_idx_2d, msgs.reshape({E, O_}));
+    out.scatter_add_(0, dst_idx_O, msgs.reshape({E, O_}));
 
     return out + w_skip_->forward(x);
   }
 
  private:
-  torch::Tensor H_offsets_;
   torch::nn::Linear w_kqv_{nullptr}, w_e_{nullptr}, w_skip_{nullptr};
   float dropout_{};
   std::int64_t H_{}, C_{}, O_{};
