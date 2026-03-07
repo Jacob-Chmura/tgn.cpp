@@ -3,46 +3,37 @@
 #include <torch/types.h>
 
 #include <cstdint>
+#include <utility>
+#include <vector>
 
 namespace tgn {
 
-auto scatter_max(const torch::Tensor& src, const torch::Tensor& index,
-                 std::int64_t dim_size) -> torch::Tensor {
-  if (src.dim() <= 1 && src.numel() == 0) {
-    return torch::zeros({dim_size}, src.options());
-  }
-  if (src.dim() == 2 && src.numel() == 0) {
-    return torch::zeros({dim_size, src.size(1)}, src.options());
-  }
-
+auto inline prepare_scatter(const torch::Tensor& src,
+                            const torch::Tensor& index, std::int64_t dim_size)
+    -> std::pair<std::vector<std::int64_t>, torch::Tensor> {
   std::vector<std::int64_t> out_shape = {dim_size};
+  auto idx = index;
   if (src.dim() == 2) {
     out_shape.push_back(src.size(1));
+    idx = index.unsqueeze(-1).expand_as(src);
   }
-  auto out = torch::zeros(out_shape, src.options());
-  auto idx = (src.dim() == 2) ? index.unsqueeze(-1).expand_as(src) : index;
+  return {out_shape, idx};
+}
 
-  return out.scatter_reduce_(0, idx, src, "amax", false);
+auto scatter_max(const torch::Tensor& src, const torch::Tensor& index,
+                 std::int64_t dim_size) -> torch::Tensor {
+  const auto [shape, idx] = prepare_scatter(src, index, dim_size);
+  auto out = torch::zeros(shape, src.options());
+  out.scatter_reduce_(0, idx, src, "amax", false);
+  return out;
 }
 
 auto scatter_add(const torch::Tensor& src, const torch::Tensor& index,
                  std::int64_t dim_size) -> torch::Tensor {
-  if (src.dim() <= 1 && src.numel() == 0) {
-    return torch::zeros({dim_size}, src.options());
-  }
-  if (src.dim() == 2 && src.numel() == 0) {
-    return torch::zeros({dim_size, src.size(1)}, src.options());
-  }
-
-  std::vector<std::int64_t> out_shape = {dim_size};
-  if (src.dim() == 2) {
-    out_shape.push_back(src.size(1));
-  }
-
-  auto out = torch::zeros(out_shape, src.options());
-  auto idx = (src.dim() == 2) ? index.unsqueeze(-1).expand_as(src) : index;
-
-  return out.scatter_add_(0, idx, src);
+  const auto [shape, idx] = prepare_scatter(src, index, dim_size);
+  auto out = torch::zeros(shape, src.options());
+  out.scatter_add_(0, idx, src);
+  return out;
 }
 
 auto scatter_softmax(const torch::Tensor& src, const torch::Tensor& index,
