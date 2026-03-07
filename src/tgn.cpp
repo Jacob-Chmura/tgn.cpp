@@ -120,11 +120,12 @@ struct TransformerConvImpl : torch::nn::Module {
     // 5. Skip connection
     auto final_out = out + w_skip_->forward(x);
 
-    std::cout << std::format(
-                     "        |-- [Conv-Deep] Proj: {:5d}us | Score: {:5d}us | "
-                     "Soft: {:5d}us | Aggr: {:5d}us\n",
-                     d_proj, d_score, d_soft, d_aggr)
-              << std::flush;
+    // std::cout
+    //     << std::format(
+    //            "        |-- [Conv-Forward] Proj: {:5d}us | Score: {:5d}us | "
+    //            "Soft: {:5d}us | Aggr: {:5d}us\n",
+    //            d_proj, d_score, d_soft, d_aggr)
+    //     << std::flush;
 
     return final_out;
   }
@@ -139,6 +140,45 @@ struct TransformerConvImpl : torch::nn::Module {
 TORCH_MODULE(TransformerConv);
 
 struct TGNMemoryImpl : torch::nn::Module {
+  struct MsgStore {
+    torch::Tensor src;
+    torch::Tensor dst;
+    torch::Tensor time;
+    torch::Tensor msg;
+
+    MsgStore(std::int64_t num_nodes, std::int64_t msg_dim) {
+      src = torch::zeros({num_nodes}, torch::kLong);
+      dst = torch::zeros({num_nodes}, torch::kLong);
+      time = torch::zeros({num_nodes}, torch::kLong);
+      msg = torch::zeros({num_nodes, msg_dim}, torch::kFloat32);
+    }
+
+    auto update(const torch::Tensor& src, const torch::Tensor& dst,
+                const torch::Tensor& t, const torch::Tensor& raw_msg) -> void {
+      // Group interactions by node ID
+      const auto [n_id_sorted, perm] = src.sort();
+      const auto [unique_nid, _, count] = torch::unique_consecutive(
+          n_id_sorted, /*return_inverse=*/true, /*return_counts=*/true);
+
+      // Since n_id_sorted is sorted, the last occurrence of a node
+      // in the batch is at the end of its 'count' block.
+      const auto last_batch_indices =
+          perm.index_select(0, torch::cumsum(count, 0) - 1);
+
+      src.index_put_({unique_nid}, src.index_select(0, last_batch_indices));
+      dst.index_put_({unique_nid}, dst.index_select(0, last_batch_indices));
+      time.index_put_({unique_nid}, t.index_select(0, last_batch_indices));
+      msg.index_put_({unique_nid}, raw_msg.index_select(0, last_batch_indices));
+    }
+
+    auto reset() -> void {
+      src.zero_();
+      dst.zero_();
+      time.zero_();
+      msg.zero_();
+    }
+  };
+
   explicit TGNMemoryImpl(const TGNConfig& cfg, const TimeEncoder& time_encoder,
                          std::int64_t msg_dim, std::int64_t num_nodes)
       : msg_dim_(msg_dim),
@@ -149,7 +189,9 @@ struct TGNMemoryImpl : torch::nn::Module {
                                   torch::TensorOptions().dtype(torch::kLong))),
         assoc_(torch::empty({num_nodes},
                             torch::TensorOptions().dtype(torch::kLong))),
-        time_encoder_(time_encoder) {
+        time_encoder_(time_encoder),
+        src_store_(num_nodes, msg_dim),
+        dst_store_(num_nodes, msg_dim) {
     register_buffer("memory_", memory_);
     register_buffer("last_update_", last_update_);
     register_buffer("assoc_", assoc_);
@@ -160,8 +202,6 @@ struct TGNMemoryImpl : torch::nn::Module {
     gru_ =
         register_module("gru_", torch::nn::GRUCell(cell_dim, cfg.memory_dim));
 
-    src_store_.resize(num_nodes_);
-    dst_store_.resize(num_nodes_);
     reset_state();
 
     const auto bytes =
@@ -177,7 +217,8 @@ struct TGNMemoryImpl : torch::nn::Module {
     TGN_LOG_DEBUG("TGNMemory: Resetting state");
     memory_.zero_();
     last_update_.zero_();
-    reset_msg_store();
+    src_store_.reset();
+    dst_store_.reset();
   }
 
   auto detach() -> void { memory_.detach_(); }
@@ -196,11 +237,11 @@ struct TGNMemoryImpl : torch::nn::Module {
 
     if (is_training()) {
       update_memory(n_id);
-      update_msg_store(src, dst, t, raw_msg, true);
-      update_msg_store(dst, src, t, raw_msg, false);
+      src_store_.update(src, dst, t, raw_msg);
+      dst_store_.update(dst, src, t, raw_msg);
     } else {
-      update_msg_store(src, dst, t, raw_msg, true);
-      update_msg_store(dst, src, t, raw_msg, false);
+      src_store_.update(src, dst, t, raw_msg);
+      dst_store_.update(dst, src, t, raw_msg);
       update_memory(n_id);
     }
   }
@@ -212,22 +253,13 @@ struct TGNMemoryImpl : torch::nn::Module {
           "TGNMemory: Switching to Eval. Flushing memory for all {} nodes",
           num_nodes_);
       update_memory(torch::arange(static_cast<std::int64_t>(num_nodes_)));
-      reset_msg_store();
+      src_store_.reset();
+      dst_store_.reset();
     }
     torch::nn::Module::train(mode);
   }
 
  private:
-  auto reset_msg_store() -> void {
-    // Message store format: (src, dst, t, msg)
-    const auto i = torch::empty(0, torch::TensorOptions().dtype(torch::kLong));
-    const auto msg = torch::empty({0, static_cast<std::int64_t>(msg_dim_)});
-    const auto empty_entry = std::make_tuple(i, i, i, msg);
-
-    std::ranges::fill(src_store_, empty_entry);
-    std::ranges::fill(dst_store_, empty_entry);
-  }
-
   auto update_memory(const torch::Tensor& n_id) -> void {
     auto [memory_nid, last_update_nid] = get_updated_memory(n_id);
     memory_.index_put_({n_id}, memory_nid);
@@ -243,9 +275,7 @@ struct TGNMemoryImpl : torch::nn::Module {
     };
 
     // 1. Assoc Update
-    auto t_assoc = std::chrono::steady_clock::now();
     assoc_.index_put_({n_id}, torch::arange(n_id.size(0), assoc_.options()));
-    auto d_assoc = get_us(t_assoc);
 
     // 2. Message Computation (Src and Dst)
     auto t_msg = std::chrono::steady_clock::now();
@@ -273,66 +303,23 @@ struct TGNMemoryImpl : torch::nn::Module {
     auto updated_last_update_full = scatter_max(t, idx, last_update_.size(0));
     auto updated_last_update = updated_last_update_full.index_select(0, n_id);
 
-    std::cout << std::format(
-                     "        |-- [Mem-Deep] Msg: {:5d}us | Aggr: {:5d}us | "
-                     "GRU: {:5d}us\n",
-                     d_msg, d_aggr, d_gru)
-              << std::flush;
+    //    std::cout
+    //        << std::format(
+    //               "        |-- [MemoryForward] Msg: {:5d}us | Aggr: {:5d}us |
+    //               " "GRU: {:5d}us\n", d_msg, d_aggr, d_gru)
+    //        << std::flush;
 
     return {updated_memory, updated_last_update};
   }
 
-  auto update_msg_store(const torch::Tensor& src, const torch::Tensor& dst,
-                        const torch::Tensor& t, const torch::Tensor& raw_msg,
-                        bool is_src_store) -> void {
-    // Group interactions by node ID
-    const auto [n_id_sorted, perm] = src.sort();
-    const auto [unique_nid, _, count] = torch::unique_consecutive(
-        n_id_sorted, /*return_inverse=*/true, /*return_counts=*/true);
-
-    // Convert count tensor to a C++ vector for split_with_sizes
-    auto* count_data_ptr = count.data_ptr<std::int64_t>();
-    std::vector<std::int64_t> sizes(count_data_ptr,
-                                    count_data_ptr + count.numel());
-
-    // Reorder all data based on the sorted node IDs and split them
-    const auto src_s = src.index_select(0, perm).split_with_sizes(sizes);
-    const auto dst_s = dst.index_select(0, perm).split_with_sizes(sizes);
-    const auto t_s = t.index_select(0, perm).split_with_sizes(sizes);
-    const auto msg_s = raw_msg.index_select(0, perm).split_with_sizes(sizes);
-
-    auto& store = is_src_store ? src_store_ : dst_store_;
-
-    for (std::int64_t i = 0; i < unique_nid.size(0); ++i) {
-      const auto key = unique_nid[i].item<std::int64_t>();
-      const auto value = std::make_tuple(src_s[i], dst_s[i], t_s[i], msg_s[i]);
-      store[key] = value;
-    }
-  }
-
   auto compute_msg(const torch::Tensor& n_id, bool is_src_store)
       -> std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> {
-    // Gather stored messages
-    std::vector<torch::Tensor> src_list;
-    std::vector<torch::Tensor> dst_list;
-    std::vector<torch::Tensor> t_list;
-    std::vector<torch::Tensor> raw_msg_list;
-
     const auto& store = is_src_store ? src_store_ : dst_store_;
-    for (std::int64_t i = 0; i < n_id.numel(); ++i) {
-      auto node = n_id[i].item<std::int64_t>();
-      const auto& data = store[node];
 
-      src_list.push_back(std::get<0>(data));
-      dst_list.push_back(std::get<1>(data));
-      t_list.push_back(std::get<2>(data));
-      raw_msg_list.push_back(std::get<3>(data));
-    }
-
-    const auto src = torch::cat(src_list, 0);
-    const auto dst = torch::cat(dst_list, 0);
-    const auto t = torch::cat(t_list, 0);
-    const auto raw_msg = torch::cat(raw_msg_list, 0);
+    const auto src = store.src.index_select(0, n_id);
+    const auto dst = store.dst.index_select(0, n_id);
+    const auto t = store.time.index_select(0, n_id);
+    const auto raw_msg = store.msg.index_select(0, n_id);
 
     // Compute msg components
     const auto rel_t = t - last_update_.index_select(0, src);
@@ -371,9 +358,7 @@ struct TGNMemoryImpl : torch::nn::Module {
   TimeEncoder time_encoder_{nullptr};
   torch::nn::GRUCell gru_{nullptr};
 
-  std::vector<
-      std::tuple<torch::Tensor, torch::Tensor, torch::Tensor, torch::Tensor>>
-      src_store_, dst_store_;
+  MsgStore src_store_, dst_store_;
 };
 TORCH_MODULE(TGNMemory);
 }  // namespace detail
@@ -434,10 +419,10 @@ auto TGNImpl::update_state(const torch::Tensor& src, const torch::Tensor& dst,
   auto t_nbr_start = std::chrono::steady_clock::now();
   impl_->nbr_loader_.insert(src, dst);
   auto d_nbr = get_ms(t_nbr_start);
-  std::cout << std::format(
-                   "    |-- [Upd-Detail] Mem Upd: {:5d}us | Nbr Upd: {:5d}us\n",
-                   d_ids, d_nbr)
-            << std::flush;
+  // std::cout << std::format(
+  //                  "    |-- [Update] Mem Upd: {:5d}us | Nbr Upd: {:5d}us\n",
+  //                  d_ids, d_nbr)
+  //           << std::flush;
 }
 
 auto TGNImpl::forward_internal(const std::vector<torch::Tensor>& input_list)
@@ -485,11 +470,11 @@ auto TGNImpl::forward_internal(const std::vector<torch::Tensor>& input_list)
     const auto local_indices = impl_->assoc_.index({inp});
     outputs.push_back(z.index_select(0, local_indices));
   }
-  std::cout << std::format(
-                   "    |-- [Enc-Detail] Nbr: {:5d}us | Mem: {:5d}us | Gather: "
-                   "{:5d}us | Edge: {:5d}us | Conv: {:5d}us\n",
-                   d_nbr, d_mem, d_gather, d_edge_const, d_conv)
-            << std::flush;
+  // std::cout << std::format(
+  //                  "    |-- [Forward] Nbr: {:5d}us | Mem: {:5d}us | Gather: "
+  //                  "{:5d}us | Edge: {:5d}us | Conv: {:5d}us\n",
+  //                  d_nbr, d_mem, d_gather, d_edge_const, d_conv)
+  //           << std::flush;
 
   return outputs;
 }

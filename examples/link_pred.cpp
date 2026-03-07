@@ -98,23 +98,24 @@ auto train(tgn::TGN& encoder, LinkPredictor& decoder, torch::optim::Adam& opt,
     encoder->update_state(batch.src, batch.dst, batch.time, batch.msg);
     auto d_upd = get_us(t_upd_start);
     encoder->detach_memory();
-    if (e_id % (args.batch_size * 5) == 0) {
-      auto total_batch = d_enc + d_loss + d_upd;
-      std::cout << std::format(
-                       "\n=== Batch Summary [Total: {}us / {:.2f}ms] ===\n"
-                       "|-- Encoder Forward: {:7d}us\n"
-                       "|-- Loss & Backward: {:7d}us\n"
-                       "|-- State Update   : {:7d}us\n",
-                       total_batch, total_batch / 1000.0, d_enc, d_loss, d_upd)
-                << std::flush;
-    }
+    // if (e_id % (args.batch_size * 5) == 0) {
+    //   auto total_batch = d_enc + d_loss + d_upd;
+    //   std::cout << std::format(
+    //                    "\n=== Batch Summary [Total: {}us / {:.2f}ms] ===\n"
+    //                    "|-- Encoder Forward: {:7d}us\n"
+    //                    "|-- Loss & Backward: {:7d}us\n"
+    //                    "|-- State Update   : {:7d}us\n",
+    //                    total_batch, total_batch / 1000.0, d_enc, d_loss,
+    //                    d_upd)
+    //             << std::flush;
+    // }
 
-    // util::progress_bar(
-    //     e_id - e_range.start(), e_range.size(), start_time,
-    //     std::format("Epoch {:2d}/{:2d} [Train]", current_epoch, args.epochs),
-    //     std::format("Loss: {:.3f}",
-    //                 total_loss / static_cast<float>(std::max<std::size_t>(
-    //                                  1, e_id - e_range.start()))));
+    util::progress_bar(
+        e_id - e_range.start(), e_range.size(), start_time,
+        std::format("Epoch {:2d}/{:2d} [Train]", current_epoch, args.epochs),
+        std::format("Loss: {:.3f}",
+                    total_loss / static_cast<float>(std::max<std::size_t>(
+                                     1, e_id - e_range.start()))));
   }
   std::cout << std::endl;
 }
@@ -186,7 +187,6 @@ auto main(int argc, char** argv) -> int {
 
   while (current_epoch <= args.epochs) {
     train(encoder, decoder, opt, store);
-    return 1;
     eval(encoder, decoder, store);
     ++current_epoch;
   }
