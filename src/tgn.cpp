@@ -57,11 +57,14 @@ struct TransformerConvImpl : torch::nn::Module {
 
   auto forward(const torch::Tensor& x, const torch::Tensor& edge_index,
                const torch::Tensor& edge_feat) -> torch::Tensor {
-    const auto B = x.size(0);
-    const auto E = edge_index.size(1);
-    if (E == 0) {
+    if (edge_index.size(1) == 0) {
       return w_skip_->forward(x);
     }
+
+    const auto B = x.size(0);
+    const auto E = edge_index.size(1);
+    const auto src = edge_index[0];  // src is the sender
+    const auto dst = edge_index[1];  // dst is the receiver
 
     // Projections
     const auto qkv = w_kqv_->forward(x);
@@ -71,29 +74,17 @@ struct TransformerConvImpl : torch::nn::Module {
     const auto e = w_e_->forward(edge_feat).view({E, H_, C_});
 
     // Attention scores
-    const auto src = edge_index[0];  // src is the sender
-    const auto dst = edge_index[1];  // dst is the receiver
-
     const auto k_src = k.index_select(0, src) + e;
     const auto q_dst = q.index_select(0, dst);
     auto alpha = (q_dst * k_src).sum(-1).div(std::sqrt(C_));
 
     // Scatter-softmax attention
-    const auto dst_idx_H = dst.unsqueeze(-1).expand({E, H_});
-    auto alpha_max = torch::full({B, H_}, -1e38, alpha.options());
-    alpha_max.scatter_reduce_(0, dst_idx_H, alpha, "amax", false);
-    alpha = (alpha - alpha_max.index_select(0, dst)).exp();
-    auto alpha_sum = torch::zeros({B, H_}, alpha.options());
-    alpha_sum.scatter_add_(0, dst_idx_H, alpha);
-    alpha = alpha / (alpha_sum.index_select(0, dst) + 1e-16);
-
+    alpha = scatter_softmax(alpha, dst, B);
     alpha = torch::dropout(alpha, dropout_, is_training());
 
     // Scatter-add message aggregation
-    const auto dst_idx_O = dst.unsqueeze(-1).expand({E, O_});
     const auto msgs = (v.index_select(0, src) + e) * alpha.view({E, H_, 1});
-    auto out = torch::zeros({B, O_}, x.options());
-    out.scatter_add_(0, dst_idx_O, msgs.reshape({E, O_}));
+    const auto out = scatter_add(msgs.reshape({E, O_}), dst, B);
 
     return out + w_skip_->forward(x);
   }

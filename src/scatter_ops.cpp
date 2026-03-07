@@ -8,18 +8,41 @@ namespace tgn {
 
 auto scatter_max(const torch::Tensor& src, const torch::Tensor& index,
                  std::int64_t dim_size) -> torch::Tensor {
-  return torch::zeros({dim_size}, src.options())
-      .scatter_reduce_(/*dim*/ 0, index, src,
-                       /* reduce */ "amax",
-                       /* include_self*/ false);
+  if (src.dim() <= 1 && src.numel() == 0) {
+    return torch::zeros({dim_size}, src.options());
+  }
+  if (src.dim() == 2 && src.numel() == 0) {
+    return torch::zeros({dim_size, src.size(1)}, src.options());
+  }
+
+  std::vector<std::int64_t> out_shape = {dim_size};
+  if (src.dim() == 2) {
+    out_shape.push_back(src.size(1));
+  }
+  auto out = torch::zeros(out_shape, src.options());
+  auto idx = (src.dim() == 2) ? index.unsqueeze(-1).expand_as(src) : index;
+
+  return out.scatter_reduce_(0, idx, src, "amax", false);
 }
 
 auto scatter_add(const torch::Tensor& src, const torch::Tensor& index,
                  std::int64_t dim_size) -> torch::Tensor {
-  return torch::zeros({dim_size}, src.options())
-      .scatter_reduce_(/*dim*/ 0, index, src,
-                       /* reduce */ "sum",
-                       /* include_self*/ false);
+  if (src.dim() <= 1 && src.numel() == 0) {
+    return torch::zeros({dim_size}, src.options());
+  }
+  if (src.dim() == 2 && src.numel() == 0) {
+    return torch::zeros({dim_size, src.size(1)}, src.options());
+  }
+
+  std::vector<std::int64_t> out_shape = {dim_size};
+  if (src.dim() == 2) {
+    out_shape.push_back(src.size(1));
+  }
+
+  auto out = torch::zeros(out_shape, src.options());
+  auto idx = (src.dim() == 2) ? index.unsqueeze(-1).expand_as(src) : index;
+
+  return out.scatter_add_(0, idx, src);
 }
 
 auto scatter_softmax(const torch::Tensor& src, const torch::Tensor& index,
