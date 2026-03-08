@@ -33,7 +33,15 @@ class TGUFStreamer:
 
         # Send header
         header = struct.pack(
-            "8Q", n_edges, m_dim, n_neg, n_labels, l_dim, val_start, test_start, neg_start_e_id
+            "8Q",
+            n_edges,
+            m_dim,
+            n_neg,
+            n_labels,
+            l_dim,
+            val_start,
+            test_start,
+            neg_start_e_id,
         )
         self.cpp_buffer.write(header)
 

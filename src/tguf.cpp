@@ -5,6 +5,7 @@
 #include <torch/types.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <cstring>
 #include <optional>
 #include <stdexcept>
@@ -52,8 +53,9 @@ struct TGUFBuilder::Impl {
 
     if (schema.negatives_per_edge > 0) {
       header.neg_dst_offset = last_offset;
-      last_offset += align((schema.edge_capacity - header.negatives_start_e_id) * schema.negatives_per_edge *
-                           sizeof(std::int64_t));
+      last_offset +=
+          align((schema.edge_capacity - header.negatives_start_e_id) *
+                schema.negatives_per_edge * sizeof(std::int64_t));
     }
 
     if (schema.label_capacity > 0) {
@@ -199,11 +201,20 @@ auto TGUFBuilder::append_edges(const Batch& batch) const -> void {
                  impl_->header.msg_dim * sizeof(float), batch.msg);
 
   if (batch.neg_dst.has_value() && impl_->header.neg_dst_offset > 0) {
-    if (impl_->written_edges >= impl_->header.negatives_start_e_id) {
-        const auto shifted_idx = impl_->written_edges - impl_->header.negatives_start_e_id;
-        impl_->to_mmap(impl_->header.neg_dst_offset, shifted_idx,
-                       impl_->header.negatives_per_edge * sizeof(std::int64_t),
-                       *batch.neg_dst);
+    const auto batch_start = impl_->written_edges;
+    const auto batch_end = batch_start + count;
+    const auto neg_start = impl_->header.negatives_start_e_id;
+
+    if (batch_end > neg_start) {
+      // Calculate which part of the batch is valid negatives
+      const auto slice_start =
+          std::max(0L, static_cast<std::int64_t>(neg_start - batch_start));
+      const auto mmap_row_idx =
+          std::max(0L, static_cast<std::int64_t>(batch_start - neg_start));
+      const auto valid_slice = batch.neg_dst->slice(0, slice_start);
+      impl_->to_mmap(impl_->header.neg_dst_offset, mmap_row_idx,
+                     impl_->header.negatives_per_edge * sizeof(int64_t),
+                     valid_slice);
     }
   }
   impl_->written_edges += count;

@@ -65,8 +65,9 @@ struct TGData {
                                  ? 1 + std::max(src.max().item<std::int64_t>(),
                                                 dst.max().item<std::int64_t>())
                                  : 0;
-      TORCH_CHECK(neg_dst->dim() == 2 && neg_dst->size(0) == n - negatives_start_e_id,
-                  "neg_dst must be [num_edges, m]");
+      TORCH_CHECK(
+          neg_dst->dim() == 2 && neg_dst->size(0) == n - negatives_start_e_id,
+          "neg_dst must be [num_edges, m]");
       TORCH_CHECK(neg_dst->max().item<std::int64_t>() < num_nodes,
                   "neg_dst contains IDs outside the range of src/dst");
     }
@@ -310,11 +311,13 @@ class TGStoreImpl final : public TGStore {
                   "NegStrategy::PreComputed requested but no neg_dst tensor "
                   "available");
       if (s < negatives_start_e_id_) {
-          throw std::runtime_error("Attempted to access pre-computed negatives at index " + 
-                                   std::to_string(s) + " but negative storage starts at " + 
-                                   std::to_string(negatives_start_e_id_));
+        throw std::runtime_error(
+            "Attempted to access pre-computed negatives at index " +
+            std::to_string(s) + " but negative storage starts at " +
+            std::to_string(negatives_start_e_id_));
       }
-      batch_neg = neg_dst_->slice(0, s - negatives_start_e_id_, e - negatives_start_e_id_);
+      batch_neg = neg_dst_->slice(0, s - negatives_start_e_id_,
+                                  e - negatives_start_e_id_);
     } else {
       TGN_LOG_DEBUG("TGStore: get_batch [{}:{}] (NegStrategy::None)", start,
                     end);
@@ -425,14 +428,14 @@ class TGStoreImpl final : public TGStore {
   // TGN training is mostly sequential per epoch.
   madvise(addr, file_size, MADV_SEQUENTIAL | MADV_WILLNEED);
 
-  #ifdef MADV_HUGEPAGE
+#ifdef MADV_HUGEPAGE
   // Hint to the kernel to use 2MB pages for this mapping.
   // This might reduces TLB misses during the gather phase.
   if (madvise(addr, file_size, MADV_HUGEPAGE) != 0) {
-      TGN_LOG_WARN("TGStore: MADV_HUGEPAGE failed: {}", std::strerror(errno));
+    TGN_LOG_WARN("TGStore: MADV_HUGEPAGE failed: {}", std::strerror(errno));
   }
   TGN_LOG_INFO("TGStore: MADV_HUGEPAGES is active");
-  #endif
+#endif
 
   auto mapping_guard = std::shared_ptr<void>(addr, [file_size, fd](void* p) {
     munmap(p, file_size);
@@ -494,10 +497,11 @@ class TGStoreImpl final : public TGStore {
 
   if (header->neg_dst_offset > 0 && header->negatives_per_edge > 0) {
     data.negatives_start_e_id = header->negatives_start_e_id;
-    const auto n_neg = n_edges - static_cast<std::int64_t>(header->negatives_start_e_id);
+    const auto n_neg =
+        n_edges - static_cast<std::int64_t>(header->negatives_start_e_id);
     if (n_neg > 0) {
-        data.neg_dst = mmap_tensor(header->neg_dst_offset,
-                                   {n_neg, negatives_per_edge}, torch::kLong);
+      data.neg_dst = mmap_tensor(header->neg_dst_offset,
+                                 {n_neg, negatives_per_edge}, torch::kLong);
     }
   }
   if (header->num_labels > 0) {
