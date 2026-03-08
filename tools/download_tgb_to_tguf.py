@@ -81,8 +81,17 @@ def main() -> None:
     val_start = int(np.argmax(ds.val_mask))
     test_start = int(np.argmax(ds.test_mask))
 
+    neg_start_e_id = val_start if full_negs is not None else 0
     streamer = TGUFStreamer(
-        args.output, n_edges, m_dim, n_neg, n_labels, l_dim, val_start, test_start
+        args.output,
+        n_edges,
+        m_dim,
+        n_neg,
+        n_labels,
+        l_dim,
+        val_start,
+        test_start,
+        neg_start_e_id,
     )
 
     try:
@@ -91,12 +100,16 @@ def main() -> None:
             pbar.set_postfix({"batch_size": args.batch_size})
             for i in range(0, len(src), args.batch_size):
                 end = i + args.batch_size
+                batch_negs = None
+                if full_negs is not None and end > neg_start_e_id:
+                    batch_negs = full_negs[i:end]
+
                 streamer.stream_edge_batch(
                     src=src[i:end],
                     dst=dst[i:end],
                     ts=ts[i:end],
                     msg=edge_feat[i:end],
-                    negs=full_negs[i:end] if full_negs is not None else None,
+                    negs=batch_negs,
                 )
                 pbar.update(1)
 

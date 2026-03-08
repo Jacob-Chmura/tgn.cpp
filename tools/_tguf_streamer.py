@@ -22,6 +22,7 @@ class TGUFStreamer:
         l_dim: int,
         val_start: int = 0,
         test_start: int = 0,
+        neg_start_e_id: int = 0,
     ) -> None:
         self.proc = subprocess.Popen(
             [_TGUF_BIN, str(out_path)], stdin=subprocess.PIPE, bufsize=0
@@ -32,7 +33,7 @@ class TGUFStreamer:
 
         # Send header
         header = struct.pack(
-            "7Q", n_edges, m_dim, n_neg, n_labels, l_dim, val_start, test_start
+            "8Q", n_edges, m_dim, n_neg, n_labels, l_dim, val_start, test_start, neg_start_e_id
         )
         self.cpp_buffer.write(header)
 
@@ -51,7 +52,12 @@ class TGUFStreamer:
         if self.m_dim > 0:
             self._write_array(msg, np.float32)
         if self.n_neg > 0:
-            self._write_array(negs, np.int64)
+            if negs is not None:
+                self._write_array(negs, np.int64)
+            else:
+                # Send a zeroed-out block of the correct size to keep the pipe alive
+                padding = np.zeros((batch_size, self.n_neg), dtype=np.int64)
+                self._write_array(padding, np.int64)
 
     def stream_label_batch(self, ts, nodes, labels):
         batch_size = len(ts)

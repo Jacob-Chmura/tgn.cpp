@@ -29,6 +29,7 @@ struct TGUFBuilder::Impl {
     TGN_LOG_INFO("TGUFBuilder: Creating TGUF binary at {}", schema.path);
     header.msg_dim = schema.msg_dim;
     header.label_dim = schema.label_dim;
+    header.negatives_start_e_id = schema.negatives_start_e_id;
     header.negatives_per_edge = schema.negatives_per_edge;
     header.val_start = schema.val_start.value_or(0);
     header.test_start = schema.test_start.value_or(0);
@@ -50,10 +51,8 @@ struct TGUFBuilder::Impl {
         align(schema.edge_capacity * schema.msg_dim * sizeof(float));
 
     if (schema.negatives_per_edge > 0) {
-      // TODO(kuba): This over allocs since we only have pre-allocated negatives
-      // starting at validation split (at least in TGB)
       header.neg_dst_offset = last_offset;
-      last_offset += align(schema.edge_capacity * schema.negatives_per_edge *
+      last_offset += align((schema.edge_capacity - header.negatives_start_e_id) * schema.negatives_per_edge *
                            sizeof(std::int64_t));
     }
 
@@ -200,9 +199,12 @@ auto TGUFBuilder::append_edges(const Batch& batch) const -> void {
                  impl_->header.msg_dim * sizeof(float), batch.msg);
 
   if (batch.neg_dst.has_value() && impl_->header.neg_dst_offset > 0) {
-    impl_->to_mmap(impl_->header.neg_dst_offset, impl_->written_edges,
-                   impl_->header.negatives_per_edge * sizeof(std::int64_t),
-                   *batch.neg_dst);
+    if (impl_->written_edges >= impl_->header.negatives_start_e_id) {
+        const auto shifted_idx = impl_->written_edges - impl_->header.negatives_start_e_id;
+        impl_->to_mmap(impl_->header.neg_dst_offset, shifted_idx,
+                       impl_->header.negatives_per_edge * sizeof(std::int64_t),
+                       *batch.neg_dst);
+    }
   }
   impl_->written_edges += count;
 }
