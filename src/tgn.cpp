@@ -226,69 +226,44 @@ struct TGNMemoryImpl : torch::nn::Module {
 
   auto get_updated_memory(const torch::Tensor& n_id)
       -> std::tuple<torch::Tensor, torch::Tensor> {
-    assoc_.index_put_({n_id}, torch::arange(n_id.size(0)));
+    // Check which store has the most recent interaction for each node
+    const auto t_s = src_store_.time_.index_select(0, n_id);
+    const auto t_d = dst_store_.time_.index_select(0, n_id);
+    const auto src_is_newer = t_s >= t_d;
+    const auto has_msg = (t_s > 0) | (t_d > 0);
 
-    // Compute messages (src -> dst), then (dst -> src).
-    const auto [msg_s, t_s, src_s] = compute_msg(n_id, true);
-    const auto [msg_d, t_d, src_d] = compute_msg(n_id, false);
+    // Gather winning metadata
+    const auto t = torch::where(src_is_newer, t_s, t_d);
+    const auto src =
+        torch::where(src_is_newer, src_store_.src_.index_select(0, n_id),
+                     dst_store_.src_.index_select(0, n_id));
+    const auto dst =
+        torch::where(src_is_newer, src_store_.dst_.index_select(0, n_id),
+                     dst_store_.dst_.index_select(0, n_id));
+    const auto raw_msg = torch::where(src_is_newer.unsqueeze(1),
+                                      src_store_.msg_.index_select(0, n_id),
+                                      dst_store_.msg_.index_select(0, n_id));
 
-    // Aggregate messages.
-    const auto idx = torch::cat({src_s, src_d}, 0);
-    const auto msg = torch::cat({msg_s, msg_d}, 0);
-    const auto t = torch::cat({t_s, t_d}, 0);
+    // Compute msg
+    const auto last_upd_src = last_update_.index_select(0, src);
+    const auto rel_t = (t - last_upd_src).to(raw_msg.dtype());
+    const auto rel_t_z = time_encoder_->forward(rel_t);
 
-    auto last_aggr = [&](const torch::Tensor& _msg, const torch::Tensor& _index,
-                         const torch::Tensor& _t,
-                         std::int64_t _dim_size) -> torch::Tensor {
-      auto out = torch::zeros({_dim_size, _msg.size(-1)});
-
-      // Number of messages is t.numel();
-      if (_t.numel() > 0) {
-        const auto argmax = scatter_argmax(_t, _index, _dim_size);
-        const auto mask =
-            argmax < _msg.size(0);  // Items with at least one entry
-        const auto latest_msgs = _msg.index_select(0, argmax.index({mask}));
-        out.index_put_({mask}, latest_msgs);
-      }
-
-      return out;
-    };
-
-    const auto aggr =
-        last_aggr(msg, assoc_.index_select(0, idx), t, n_id.size(0));
-
-    // Get local copy of updated memory, and then last_update.
-    auto updated_memory = gru_->forward(aggr, memory_.index_select(0, n_id));
-    auto updated_last_update = scatter_max(t, idx, last_update_.size(0));
-
-    updated_last_update = updated_last_update.index_select(0, n_id);
-    return {updated_memory, updated_last_update};
-  }
-
-  auto compute_msg(const torch::Tensor& n_id, bool is_src_store)
-      -> std::tuple<torch::Tensor, torch::Tensor, torch::Tensor> {
-    const auto& store = is_src_store ? src_store_ : dst_store_;
-
-    // Find which nodes in the current batch have messages in oru store
-    const auto mask = store.time_.index_select(0, n_id) > 0;
-    const auto active_n_id = n_id.index({mask});
-
-    // Gather message
-    const auto src = store.src_.index_select(0, active_n_id);
-    const auto dst = store.dst_.index_select(0, active_n_id);
-    const auto t = store.time_.index_select(0, active_n_id);
-    const auto raw_msg = store.msg_.index_select(0, active_n_id);
-
-    // Compute msg components
-    const auto rel_t = t - last_update_.index_select(0, src);
-    const auto rel_t_z = time_encoder_->forward(rel_t.to(raw_msg.dtype()));
     const auto mem_src = memory_.index_select(0, src);
     const auto mem_dst = memory_.index_select(0, dst);
 
-    // Final message (identity aggr)
-    const auto msg = torch::cat({mem_src, mem_dst, raw_msg, rel_t_z}, 1);
+    auto aggr = torch::cat({mem_src, mem_dst, raw_msg, rel_t_z}, 1);
+    aggr = torch::where(has_msg.unsqueeze(1), aggr, torch::zeros_like(aggr));
 
-    return std::make_tuple(msg, t, src);
+    // Get updated memory, and last_update, if a message actually existed
+    const auto last_update = last_update_.index_select(0, n_id);
+    const auto memory = memory_.index_select(0, n_id);
+
+    auto updated_last_update = torch::where(has_msg, t, last_update);
+    auto updated_memory = gru_->forward(aggr, memory);
+    updated_memory = torch::where(has_msg.unsqueeze(1), updated_memory, memory);
+
+    return {updated_memory, updated_last_update};
   }
 
   std::size_t msg_dim_{};
