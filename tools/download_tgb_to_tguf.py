@@ -81,7 +81,6 @@ def main() -> None:
     val_start = int(np.argmax(ds.val_mask))
     test_start = int(np.argmax(ds.test_mask))
 
-    neg_start_e_id = val_start if full_negs is not None else 0
     streamer = TGUFStreamer(
         args.output,
         n_edges,
@@ -91,7 +90,7 @@ def main() -> None:
         l_dim,
         val_start,
         test_start,
-        neg_start_e_id,
+        neg_capacity=n_edges - val_start if full_negs is not None else 0,
     )
 
     try:

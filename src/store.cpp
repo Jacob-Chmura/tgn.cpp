@@ -31,7 +31,6 @@ struct TGData {
   std::optional<torch::Tensor> label_time = std::nullopt;
   std::optional<torch::Tensor> label_target = std::nullopt;
 
-  std::size_t negatives_start_e_id{};
   std::optional<std::size_t> val_start = std::nullopt;
   std::optional<std::size_t> test_start = std::nullopt;
 
@@ -60,14 +59,8 @@ struct TGData {
       TORCH_CHECK(neg_dst->device().is_cpu(), "neg_dst must be on CPU");
       TORCH_CHECK(neg_dst->scalar_type() == torch::kLong,
                   "neg_dst must be torch::Long");
-
-      const auto n_neg = neg_dst->size(0);
-      TORCH_CHECK(n_neg <= n, "neg_dst.size(0) (", n_neg,
+      TORCH_CHECK(neg_dst->size(0) <= n, "neg_dst.size(0) (", neg_dst->size(0),
                   ") cannot exceed total edges: ", n);
-      TORCH_CHECK(n_neg == static_cast<std::int64_t>(n - negatives_start_e_id),
-                  "neg_dst size mismatch. Expected ",
-                  (n - negatives_start_e_id),
-                  " rows based on negatives_start_e_id, but got ", n_neg);
       TORCH_CHECK(neg_dst->dim() == 2,
                   "neg_dst must be 2D [num_edges_with_negs, m]");
 
@@ -141,7 +134,8 @@ class TGStoreImpl final : public TGStore {
         msg_dim_(static_cast<std::size_t>(msg_.size(1))),
         label_dim_(static_cast<std::size_t>(
             data.label_target.has_value() ? data.label_target->size(1) : 0)),
-        negatives_start_e_id_(data.negatives_start_e_id),
+        negatives_start_e_id_(
+            neg_dst_.has_value() ? num_edges_ - neg_dst_->size(0) : 0),
         train_(0,
                data.val_start.value_or(data.test_start.value_or(num_edges_))),
         val_(data.val_start.value_or(data.test_start.value_or(num_edges_)),
@@ -383,22 +377,16 @@ class TGStoreImpl final : public TGStore {
     const std::optional<torch::Tensor>& label_target,
     std::optional<std::size_t> val_start, std::optional<std::size_t> test_start)
     -> std::shared_ptr<TGStore> {
-  auto data =
-      detail::TGData{.src = edges.src,
-                     .dst = edges.dst,
-                     .time = edges.time,
-                     .msg = edges.msg,
-                     .neg_dst = edges.neg_dst,
-                     .label_n_id = label_n_id,
-                     .label_time = label_time,
-                     .label_target = label_target,
-                     .negatives_start_e_id =
-                         edges.neg_dst.has_value()
-                             ? static_cast<std::size_t>(edges.src.size(0) -
-                                                        edges.neg_dst->size(0))
-                             : 0,
-                     .val_start = val_start,
-                     .test_start = test_start};
+  auto data = detail::TGData{.src = edges.src,
+                             .dst = edges.dst,
+                             .time = edges.time,
+                             .msg = edges.msg,
+                             .neg_dst = edges.neg_dst,
+                             .label_n_id = label_n_id,
+                             .label_time = label_time,
+                             .label_target = label_target,
+                             .val_start = val_start,
+                             .test_start = test_start};
   data.validate();
 
   TGN_LOG_INFO("TGStore: Initialized from memory (~{:.2f} GiB allocated)",
@@ -498,6 +486,7 @@ class TGStoreImpl final : public TGStore {
 
   const auto n_edges = static_cast<std::int64_t>(header->num_edges);
   const auto m_dim = static_cast<std::int64_t>(header->msg_dim);
+  const auto n_neg = static_cast<std::int64_t>(header->num_negatives);
   const auto negatives_per_edge =
       static_cast<std::int64_t>(header->negatives_per_edge);
   const auto n_labels = static_cast<std::int64_t>(header->num_labels);
@@ -508,16 +497,11 @@ class TGStoreImpl final : public TGStore {
   data.time = mmap_tensor(header->time_offset, {n_edges}, torch::kLong);
   data.msg = mmap_tensor(header->msg_offset, {n_edges, m_dim}, torch::kFloat32);
 
-  if (header->neg_dst_offset > 0 && header->negatives_per_edge > 0) {
-    data.negatives_start_e_id = header->negatives_start_e_id;
-    const auto n_neg =
-        n_edges - static_cast<std::int64_t>(header->negatives_start_e_id);
-    if (n_neg > 0) {
-      data.neg_dst = mmap_tensor(header->neg_dst_offset,
-                                 {n_neg, negatives_per_edge}, torch::kLong);
-    }
+  if (n_neg > 0 && negatives_per_edge > 0) {
+    data.neg_dst = mmap_tensor(header->neg_dst_offset,
+                               {n_neg, negatives_per_edge}, torch::kLong);
   }
-  if (header->num_labels > 0) {
+  if (n_labels > 0) {
     data.label_n_id =
         mmap_tensor(header->label_n_id_offset, {n_labels}, torch::kLong);
     data.label_time =

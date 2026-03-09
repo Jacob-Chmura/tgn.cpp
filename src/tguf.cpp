@@ -24,13 +24,13 @@ struct TGUFBuilder::Impl {
   bool finalized_ = false;
   std::size_t written_edges_{};
   std::size_t written_labels_{};
+  std::size_t written_negatives_{};
   std::size_t mapped_bytes_{};
 
   explicit Impl(const TGUFSchema& schema) : schema_(schema) {
     TGN_LOG_INFO("TGUFBuilder: Creating TGUF binary at {}", schema.path);
     header_.msg_dim = schema.msg_dim;
     header_.label_dim = schema.label_dim;
-    header_.negatives_start_e_id = schema.negatives_start_e_id;
     header_.negatives_per_edge = schema.negatives_per_edge;
     header_.val_start = schema.val_start.value_or(0);
     header_.test_start = schema.test_start.value_or(0);
@@ -51,11 +51,10 @@ struct TGUFBuilder::Impl {
         header_.msg_offset +
         align(schema.edge_capacity * schema.msg_dim * sizeof(float));
 
-    if (schema.negatives_per_edge > 0) {
+    if (schema.negatives_capacity > 0 && schema.negatives_per_edge > 0) {
       header_.neg_dst_offset = last_offset;
-      last_offset +=
-          align((schema.edge_capacity - header_.negatives_start_e_id) *
-                schema.negatives_per_edge * sizeof(std::int64_t));
+      last_offset += align(schema.negatives_capacity *
+                           schema.negatives_per_edge * sizeof(std::int64_t));
     }
 
     if (schema.label_capacity > 0) {
@@ -75,11 +74,11 @@ struct TGUFBuilder::Impl {
 
     TGN_LOG_INFO(
         "TGUFBuilder: Pre-allocating {:.2f} GiB for {} edges and {} labels "
-        "(msg_dim={}, label_dim={}, negatives_start_e_id={}, "
+        "(msg_dim={}, label_dim={}, negatives_capacity={}, "
         "negatives_per_edge={})",
         mapped_bytes_ / (1024.0 * 1024.0 * 1024.0), schema.edge_capacity,
         schema.label_capacity, header_.msg_dim, header_.label_dim,
-        header_.negatives_start_e_id, header_.negatives_per_edge);
+        schema.negatives_capacity, header_.negatives_per_edge);
 
     if (header_.val_start > 0 || header_.test_start > 0) {
       TGN_LOG_INFO(
@@ -176,6 +175,15 @@ auto TGUFBuilder::append_edges(const Batch& batch) const -> void {
         std::to_string(impl_->header_.msg_dim) + ", got " +
         std::to_string(batch.msg.size(1)));
   }
+  impl_->to_mmap(impl_->header_.src_offset, impl_->written_edges_,
+                 sizeof(std::int64_t), batch.src);
+  impl_->to_mmap(impl_->header_.dst_offset, impl_->written_edges_,
+                 sizeof(std::int64_t), batch.dst);
+  impl_->to_mmap(impl_->header_.time_offset, impl_->written_edges_,
+                 sizeof(std::int64_t), batch.time);
+  impl_->to_mmap(impl_->header_.msg_offset, impl_->written_edges_,
+                 impl_->header_.msg_dim * sizeof(float), batch.msg);
+
   if (impl_->header_.negatives_per_edge > 0) {
     if (!batch.neg_dst.has_value()) {
       throw std::invalid_argument(
@@ -192,32 +200,43 @@ auto TGUFBuilder::append_edges(const Batch& batch) const -> void {
     }
   }
 
-  impl_->to_mmap(impl_->header_.src_offset, impl_->written_edges_,
-                 sizeof(std::int64_t), batch.src);
-  impl_->to_mmap(impl_->header_.dst_offset, impl_->written_edges_,
-                 sizeof(std::int64_t), batch.dst);
-  impl_->to_mmap(impl_->header_.time_offset, impl_->written_edges_,
-                 sizeof(std::int64_t), batch.time);
-  impl_->to_mmap(impl_->header_.msg_offset, impl_->written_edges_,
-                 impl_->header_.msg_dim * sizeof(float), batch.msg);
+  if (impl_->header_.neg_dst_offset > 0 &&
+      impl_->schema_.negatives_capacity > 0) {
+    // The global index where negatives MUST start to fill the suffix
+    const auto neg_global_start =
+        impl_->schema_.edge_capacity - impl_->schema_.negatives_capacity;
 
-  if (batch.neg_dst.has_value() && impl_->header_.neg_dst_offset > 0) {
-    const auto b_start = static_cast<std::int64_t>(impl_->written_edges_);
-    const auto n_start =
-        static_cast<std::int64_t>(impl_->header_.negatives_start_e_id);
-    const auto i_start = std::max(b_start, n_start);
+    // Check if this batch overlaps with the negative storage zone
+    if (impl_->written_edges_ + count > neg_global_start) {
+      if (!batch.neg_dst.has_value()) {
+        throw std::invalid_argument(
+            "TGUFBuilder: Batch overlaps negative zone but no neg_dst "
+            "provided.");
+      }
 
-    if (i_start < b_start + static_cast<std::int64_t>(count)) {
-      // If the tensor is COMPACT (size < batch count), index 0 is n_start.
-      // If the tensor is ALIGNED (size == batch count), index 0 is b_start.
-      const auto is_compact =
-          (batch.neg_dst->size(0) < static_cast<std::int64_t>(count));
-      const auto tensor_read_offset =
-          is_compact ? (i_start - n_start) : (i_start - b_start);
+      // Calculate which part of the batch falls into the negative zone
+      const auto overlap_start =
+          std::max(impl_->written_edges_, neg_global_start);
+      const auto num_to_write = impl_->written_edges_ + count - overlap_start;
 
-      impl_->to_mmap(impl_->header_.neg_dst_offset, i_start - n_start,
-                     impl_->header_.negatives_per_edge * sizeof(std::int64_t),
-                     batch.neg_dst->slice(0, tensor_read_offset));
+      // Determine where to read from the input tensor
+      // If the input is 'compact' (just the negatives), we offset by how much
+      // we've already written If the input is 'full' (aligned with batch.src),
+      // we offset by (overlap_start - current_edge_idx)
+      const auto is_compact = batch.neg_dst->size(0) < count;
+      const auto read_offset = is_compact
+                                   ? impl_->written_negatives_
+                                   : (overlap_start - impl_->written_edges_);
+      const auto write_idx = overlap_start - neg_global_start;
+
+      impl_->to_mmap(
+          impl_->header_.neg_dst_offset, write_idx,
+          impl_->header_.negatives_per_edge * sizeof(std::int64_t),
+          batch.neg_dst->slice(
+              0, static_cast<std::int64_t>(read_offset),
+              static_cast<std::int64_t>(read_offset + num_to_write)));
+
+      impl_->written_negatives_ += num_to_write;
     }
   }
   impl_->written_edges_ += count;
@@ -273,10 +292,23 @@ auto TGUFBuilder::finalize() -> void {
         "File will have unused padding.",
         impl_->written_edges_, impl_->schema_.edge_capacity);
   }
+  if (impl_->written_labels_ < impl_->schema_.label_capacity) {
+    TGN_LOG_WARN(
+        "TGUFBuilder: Finalizing with fewer labels than declared ({} < {}). "
+        "File will have unused padding.",
+        impl_->written_labels_, impl_->schema_.label_capacity);
+  }
+  if (impl_->written_negatives_ < impl_->schema_.negatives_capacity) {
+    TGN_LOG_WARN(
+        "TGUFBuilder: Finalizing with fewer negatives than declared ({} < {}). "
+        "File will have unused padding.",
+        impl_->written_negatives_, impl_->schema_.negatives_capacity);
+  }
 
   // Update header_ with counts (user might have wrote less than declared)
   impl_->header_.num_edges = impl_->written_edges_;
   impl_->header_.num_labels = impl_->written_labels_;
+  impl_->header_.num_negatives = impl_->written_negatives_;
   std::memcpy(impl_->base_ptr_, &impl_->header_, sizeof(TGUFHeader));
 
   msync(impl_->base_ptr_, impl_->mapped_bytes_, MS_SYNC);
@@ -285,7 +317,9 @@ auto TGUFBuilder::finalize() -> void {
   impl_->finalized_ = true;
 
   TGN_LOG_INFO(
-      "TGUFBuilder: Finalized to {} (Total edges: {}, Total labels: {})",
-      impl_->schema_.path, impl_->header_.num_edges, impl_->header_.num_labels);
+      "TGUFBuilder: Finalized to {} (Total edges: {}, Total labels: {}, Total "
+      "negatives: {})",
+      impl_->schema_.path, impl_->header_.num_edges, impl_->header_.num_labels,
+      impl_->header_.num_negatives);
 }
 }  // namespace tgn

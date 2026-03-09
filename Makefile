@@ -89,7 +89,6 @@ test:
 .PHONY: test-integration
 test-integration: tools
 	@cd $(BUILD_DIR) && cmake $(CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=Debug -DTGN_BUILD_TESTS=ON -DTGN_BUILD_TOOLS=ON ..
-	@$(MAKE) build BUILD_TYPE=Debug
 	@cd $(BUILD_DIR) && ctest -L integration --output-on-failure -j $(NPROCS)
 
 data/%.tguf: tools

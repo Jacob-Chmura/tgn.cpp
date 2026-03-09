@@ -18,7 +18,7 @@ struct StreamHeader {
   std::uint64_t label_dim{};
   std::uint64_t val_start{};
   std::uint64_t test_start{};
-  std::uint64_t negatives_start_e_id{};
+  std::uint64_t negatives_capacity{};
 };
 
 auto read_exactly(void* ptr, std::size_t n_bytes) -> void {
@@ -116,7 +116,7 @@ auto main(int argc, char** argv) -> int {
         .label_capacity = h.label_capacity,
         .msg_dim = h.msg_dim,
         .label_dim = h.label_dim,
-        .negatives_start_e_id = h.negatives_start_e_id,
+        .negatives_capacity = h.negatives_capacity,
         .negatives_per_edge = h.negatives_per_edge,
         .val_start = h.val_start,
         .test_start = h.test_start,

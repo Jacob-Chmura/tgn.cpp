@@ -36,7 +36,7 @@ TEST_F(TGUFBuilderTest, PhysicalLayoutAndAlignment) {
       .label_capacity = 50,
       .msg_dim = 8,
       .label_dim = 2,
-      .negatives_start_e_id = 10,
+      .negatives_capacity = 10,
       .negatives_per_edge = 1,
       .val_start = 70,
       .test_start = 85,
@@ -47,7 +47,6 @@ TEST_F(TGUFBuilderTest, PhysicalLayoutAndAlignment) {
   auto h = read_header();
   EXPECT_EQ(h.magic, tgn::TGUF_MAGIC);
   EXPECT_EQ(h.msg_dim, schema.msg_dim);
-  EXPECT_EQ(h.negatives_start_e_id, schema.negatives_start_e_id);
   EXPECT_EQ(h.negatives_per_edge, schema.negatives_per_edge);
   EXPECT_EQ(h.val_start, schema.val_start);
   EXPECT_EQ(h.test_start, schema.test_start);
@@ -77,7 +76,7 @@ TEST_F(TGUFBuilderTest, AppendEdges) {
       .label_capacity = 0,
       .msg_dim = 2,
       .label_dim = 0,
-      .negatives_start_e_id = 0,
+      .negatives_capacity = 0,
       .negatives_per_edge = 0,
   };
   tgn::TGUFBuilder builder(schema);
@@ -111,7 +110,7 @@ TEST_F(TGUFBuilderTest, AppendEdgesNegatives) {
       .label_capacity = 0,
       .msg_dim = 2,
       .label_dim = 0,
-      .negatives_start_e_id = 1,
+      .negatives_capacity = 1,
       .negatives_per_edge = 1,
   };
   tgn::TGUFBuilder builder(schema);
@@ -142,7 +141,7 @@ TEST_F(TGUFBuilderTest, AppendEdgesNegatives) {
   EXPECT_EQ(h.num_labels, schema.label_capacity);
   EXPECT_EQ(h.msg_dim, schema.msg_dim);
   EXPECT_EQ(h.label_dim, schema.label_dim);
-  EXPECT_EQ(h.negatives_start_e_id, schema.negatives_start_e_id);
+  EXPECT_EQ(h.num_negatives, schema.negatives_capacity);
   EXPECT_EQ(h.negatives_per_edge, schema.negatives_per_edge);
   EXPECT_EQ(h.val_start, 0);
   EXPECT_EQ(h.test_start, 0);
@@ -155,7 +154,7 @@ TEST_F(TGUFBuilderTest, AppendLabels) {
       .label_capacity = 2,
       .msg_dim = 0,
       .label_dim = 3,
-      .negatives_start_e_id = 0,
+      .negatives_capacity = 0,
       .negatives_per_edge = 0,
   };
   tgn::TGUFBuilder builder(schema);
@@ -187,7 +186,7 @@ TEST_F(TGUFBuilderTest, FailureAppendEdgesAfterFinalize) {
       .label_capacity = 0,
       .msg_dim = 1,
       .label_dim = 0,
-      .negatives_start_e_id = 0,
+      .negatives_capacity = 0,
       .negatives_per_edge = 0,
   };
   tgn::TGUFBuilder builder(schema);
@@ -208,7 +207,7 @@ TEST_F(TGUFBuilderTest, FailureAppendLabelsAfterFinalize) {
       .label_capacity = 1,
       .msg_dim = 1,
       .label_dim = 0,
-      .negatives_start_e_id = 0,
+      .negatives_capacity = 0,
       .negatives_per_edge = 0,
   };
   tgn::TGUFBuilder builder(schema);
@@ -226,7 +225,7 @@ TEST_F(TGUFBuilderTest, FailureEdgeExceedCapacity) {
       .label_capacity = 0,
       .msg_dim = 1,
       .label_dim = 0,
-      .negatives_start_e_id = 0,
+      .negatives_capacity = 0,
       .negatives_per_edge = 0,
   };
   tgn::TGUFBuilder builder(schema);
@@ -246,7 +245,7 @@ TEST_F(TGUFBuilderTest, FailureLabelExceedCapacity) {
       .label_capacity = 2,
       .msg_dim = 0,
       .label_dim = 0,
-      .negatives_start_e_id = 0,
+      .negatives_capacity = 0,
       .negatives_per_edge = 0,
   };
   tgn::TGUFBuilder builder(schema);
@@ -265,7 +264,7 @@ TEST_F(TGUFBuilderTest, FailureEdgeMsgDimMismatch) {
       .label_capacity = 0,
       .msg_dim = 128,  // Expected 128
       .label_dim = 0,
-      .negatives_start_e_id = 0,
+      .negatives_capacity = 0,
       .negatives_per_edge = 0,
   };
   tgn::TGUFBuilder builder(schema);
@@ -286,7 +285,7 @@ TEST_F(TGUFBuilderTest, FailureLabelDimMismatch) {
       .label_capacity = 10,
       .msg_dim = 0,
       .label_dim = 8,  // Expected 8
-      .negatives_start_e_id = 0,
+      .negatives_capacity = 0,
       .negatives_per_edge = 0,
   };
   tgn::TGUFBuilder builder(schema);
@@ -305,7 +304,7 @@ TEST_F(TGUFBuilderTest, FailureNegDstMissing) {
       .label_capacity = 0,
       .msg_dim = 4,
       .label_dim = 0,
-      .negatives_start_e_id = 0,
+      .negatives_capacity = 0,
       .negatives_per_edge = 5,
   };
   tgn::TGUFBuilder builder(schema);
@@ -326,7 +325,7 @@ TEST_F(TGUFBuilderTest, FailureNegDstDimMisMatch) {
       .label_capacity = 0,
       .msg_dim = 4,
       .label_dim = 0,
-      .negatives_start_e_id = 0,
+      .negatives_capacity = 0,
       .negatives_per_edge = 5,
   };
   tgn::TGUFBuilder builder(schema);
