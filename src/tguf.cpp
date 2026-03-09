@@ -219,6 +219,17 @@ auto TGUFBuilder::append_edges(const Batch& batch) const -> void {
           std::max(impl_->written_edges_, neg_global_start);
       const auto num_to_write = impl_->written_edges_ + count - overlap_start;
 
+      if (impl_->written_negatives_ + num_to_write >
+          impl_->schema_.negatives_capacity) {
+        throw std::runtime_error(
+            "TGUFBuilder: Negative storage overflow. "
+            "Attempting to write " +
+            std::to_string(num_to_write) + " rows, but capacity is " +
+            std::to_string(impl_->schema_.negatives_capacity) +
+            " (already wrote " + std::to_string(impl_->written_negatives_) +
+            ")");
+      }
+
       // Determine where to read from the input tensor
       // If the input is 'compact' (just the negatives), we offset by how much
       // we've already written If the input is 'full' (aligned with batch.src),
