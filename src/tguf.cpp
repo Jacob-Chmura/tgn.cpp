@@ -98,7 +98,7 @@ struct TGUFBuilder::Impl {
     store.fst_flags = F_ALLOCATECONTIG;  // try contiguous first
     store.fst_posmode = F_PEOFPOSMODE;
     store.fst_offset = 0;
-    store.fst_length = mapped_bytes;
+    store.fst_length = mapped_bytes_;
     store.fst_bytesalloc = 0;
 
     if (fcntl(fd, F_PREALLOCATE, &store) == -1) {
@@ -111,7 +111,7 @@ struct TGUFBuilder::Impl {
     }
 
     // Set the logical file size
-    if (ftruncate(fd, mapped_bytes) != 0) {
+    if (ftruncate(fd, mapped_bytes_) != 0) {
       close(fd);
       throw std::runtime_error("Failed to set file size (macOS)");
     }
