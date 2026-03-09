@@ -60,12 +60,7 @@ class TGUFStreamer:
         if self.m_dim > 0:
             self._write_array(msg, np.float32)
         if self.n_neg > 0:
-            if negs is not None:
-                self._write_array(negs, np.int64)
-            else:
-                # Send a zeroed-out block of the correct size to keep the pipe alive
-                padding = np.zeros((batch_size, self.n_neg), dtype=np.int64)
-                self._write_array(padding, np.int64)
+            self._write_array(negs, np.int64)
 
     def stream_label_batch(self, ts, nodes, labels):
         batch_size = len(ts)

@@ -201,20 +201,20 @@ auto TGUFBuilder::append_edges(const Batch& batch) const -> void {
                  impl_->header.msg_dim * sizeof(float), batch.msg);
 
   if (batch.neg_dst.has_value() && impl_->header.neg_dst_offset > 0) {
-    const auto batch_start = impl_->written_edges;
-    const auto batch_end = batch_start + count;
-    const auto neg_start = impl_->header.negatives_start_e_id;
+    const auto b_start = static_cast<std::int64_t>(impl_->written_edges);
+    const auto n_start =
+        static_cast<std::int64_t>(impl_->header.negatives_start_e_id);
 
-    if (batch_end > neg_start) {
-      // Calculate which part of the batch is valid negatives
-      const auto slice_start =
-          std::max(0L, static_cast<std::int64_t>(neg_start - batch_start));
-      const auto mmap_row_idx =
-          std::max(0L, static_cast<std::int64_t>(batch_start - neg_start));
-      const auto valid_slice = batch.neg_dst->slice(0, slice_start);
-      impl_->to_mmap(impl_->header.neg_dst_offset, mmap_row_idx,
-                     impl_->header.negatives_per_edge * sizeof(int64_t),
-                     valid_slice);
+    const auto i_start = std::max(b_start, n_start);
+    const auto i_end =
+        std::min(b_start + static_cast<std::int64_t>(count),
+                 static_cast<std::int64_t>(impl_->header.num_edges));
+
+    if (i_start < i_end) {
+      impl_->to_mmap(
+          impl_->header.neg_dst_offset, i_start - n_start,
+          impl_->header.negatives_per_edge * sizeof(std::int64_t),
+          batch.neg_dst->slice(0, i_start - b_start, i_end - b_start));
     }
   }
   impl_->written_edges += count;

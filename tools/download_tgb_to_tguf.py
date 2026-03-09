@@ -100,16 +100,12 @@ def main() -> None:
             pbar.set_postfix({"batch_size": args.batch_size})
             for i in range(0, len(src), args.batch_size):
                 end = i + args.batch_size
-                batch_negs = None
-                if full_negs is not None and end > neg_start_e_id:
-                    batch_negs = full_negs[i:end]
-
                 streamer.stream_edge_batch(
                     src=src[i:end],
                     dst=dst[i:end],
                     ts=ts[i:end],
                     msg=edge_feat[i:end],
-                    negs=batch_negs,
+                    negs=full_negs[i:end] if full_negs is not None else None,
                 )
                 pbar.update(1)
 
