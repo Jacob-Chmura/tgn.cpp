@@ -61,14 +61,20 @@ struct TGData {
       TORCH_CHECK(neg_dst->scalar_type() == torch::kLong,
                   "neg_dst must be torch::Long");
 
+      const auto n_neg = neg_dst->size(0);
+      TORCH_CHECK(n_neg <= n, "neg_dst.size(0) (", n_neg,
+                  ") cannot exceed total edges: ", n);
+      TORCH_CHECK(n_neg == static_cast<std::int64_t>(n - negatives_start_e_id),
+                  "neg_dst size mismatch. Expected ",
+                  (n - negatives_start_e_id),
+                  " rows based on negatives_start_e_id, but got ", n_neg);
+      TORCH_CHECK(neg_dst->dim() == 2,
+                  "neg_dst must be 2D [num_edges_with_negs, m]");
+
       const auto num_nodes = n > 0
                                  ? 1 + std::max(src.max().item<std::int64_t>(),
                                                 dst.max().item<std::int64_t>())
                                  : 0;
-      TORCH_CHECK(neg_dst->dim() == 2 &&
-                      neg_dst->size(0) ==
-                          static_cast<std::int64_t>(n - negatives_start_e_id),
-                  "neg_dst must be [num_edges, m]");
       TORCH_CHECK(neg_dst->max().item<std::int64_t>() < num_nodes,
                   "neg_dst contains IDs outside the range of src/dst");
     }
@@ -377,16 +383,22 @@ class TGStoreImpl final : public TGStore {
     const std::optional<torch::Tensor>& label_target,
     std::optional<std::size_t> val_start, std::optional<std::size_t> test_start)
     -> std::shared_ptr<TGStore> {
-  auto data = detail::TGData{.src = edges.src,
-                             .dst = edges.dst,
-                             .time = edges.time,
-                             .msg = edges.msg,
-                             .neg_dst = edges.neg_dst,
-                             .label_n_id = label_n_id,
-                             .label_time = label_time,
-                             .label_target = label_target,
-                             .val_start = val_start,
-                             .test_start = test_start};
+  auto data =
+      detail::TGData{.src = edges.src,
+                     .dst = edges.dst,
+                     .time = edges.time,
+                     .msg = edges.msg,
+                     .neg_dst = edges.neg_dst,
+                     .label_n_id = label_n_id,
+                     .label_time = label_time,
+                     .label_target = label_target,
+                     .negatives_start_e_id =
+                         edges.neg_dst.has_value()
+                             ? static_cast<std::size_t>(edges.src.size(0) -
+                                                        edges.neg_dst->size(0))
+                             : 0,
+                     .val_start = val_start,
+                     .test_start = test_start};
   data.validate();
 
   TGN_LOG_INFO("TGStore: Initialized from memory (~{:.2f} GiB allocated)",

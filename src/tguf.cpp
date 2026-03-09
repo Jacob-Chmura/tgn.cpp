@@ -206,10 +206,18 @@ auto TGUFBuilder::append_edges(const Batch& batch) const -> void {
     const auto n_start =
         static_cast<std::int64_t>(impl_->header_.negatives_start_e_id);
     const auto i_start = std::max(b_start, n_start);
-    if (i_start < b_start + count) {
+
+    if (i_start < b_start + static_cast<std::int64_t>(count)) {
+      // If the tensor is COMPACT (size < batch count), index 0 is n_start.
+      // If the tensor is ALIGNED (size == batch count), index 0 is b_start.
+      const auto is_compact =
+          (batch.neg_dst->size(0) < static_cast<std::int64_t>(count));
+      const auto tensor_read_offset =
+          is_compact ? (i_start - n_start) : (i_start - b_start);
+
       impl_->to_mmap(impl_->header_.neg_dst_offset, i_start - n_start,
                      impl_->header_.negatives_per_edge * sizeof(std::int64_t),
-                     batch.neg_dst->slice(0, i_start - b_start));
+                     batch.neg_dst->slice(0, tensor_read_offset));
     }
   }
   impl_->written_edges_ += count;
