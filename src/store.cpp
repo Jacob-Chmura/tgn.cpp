@@ -31,6 +31,7 @@ struct TGData {
   std::optional<torch::Tensor> label_time = std::nullopt;
   std::optional<torch::Tensor> label_target = std::nullopt;
 
+  std::size_t negatives_start_e_id{};
   std::optional<std::size_t> val_start = std::nullopt;
   std::optional<std::size_t> test_start = std::nullopt;
 
@@ -60,12 +61,20 @@ struct TGData {
       TORCH_CHECK(neg_dst->scalar_type() == torch::kLong,
                   "neg_dst must be torch::Long");
 
+      const auto n_neg = neg_dst->size(0);
+      TORCH_CHECK(n_neg <= n, "neg_dst.size(0) (", n_neg,
+                  ") cannot exceed total edges: ", n);
+      TORCH_CHECK(n_neg == static_cast<std::int64_t>(n - negatives_start_e_id),
+                  "neg_dst size mismatch. Expected ",
+                  (n - negatives_start_e_id),
+                  " rows based on negatives_start_e_id, but got ", n_neg);
+      TORCH_CHECK(neg_dst->dim() == 2,
+                  "neg_dst must be 2D [num_edges_with_negs, m]");
+
       const auto num_nodes = n > 0
                                  ? 1 + std::max(src.max().item<std::int64_t>(),
                                                 dst.max().item<std::int64_t>())
                                  : 0;
-      TORCH_CHECK(neg_dst->dim() == 2 && neg_dst->size(0) == n,
-                  "neg_dst must be [num_edges, m]");
       TORCH_CHECK(neg_dst->max().item<std::int64_t>() < num_nodes,
                   "neg_dst contains IDs outside the range of src/dst");
     }
@@ -132,6 +141,7 @@ class TGStoreImpl final : public TGStore {
         msg_dim_(static_cast<std::size_t>(msg_.size(1))),
         label_dim_(static_cast<std::size_t>(
             data.label_target.has_value() ? data.label_target->size(1) : 0)),
+        negatives_start_e_id_(data.negatives_start_e_id),
         train_(0,
                data.val_start.value_or(data.test_start.value_or(num_edges_))),
         val_(data.val_start.value_or(data.test_start.value_or(num_edges_)),
@@ -307,7 +317,14 @@ class TGStoreImpl final : public TGStore {
       TORCH_CHECK(neg_dst_.has_value(),
                   "NegStrategy::PreComputed requested but no neg_dst tensor "
                   "available");
-      batch_neg = neg_dst_->slice(0, s, e);
+      if (s < static_cast<std::int64_t>(negatives_start_e_id_)) {
+        throw std::runtime_error(
+            "Attempted to access pre-computed negatives at index " +
+            std::to_string(s) + " but negative storage starts at " +
+            std::to_string(negatives_start_e_id_));
+      }
+      batch_neg = neg_dst_->slice(0, s - negatives_start_e_id_,
+                                  e - negatives_start_e_id_);
     } else {
       TGN_LOG_DEBUG("TGStore: get_batch [{}:{}] (NegStrategy::None)", start,
                     end);
@@ -348,6 +365,7 @@ class TGStoreImpl final : public TGStore {
   std::size_t num_nodes_{0};
   std::size_t msg_dim_{0};
   std::size_t label_dim_{0};
+  std::size_t negatives_start_e_id_{0};
 
   IndexRange train_, val_, test_;
   IndexRange train_label_, val_label_, test_label_;
@@ -365,16 +383,22 @@ class TGStoreImpl final : public TGStore {
     const std::optional<torch::Tensor>& label_target,
     std::optional<std::size_t> val_start, std::optional<std::size_t> test_start)
     -> std::shared_ptr<TGStore> {
-  auto data = detail::TGData{.src = edges.src,
-                             .dst = edges.dst,
-                             .time = edges.time,
-                             .msg = edges.msg,
-                             .neg_dst = edges.neg_dst,
-                             .label_n_id = label_n_id,
-                             .label_time = label_time,
-                             .label_target = label_target,
-                             .val_start = val_start,
-                             .test_start = test_start};
+  auto data =
+      detail::TGData{.src = edges.src,
+                     .dst = edges.dst,
+                     .time = edges.time,
+                     .msg = edges.msg,
+                     .neg_dst = edges.neg_dst,
+                     .label_n_id = label_n_id,
+                     .label_time = label_time,
+                     .label_target = label_target,
+                     .negatives_start_e_id =
+                         edges.neg_dst.has_value()
+                             ? static_cast<std::size_t>(edges.src.size(0) -
+                                                        edges.neg_dst->size(0))
+                             : 0,
+                     .val_start = val_start,
+                     .test_start = test_start};
   data.validate();
 
   TGN_LOG_INFO("TGStore: Initialized from memory (~{:.2f} GiB allocated)",
@@ -416,6 +440,15 @@ class TGStoreImpl final : public TGStore {
 
   // TGN training is mostly sequential per epoch.
   madvise(addr, file_size, MADV_SEQUENTIAL | MADV_WILLNEED);
+
+#ifdef MADV_HUGEPAGE
+  // Hint to the kernel to use 2MB pages for this mapping.
+  // This might reduces TLB misses during the gather phase.
+  if (madvise(addr, file_size, MADV_HUGEPAGE) != 0) {
+    TGN_LOG_WARN("TGStore: MADV_HUGEPAGE failed: {}", std::strerror(errno));
+  }
+  TGN_LOG_INFO("TGStore: MADV_HUGEPAGES is active");
+#endif
 
   auto mapping_guard = std::shared_ptr<void>(addr, [file_size, fd](void* p) {
     munmap(p, file_size);
@@ -476,8 +509,13 @@ class TGStoreImpl final : public TGStore {
   data.msg = mmap_tensor(header->msg_offset, {n_edges, m_dim}, torch::kFloat32);
 
   if (header->neg_dst_offset > 0 && header->negatives_per_edge > 0) {
-    data.neg_dst = mmap_tensor(header->neg_dst_offset,
-                               {n_edges, negatives_per_edge}, torch::kLong);
+    data.negatives_start_e_id = header->negatives_start_e_id;
+    const auto n_neg =
+        n_edges - static_cast<std::int64_t>(header->negatives_start_e_id);
+    if (n_neg > 0) {
+      data.neg_dst = mmap_tensor(header->neg_dst_offset,
+                                 {n_neg, negatives_per_edge}, torch::kLong);
+    }
   }
   if (header->num_labels > 0) {
     data.label_n_id =

@@ -22,6 +22,7 @@ class TGUFStreamer:
         l_dim: int,
         val_start: int = 0,
         test_start: int = 0,
+        neg_start_e_id: int = 0,
     ) -> None:
         self.proc = subprocess.Popen(
             [_TGUF_BIN, str(out_path)], stdin=subprocess.PIPE, bufsize=0
@@ -32,7 +33,15 @@ class TGUFStreamer:
 
         # Send header
         header = struct.pack(
-            "7Q", n_edges, m_dim, n_neg, n_labels, l_dim, val_start, test_start
+            "8Q",
+            n_edges,
+            m_dim,
+            n_neg,
+            n_labels,
+            l_dim,
+            val_start,
+            test_start,
+            neg_start_e_id,
         )
         self.cpp_buffer.write(header)
 

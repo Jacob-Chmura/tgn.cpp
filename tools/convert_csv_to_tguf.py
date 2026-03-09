@@ -56,6 +56,7 @@ def main() -> None:
     if args.labels:
         n_labels, _, _, l_dim = get_csv_info(args.labels)
 
+    # TODO(kuba): Consider support overwrite neg_start_e_id
     streamer = TGUFStreamer(args.output, n_edges, m_dim, n_neg, n_labels, l_dim)
 
     msg_cols = [f"msg_{i}" for i in range(m_dim)]

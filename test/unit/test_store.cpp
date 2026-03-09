@@ -17,6 +17,7 @@ struct TestData {
   std::optional<torch::Tensor> label_n_id = std::nullopt,
                                label_time = std::nullopt,
                                label_target = std::nullopt;
+  std::size_t negatives_start_e_id{};
   std::optional<std::size_t> val_start = std::nullopt,
                              test_start = std::nullopt;
 };
@@ -74,6 +75,7 @@ class TgufTGStoreFixture : public TGStoreFixture {
         .label_dim = data.label_target.has_value()
                          ? static_cast<std::size_t>(data.label_target->size(1))
                          : 0,
+        .negatives_start_e_id = data.negatives_start_e_id,
         .negatives_per_edge =
             data.neg_dst.has_value()
                 ? static_cast<std::size_t>(data.neg_dst->size(1))
@@ -178,6 +180,39 @@ TYPED_TEST(TGStoreTest, GetBatchNegStrategyPreComputed) {
   EXPECT_EQ((*batch.neg_dst)[19][0].template item<std::int64_t>(), 29);
 }
 
+TYPED_TEST(TGStoreTest, GetBatchNegStrategyPreComputedCustomNegativesStartEID) {
+  const std::int64_t n = 100;
+  const std::int64_t m = 3;
+  const std::size_t negatives_start_e_id = 50;
+
+  auto negs = torch::zeros({n - negatives_start_e_id, m}, torch::kLong);
+  for (int i = 0; i < negs.size(0); ++i) {
+    negs[i].fill_(i);
+  }
+
+  const auto store =
+      this->make_store(TestData{.src = torch::arange(n, torch::kLong),
+                                .dst = torch::full({n}, n, torch::kLong),
+                                .time = torch::zeros({n}, torch::kLong),
+                                .msg = torch::zeros({n, 4}),
+                                .neg_dst = negs,
+                                .negatives_start_e_id = negatives_start_e_id});
+
+  const std::size_t start = 50;
+  const std::size_t batch_size = 50;
+  const auto batch = store->get_batch(start, batch_size,
+                                      tgn::TGStore::NegStrategy::PreComputed);
+
+  ASSERT_EQ(batch.src.size(0), batch_size);
+  ASSERT_TRUE(batch.neg_dst.has_value());
+  EXPECT_EQ(batch.neg_dst->size(0), batch_size);
+  EXPECT_EQ(batch.neg_dst->size(1), m);
+
+  // Verify slicing: first row of batch should be row 0 of original
+  EXPECT_EQ((*batch.neg_dst)[0][0].template item<std::int64_t>(), 0);
+  EXPECT_EQ((*batch.neg_dst)[19][0].template item<std::int64_t>(), 19);
+}
+
 TYPED_TEST(TGStoreTest, GetBatchNegStrategyPreComputedThrowsIfNull) {
   const auto store =
       this->make_store(TestData{.src = torch::zeros({10}, torch::kLong),
@@ -189,6 +224,37 @@ TYPED_TEST(TGStoreTest, GetBatchNegStrategyPreComputedThrowsIfNull) {
   // Should throw because strategy is PreComputed but neg_dst is missing
   EXPECT_THROW(store->get_batch(0, 5, tgn::TGStore::NegStrategy::PreComputed),
                c10::Error);
+}
+
+TYPED_TEST(TGStoreTest,
+           GetBatchNegStrategyPreComputedThrowsIfNegativesOutofBounds) {
+  const std::int64_t n = 10;
+  const std::int64_t m = 3;
+  const std::size_t negatives_start_e_id = 5;
+
+  auto negs = torch::zeros({n - negatives_start_e_id, m}, torch::kLong);
+  for (int i = 0; i < negs.size(0); ++i) {
+    negs[i].fill_(i);
+  }
+
+  const auto store =
+      this->make_store(TestData{.src = torch::arange(n, torch::kLong),
+                                .dst = torch::full({n}, n, torch::kLong),
+                                .time = torch::zeros({n}, torch::kLong),
+                                .msg = torch::zeros({n, 4}),
+                                .neg_dst = negs,
+                                .negatives_start_e_id = negatives_start_e_id});
+
+  // Retrieve the pre-computed negatives (which start at e_id 5)
+  EXPECT_NO_THROW(store->get_batch(negatives_start_e_id, n,
+                                   tgn::TGStore::NegStrategy::PreComputed));
+
+  // Should throw because precomputed negatives not available for e_id < 5
+  EXPECT_THROW(store->get_batch(0, 3, tgn::TGStore::NegStrategy::PreComputed),
+               std::runtime_error);
+  // Batches can't cross negatives_start_e_id boundary)
+  EXPECT_THROW(store->get_batch(3, 10, tgn::TGStore::NegStrategy::PreComputed),
+               std::runtime_error);
 }
 
 TYPED_TEST(TGStoreTest, GetBatchNegStrategyRandom) {
