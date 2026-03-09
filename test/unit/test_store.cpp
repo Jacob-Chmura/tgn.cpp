@@ -17,6 +17,7 @@ struct TestData {
   std::optional<torch::Tensor> label_n_id = std::nullopt,
                                label_time = std::nullopt,
                                label_target = std::nullopt;
+  std::size_t negatives_start_e_id{};
   std::optional<std::size_t> val_start = std::nullopt,
                              test_start = std::nullopt;
 };
@@ -74,10 +75,7 @@ class TgufTGStoreFixture : public TGStoreFixture {
         .label_dim = data.label_target.has_value()
                          ? static_cast<std::size_t>(data.label_target->size(1))
                          : 0,
-        .negatives_capacity =
-            data.neg_dst.has_value()
-                ? static_cast<std::size_t>(data.neg_dst->size(0))
-                : 0,
+        .negatives_start_e_id = data.negatives_start_e_id,
         .negatives_per_edge =
             data.neg_dst.has_value()
                 ? static_cast<std::size_t>(data.neg_dst->size(1))
@@ -197,7 +195,8 @@ TYPED_TEST(TGStoreTest, GetBatchNegStrategyPreComputedCustomNegativesStartEID) {
                                 .dst = torch::full({n}, n, torch::kLong),
                                 .time = torch::zeros({n}, torch::kLong),
                                 .msg = torch::zeros({n, 4}),
-                                .neg_dst = negs});
+                                .neg_dst = negs,
+                                .negatives_start_e_id = negatives_start_e_id});
 
   const std::size_t start = 50;
   const std::size_t batch_size = 50;
@@ -243,7 +242,8 @@ TYPED_TEST(TGStoreTest,
                                 .dst = torch::full({n}, n, torch::kLong),
                                 .time = torch::zeros({n}, torch::kLong),
                                 .msg = torch::zeros({n, 4}),
-                                .neg_dst = negs});
+                                .neg_dst = negs,
+                                .negatives_start_e_id = negatives_start_e_id});
 
   // Retrieve the pre-computed negatives (which start at e_id 5)
   EXPECT_NO_THROW(store->get_batch(negatives_start_e_id, n,

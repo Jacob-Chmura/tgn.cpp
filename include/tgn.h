@@ -39,9 +39,9 @@ struct TGUFSchema {
 
   std::size_t edge_capacity;
   std::size_t label_capacity;
-  std::size_t negatives_capacity;
   std::size_t msg_dim;
   std::size_t label_dim;
+  std::size_t negatives_start_e_id;
   std::size_t negatives_per_edge;
 
   std::optional<std::size_t> val_start = std::nullopt;
