@@ -74,6 +74,7 @@ class TgufTGStoreFixture : public TGStoreFixture {
         .label_dim = data.label_target.has_value()
                          ? static_cast<std::size_t>(data.label_target->size(1))
                          : 0,
+        .negatives_start_e_id = 0,
         .negatives_per_edge =
             data.neg_dst.has_value()
                 ? static_cast<std::size_t>(data.neg_dst->size(1))

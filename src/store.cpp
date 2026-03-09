@@ -65,9 +65,10 @@ struct TGData {
                                  ? 1 + std::max(src.max().item<std::int64_t>(),
                                                 dst.max().item<std::int64_t>())
                                  : 0;
-      TORCH_CHECK(
-          neg_dst->dim() == 2 && neg_dst->size(0) == n - negatives_start_e_id,
-          "neg_dst must be [num_edges, m]");
+      TORCH_CHECK(neg_dst->dim() == 2 &&
+                      neg_dst->size(0) ==
+                          static_cast<std::int64_t>(n - negatives_start_e_id),
+                  "neg_dst must be [num_edges, m]");
       TORCH_CHECK(neg_dst->max().item<std::int64_t>() < num_nodes,
                   "neg_dst contains IDs outside the range of src/dst");
     }
@@ -310,7 +311,7 @@ class TGStoreImpl final : public TGStore {
       TORCH_CHECK(neg_dst_.has_value(),
                   "NegStrategy::PreComputed requested but no neg_dst tensor "
                   "available");
-      if (s < negatives_start_e_id_) {
+      if (s < static_cast<std::int64_t>(negatives_start_e_id_)) {
         throw std::runtime_error(
             "Attempted to access pre-computed negatives at index " +
             std::to_string(s) + " but negative storage starts at " +

@@ -17,74 +17,75 @@
 namespace tgn {
 
 struct TGUFBuilder::Impl {
-  TGUFSchema schema{};
-  TGUFHeader header{};
+  TGUFSchema schema_{};
+  TGUFHeader header_{};
 
-  void* base_ptr = nullptr;
-  bool finalized = false;
-  std::size_t written_edges{};
-  std::size_t written_labels{};
-  std::size_t mapped_bytes{};
+  void* base_ptr_ = nullptr;
+  bool finalized_ = false;
+  std::size_t written_edges_{};
+  std::size_t written_labels_{};
+  std::size_t mapped_bytes_{};
 
-  explicit Impl(const TGUFSchema& schema) : schema(schema) {
+  explicit Impl(const TGUFSchema& schema) : schema_(schema) {
     TGN_LOG_INFO("TGUFBuilder: Creating TGUF binary at {}", schema.path);
-    header.msg_dim = schema.msg_dim;
-    header.label_dim = schema.label_dim;
-    header.negatives_start_e_id = schema.negatives_start_e_id;
-    header.negatives_per_edge = schema.negatives_per_edge;
-    header.val_start = schema.val_start.value_or(0);
-    header.test_start = schema.test_start.value_or(0);
+    header_.msg_dim = schema.msg_dim;
+    header_.label_dim = schema.label_dim;
+    header_.negatives_start_e_id = schema.negatives_start_e_id;
+    header_.negatives_per_edge = schema.negatives_per_edge;
+    header_.val_start = schema.val_start.value_or(0);
+    header_.test_start = schema.test_start.value_or(0);
 
     auto align = [](std::size_t size) {
       return (size + TGUF_PAGE - 1) & ~(TGUF_PAGE - 1);
     };
 
-    header.src_offset = TGUF_PAGE;  // Header gets its own page
-    header.dst_offset =
-        header.src_offset + align(schema.edge_capacity * sizeof(std::int64_t));
-    header.time_offset =
-        header.dst_offset + align(schema.edge_capacity * sizeof(std::int64_t));
-    header.msg_offset =
-        header.time_offset + align(schema.edge_capacity * sizeof(std::int64_t));
+    header_.src_offset = TGUF_PAGE;  // Header gets its own page
+    header_.dst_offset =
+        header_.src_offset + align(schema.edge_capacity * sizeof(std::int64_t));
+    header_.time_offset =
+        header_.dst_offset + align(schema.edge_capacity * sizeof(std::int64_t));
+    header_.msg_offset = header_.time_offset +
+                         align(schema.edge_capacity * sizeof(std::int64_t));
 
     std::size_t last_offset =
-        header.msg_offset +
+        header_.msg_offset +
         align(schema.edge_capacity * schema.msg_dim * sizeof(float));
 
     if (schema.negatives_per_edge > 0) {
-      header.neg_dst_offset = last_offset;
+      header_.neg_dst_offset = last_offset;
       last_offset +=
-          align((schema.edge_capacity - header.negatives_start_e_id) *
+          align((schema.edge_capacity - header_.negatives_start_e_id) *
                 schema.negatives_per_edge * sizeof(std::int64_t));
     }
 
     if (schema.label_capacity > 0) {
-      header.label_n_id_offset = last_offset;
-      header.label_time_offset =
-          header.label_n_id_offset +
+      header_.label_n_id_offset = last_offset;
+      header_.label_time_offset =
+          header_.label_n_id_offset +
           align(schema.label_capacity * sizeof(std::int64_t));
-      header.label_target_offset =
-          header.label_time_offset +
+      header_.label_target_offset =
+          header_.label_time_offset +
           align(schema.label_capacity * sizeof(std::int64_t));
       last_offset =
-          header.label_target_offset +
+          header_.label_target_offset +
           align(schema.label_capacity * schema.label_dim * sizeof(float));
     }
 
-    mapped_bytes = last_offset;
+    mapped_bytes_ = last_offset;
 
     TGN_LOG_INFO(
         "TGUFBuilder: Pre-allocating {:.2f} GiB for {} edges and {} labels "
-        "(msg_dim={}, label_dim={}, negatives_per_edge={})",
-        mapped_bytes / (1024.0 * 1024.0 * 1024.0), schema.edge_capacity,
-        schema.label_capacity, header.msg_dim, header.label_dim,
-        header.negatives_per_edge);
+        "(msg_dim={}, label_dim={}, negatives_start_e_id={}, "
+        "negatives_per_edge={})",
+        mapped_bytes_ / (1024.0 * 1024.0 * 1024.0), schema.edge_capacity,
+        schema.label_capacity, header_.msg_dim, header_.label_dim,
+        header_.negatives_start_e_id, header_.negatives_per_edge);
 
-    if (header.val_start > 0 || header.test_start > 0) {
+    if (header_.val_start > 0 || header_.test_start > 0) {
       TGN_LOG_INFO(
           "TGUFBuilder: Using hardcoded edge splits (Val Start: {}, Test "
           "Start: {})",
-          header.val_start, header.test_start);
+          header_.val_start, header_.test_start);
     }
 
     auto fd = open(schema.path.c_str(), O_RDWR | O_CREAT | O_TRUNC, 0666);
@@ -115,23 +116,23 @@ struct TGUFBuilder::Impl {
       throw std::runtime_error("Failed to set file size (macOS)");
     }
 #else
-    if (posix_fallocate(fd, 0, mapped_bytes) != 0) {
+    if (posix_fallocate(fd, 0, mapped_bytes_) != 0) {
       close(fd);
       throw std::runtime_error("Failed to allocate disk space (Linux)");
     }
 #endif
 
-    base_ptr =
-        mmap(nullptr, mapped_bytes, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    base_ptr_ =
+        mmap(nullptr, mapped_bytes_, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     close(fd);
-    if (base_ptr == MAP_FAILED) {
+    if (base_ptr_ == MAP_FAILED) {
       throw std::runtime_error("Mmap for builder failed");
     }
   }
 
   ~Impl() {
-    if (!finalized) {
-      munmap(base_ptr, mapped_bytes);
+    if (!finalized_) {
+      munmap(base_ptr_, mapped_bytes_);
     }
   }
 
@@ -140,7 +141,7 @@ struct TGUFBuilder::Impl {
     auto t_contiguous = t.contiguous();
     TORCH_CHECK(t_contiguous.nbytes() == t.size(0) * element_size,
                 "Tensor size mismatch with expected element size");
-    auto* dst = static_cast<std::uint8_t*>(base_ptr) + offset +
+    auto* dst = static_cast<std::uint8_t*>(base_ptr_) + offset +
                 (start_idx * element_size);
     std::memcpy(dst, t_contiguous.data_ptr(), t_contiguous.nbytes());
   }
@@ -151,7 +152,7 @@ TGUFBuilder::TGUFBuilder(const TGUFSchema& schema)
 TGUFBuilder::~TGUFBuilder() = default;
 
 auto TGUFBuilder::append_edges(const Batch& batch) const -> void {
-  if (impl_->finalized) {
+  if (impl_->finalized_) {
     throw std::runtime_error(
         "TGUFBuilder::append_edges: Cannot append to a finalized file.");
   }
@@ -162,68 +163,62 @@ auto TGUFBuilder::append_edges(const Batch& batch) const -> void {
   }
   TGN_LOG_DEBUG("TGUFBuilder: Appending {} edges to TGUF file", count);
 
-  if (impl_->written_edges + count > impl_->schema.edge_capacity) {
+  if (impl_->written_edges_ + count > impl_->schema_.edge_capacity) {
     throw std::runtime_error(
         "TGUFBuilder::append_edges: Overflow. Attempting to write " +
         std::to_string(count) + " edges, but only " +
-        std::to_string(impl_->schema.edge_capacity - impl_->written_edges) +
+        std::to_string(impl_->schema_.edge_capacity - impl_->written_edges_) +
         " slots remain.");
   }
-  if (batch.msg.size(1) != static_cast<std::int64_t>(impl_->header.msg_dim)) {
+  if (batch.msg.size(1) != static_cast<std::int64_t>(impl_->header_.msg_dim)) {
     throw std::invalid_argument(
         "TGUFBuilder::append_edges: Message dimension mismatch. Expected " +
-        std::to_string(impl_->header.msg_dim) + ", got " +
+        std::to_string(impl_->header_.msg_dim) + ", got " +
         std::to_string(batch.msg.size(1)));
   }
-  if (impl_->header.negatives_per_edge > 0) {
+  if (impl_->header_.negatives_per_edge > 0) {
     if (!batch.neg_dst.has_value()) {
       throw std::invalid_argument(
           "TGUFBuilder::append_edges: neg_dst is required for this TGUF "
           "schema.");
     }
     if (batch.neg_dst->size(1) !=
-        static_cast<std::int64_t>(impl_->header.negatives_per_edge)) {
+        static_cast<std::int64_t>(impl_->header_.negatives_per_edge)) {
       throw std::invalid_argument(
           "TGUFBuilder::append_edges: Negative destination dimension mismatch. "
           "Expected " +
-          std::to_string(impl_->header.negatives_per_edge) + ", got " +
+          std::to_string(impl_->header_.negatives_per_edge) + ", got " +
           std::to_string(batch.neg_dst->size(1)));
     }
   }
 
-  impl_->to_mmap(impl_->header.src_offset, impl_->written_edges,
+  impl_->to_mmap(impl_->header_.src_offset, impl_->written_edges_,
                  sizeof(std::int64_t), batch.src);
-  impl_->to_mmap(impl_->header.dst_offset, impl_->written_edges,
+  impl_->to_mmap(impl_->header_.dst_offset, impl_->written_edges_,
                  sizeof(std::int64_t), batch.dst);
-  impl_->to_mmap(impl_->header.time_offset, impl_->written_edges,
+  impl_->to_mmap(impl_->header_.time_offset, impl_->written_edges_,
                  sizeof(std::int64_t), batch.time);
-  impl_->to_mmap(impl_->header.msg_offset, impl_->written_edges,
-                 impl_->header.msg_dim * sizeof(float), batch.msg);
+  impl_->to_mmap(impl_->header_.msg_offset, impl_->written_edges_,
+                 impl_->header_.msg_dim * sizeof(float), batch.msg);
 
-  if (batch.neg_dst.has_value() && impl_->header.neg_dst_offset > 0) {
-    const auto b_start = static_cast<std::int64_t>(impl_->written_edges);
+  if (batch.neg_dst.has_value() && impl_->header_.neg_dst_offset > 0) {
+    const auto b_start = static_cast<std::int64_t>(impl_->written_edges_);
     const auto n_start =
-        static_cast<std::int64_t>(impl_->header.negatives_start_e_id);
-
+        static_cast<std::int64_t>(impl_->header_.negatives_start_e_id);
     const auto i_start = std::max(b_start, n_start);
-    const auto i_end =
-        std::min(b_start + static_cast<std::int64_t>(count),
-                 static_cast<std::int64_t>(impl_->header.num_edges));
-
-    if (i_start < i_end) {
-      impl_->to_mmap(
-          impl_->header.neg_dst_offset, i_start - n_start,
-          impl_->header.negatives_per_edge * sizeof(std::int64_t),
-          batch.neg_dst->slice(0, i_start - b_start, i_end - b_start));
+    if (i_start < b_start + count) {
+      impl_->to_mmap(impl_->header_.neg_dst_offset, i_start - n_start,
+                     impl_->header_.negatives_per_edge * sizeof(std::int64_t),
+                     batch.neg_dst->slice(0, i_start - b_start));
     }
   }
-  impl_->written_edges += count;
+  impl_->written_edges_ += count;
 }
 
 auto TGUFBuilder::append_labels(const torch::Tensor& n_id,
                                 const torch::Tensor& time,
                                 const torch::Tensor& target) const -> void {
-  if (impl_->finalized) {
+  if (impl_->finalized_) {
     throw std::runtime_error(
         "TGUFBuilder::append_labels: Cannot append labels to a finalized "
         "file.");
@@ -235,54 +230,54 @@ auto TGUFBuilder::append_labels(const torch::Tensor& n_id,
   }
   TGN_LOG_DEBUG("TGUFBuilder: Appending {} labels to TGUF file", count);
 
-  if (impl_->written_labels + count > impl_->schema.label_capacity) {
+  if (impl_->written_labels_ + count > impl_->schema_.label_capacity) {
     throw std::runtime_error(
         "TGUFBuilder::append_labels: Overflow. Writing " +
         std::to_string(count) + " labels, but only " +
-        std::to_string(impl_->schema.label_capacity - impl_->written_labels) +
+        std::to_string(impl_->schema_.label_capacity - impl_->written_labels_) +
         " slots remain.");
   }
 
-  if (target.size(1) != static_cast<std::int64_t>(impl_->header.label_dim)) {
+  if (target.size(1) != static_cast<std::int64_t>(impl_->header_.label_dim)) {
     throw std::invalid_argument(
         "TGUFBuilder::append_labels: Label dimension mismatch. Expected " +
-        std::to_string(impl_->header.label_dim) + ", got " +
+        std::to_string(impl_->header_.label_dim) + ", got " +
         std::to_string(target.size(1)));
   }
 
-  impl_->to_mmap(impl_->header.label_n_id_offset, impl_->written_labels,
+  impl_->to_mmap(impl_->header_.label_n_id_offset, impl_->written_labels_,
                  sizeof(std::int64_t), n_id);
-  impl_->to_mmap(impl_->header.label_time_offset, impl_->written_labels,
+  impl_->to_mmap(impl_->header_.label_time_offset, impl_->written_labels_,
                  sizeof(std::int64_t), time);
-  impl_->to_mmap(impl_->header.label_target_offset, impl_->written_labels,
-                 impl_->header.label_dim * sizeof(float), target);
-  impl_->written_labels += count;
+  impl_->to_mmap(impl_->header_.label_target_offset, impl_->written_labels_,
+                 impl_->header_.label_dim * sizeof(float), target);
+  impl_->written_labels_ += count;
 }
 
 auto TGUFBuilder::finalize() -> void {
-  if (impl_->finalized) {
+  if (impl_->finalized_) {
     return;
   }
 
-  if (impl_->written_edges < impl_->schema.edge_capacity) {
+  if (impl_->written_edges_ < impl_->schema_.edge_capacity) {
     TGN_LOG_WARN(
         "TGUFBuilder: Finalizing with fewer edges than declared ({} < {}). "
         "File will have unused padding.",
-        impl_->written_edges, impl_->schema.edge_capacity);
+        impl_->written_edges_, impl_->schema_.edge_capacity);
   }
 
-  // Update header with counts (user might have wrote less than declared)
-  impl_->header.num_edges = impl_->written_edges;
-  impl_->header.num_labels = impl_->written_labels;
-  std::memcpy(impl_->base_ptr, &impl_->header, sizeof(TGUFHeader));
+  // Update header_ with counts (user might have wrote less than declared)
+  impl_->header_.num_edges = impl_->written_edges_;
+  impl_->header_.num_labels = impl_->written_labels_;
+  std::memcpy(impl_->base_ptr_, &impl_->header_, sizeof(TGUFHeader));
 
-  msync(impl_->base_ptr, impl_->mapped_bytes, MS_SYNC);
-  munmap(impl_->base_ptr, impl_->mapped_bytes);
-  impl_->base_ptr = nullptr;
-  impl_->finalized = true;
+  msync(impl_->base_ptr_, impl_->mapped_bytes_, MS_SYNC);
+  munmap(impl_->base_ptr_, impl_->mapped_bytes_);
+  impl_->base_ptr_ = nullptr;
+  impl_->finalized_ = true;
 
   TGN_LOG_INFO(
       "TGUFBuilder: Finalized to {} (Total edges: {}, Total labels: {})",
-      impl_->schema.path, impl_->header.num_edges, impl_->header.num_labels);
+      impl_->schema_.path, impl_->header_.num_edges, impl_->header_.num_labels);
 }
 }  // namespace tgn
