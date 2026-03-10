@@ -20,7 +20,7 @@ class TGUFStreamer:
         n_neg: int,
         n_labels: int,
         l_dim: int,
-        n_nodes: int = 0,
+        n_capacity: int = 0,
         n_dim: int = 0,
         val_start: int = 0,
         test_start: int = 0,
@@ -41,7 +41,7 @@ class TGUFStreamer:
             n_neg,
             n_labels,
             l_dim,
-            n_nodes,
+            n_capacity,
             n_dim,
             val_start,
             test_start,
@@ -51,8 +51,6 @@ class TGUFStreamer:
 
         self.m_dim = m_dim
         self.n_neg = n_neg
-        self.l_dim = l_dim
-        self.n_dim = n_dim
 
     def stream_edge_batch(self, src, dst, ts, msg, negs):
         batch_size = len(src)

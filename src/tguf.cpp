@@ -62,8 +62,8 @@ struct TGUFBuilder::Impl {
 
     if (schema.node_feat_dim > 0) {
       header_.node_feat_offset = last_offset;
-      last_offset +=
-          align(schema.node_feat_capacity * schema.node_feat_dim * sizeof(float));
+      last_offset += align(schema.node_feat_capacity * schema.node_feat_dim *
+                           sizeof(float));
     }
 
     if (schema.label_capacity > 0) {

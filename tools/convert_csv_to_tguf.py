@@ -78,7 +78,7 @@ def main() -> None:
         n_neg=e_info["n_neg"],
         n_labels=l_info["n_rows"],
         l_dim=l_info["label_dim"],
-        n_nodes=global_max_id + 1,
+        n_capacity=global_max_id + 1,
         n_dim=n_info["feat_dim"],
     )
 
