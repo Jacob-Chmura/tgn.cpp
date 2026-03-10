@@ -344,12 +344,17 @@ auto TGNImpl::forward_internal(const std::vector<torch::Tensor>& input_list)
 
   // Transformer conv with relative time encoding
   const auto t_edges = impl_->store_->gather_timestamps(e_id);
-  const auto raw_msgs = impl_->store_->gather_msgs(e_id);
   const auto rel_t = last_update.index_select(0, edge_index[0]) - t_edges;
-  const auto rel_t_z =
-      impl_->time_encoder_->forward(rel_t.to(raw_msgs.dtype()));
-  const auto edge_feat = torch::cat({rel_t_z, raw_msgs}, -1);
-  const auto z = impl_->conv_->forward(x, edge_index, edge_feat);
+  const auto rel_t_z = impl_->time_encoder_->forward(rel_t.to(torch::kFloat32));
+  const auto edge_feat =
+      impl_->store_->msg_dim() > 0
+          ? torch::cat({rel_t_z, impl_->store_->gather_msgs(e_id)}, -1)
+          : rel_t_z;
+  const auto node_feat =
+      impl_->store_->node_feat_dim() > 0
+          ? torch::cat({x, impl_->store_->gather_node_feats(n_id)}, -1)
+          : x;
+  const auto z = impl_->conv_->forward(node_feat, edge_index, edge_feat);
 
   // Map computed local embeddings back to global id input_list
   std::vector<torch::Tensor> outputs;

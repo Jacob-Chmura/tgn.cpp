@@ -14,8 +14,10 @@ struct alignas(8) TGUFHeader {
 
   std::uint64_t num_edges{};
   std::uint64_t num_labels{};
+  std::uint64_t num_nodes{};
   std::uint64_t msg_dim{};
   std::uint64_t label_dim{};
+  std::uint64_t node_feat_dim{};
   std::uint64_t negatives_start_e_id{};
   std::uint64_t negatives_per_edge{};
 
@@ -27,6 +29,7 @@ struct alignas(8) TGUFHeader {
   std::uint64_t label_n_id_offset{};
   std::uint64_t label_time_offset{};
   std::uint64_t label_target_offset{};
+  std::uint64_t node_feat_offset{};
 
   std::uint64_t val_start{};
   std::uint64_t test_start{};

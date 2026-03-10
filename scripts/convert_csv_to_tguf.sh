@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$SCRIPT_DIR/.."
 
 if [[ $# -lt 2 ]]; then
-    echo "Usage: $0 <edges_csv> <output_tguf> [labels_csv]" >&2
+    echo "Usage: $0 <edges_csv> <output_tguf> [labels_csv] [static_node_feats_csv]" >&2
     exit 1
 fi
 
@@ -17,9 +17,11 @@ fi
 EDGES="$1"
 OUTPUT="$2"
 LABELS="${3:-}"
+NODE_FEATS="${4:-}"
 
 PY_ARGS=(--edges "$EDGES" --output "$OUTPUT")
 [[ -n "$LABELS" ]] && PY_ARGS+=(--labels "$LABELS")
+[[ -n "$NODE_FEATS" ]] && PY_ARGS+=(--node-feats "$NODE_FEATS")
 
 uv run --no-project \
     --with numpy \

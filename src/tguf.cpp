@@ -30,6 +30,7 @@ struct TGUFBuilder::Impl {
     TGN_LOG_INFO("TGUFBuilder: Creating TGUF binary at {}", schema.path);
     header_.msg_dim = schema.msg_dim;
     header_.label_dim = schema.label_dim;
+    header_.node_feat_dim = schema.node_feat_dim;
     header_.negatives_start_e_id = schema.negatives_start_e_id;
     header_.negatives_per_edge = schema.negatives_per_edge;
     header_.val_start = schema.val_start.value_or(0);
@@ -58,6 +59,12 @@ struct TGUFBuilder::Impl {
                 schema.negatives_per_edge * sizeof(std::int64_t));
     }
 
+    if (schema.node_feat_dim > 0) {
+      header_.node_feat_offset = last_offset;
+      last_offset +=
+          align(schema.node_capacity * schema.node_feat_dim * sizeof(float));
+    }
+
     if (schema.label_capacity > 0) {
       header_.label_n_id_offset = last_offset;
       header_.label_time_offset =
@@ -75,11 +82,12 @@ struct TGUFBuilder::Impl {
 
     TGN_LOG_INFO(
         "TGUFBuilder: Pre-allocating {:.2f} GiB for {} edges and {} labels "
-        "(msg_dim={}, label_dim={}, negatives_start_e_id={}, "
+        "(msg_dim={}, label_dim={}, node_feat_dim={}, negatives_start_e_id={}, "
         "negatives_per_edge={})",
         mapped_bytes_ / (1024.0 * 1024.0 * 1024.0), schema.edge_capacity,
         schema.label_capacity, header_.msg_dim, header_.label_dim,
-        header_.negatives_start_e_id, header_.negatives_per_edge);
+        header_.node_feat_dim, header_.negatives_start_e_id,
+        header_.negatives_per_edge);
 
     if (header_.val_start > 0 || header_.test_start > 0) {
       TGN_LOG_INFO(
@@ -262,6 +270,23 @@ auto TGUFBuilder::append_labels(const torch::Tensor& n_id,
   impl_->written_labels_ += count;
 }
 
+auto TGUFBuilder::append_node_feats(const torch::Tensor& n_id,
+                                    const torch::Tensor& node_feat) const
+    -> void {
+  if (impl_->finalized_) {
+    throw std::runtime_error(
+        "TGUFBuilder::append_node_feats: Cannot append node_feats to a "
+        "finalized file.");
+  }
+
+  const auto count = n_id.size(0);
+  if (count == 0) {
+    return;
+  }
+  TGN_LOG_DEBUG("TGUFBuilder: Appending {} node_feats to TGUF file", count);
+
+  // TODO(kuba): Implement write
+}
 auto TGUFBuilder::finalize() -> void {
   if (impl_->finalized_) {
     return;
@@ -277,6 +302,7 @@ auto TGUFBuilder::finalize() -> void {
   // Update header_ with counts (user might have wrote less than declared)
   impl_->header_.num_edges = impl_->written_edges_;
   impl_->header_.num_labels = impl_->written_labels_;
+  // TODO(kuba): Update num_nodes and perform local/global alignment
   std::memcpy(impl_->base_ptr_, &impl_->header_, sizeof(TGUFHeader));
 
   msync(impl_->base_ptr_, impl_->mapped_bytes_, MS_SYNC);

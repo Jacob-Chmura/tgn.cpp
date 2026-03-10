@@ -29,12 +29,17 @@ EXPECTED CSV STRUCTURE
    - Mandatory columns: 'node_id', 'time'
    - Labels: 'node_y0', 'node_y1', ..., 'node_ym' (detected by 'node_y' prefix)
 
-Note: msg_dim, num_negatives and node_y dimensions must be uniform across the data.
+2. Node Feats CSV (--node-feats):
+   - Mandatory columns: 'node_id'
+   - Feats: 'node_x0', 'node_x1', ..., 'node_xm' (detected by 'node_x' prefix)
+
+Note: msg_dim, num_negatives, node_x and node_y dimensions must be uniform across the data.
 Note: The script uses 'wc -l' for fast row counting.
 """,
 )
 parser.add_argument("--edges", type=Path, required=True, help="Path to edges.csv")
 parser.add_argument("--labels", type=Path, help="Path to optional node_labels.csv")
+parser.add_argument("--node-feats", type=Path, help="Path to optional node_feats.csv")
 parser.add_argument("--output", type=Path, required=True, help="Output .tguf path")
 parser.add_argument(
     "--batch_size", type=int, default=16384, help="Streaming batch size"
@@ -48,20 +53,34 @@ def main() -> None:
         raise ValueError(f"Edges file {args.edges} not found or not a file")
     if args.labels is not None and not args.labels.is_file():
         raise ValueError(f"Labels file {args.labels} not found or not a file")
+    if args.node_feats is not None and not args.node_feats.is_file():
+        raise ValueError(f"Node Feats file {args.node_feats} not found or not a file")
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
 
     n_edges, m_dim, n_neg, _ = get_csv_info(args.edges)
-    n_labels, l_dim = 0, 0
+    n_nodes, n_dim, n_labels, l_dim = 0, 0, 0, 0
     if args.labels:
         n_labels, _, _, l_dim = get_csv_info(args.labels)
+    if args.node_feats:
+        # TODO(kuba): get num_nodes and n_dim
+        n_nodes, n_dim = 0, 0
 
-    # TODO(kuba): Consider support overwrite neg_start_e_id
-    streamer = TGUFStreamer(args.output, n_edges, m_dim, n_neg, n_labels, l_dim)
+    streamer = TGUFStreamer(
+        args.output,
+        n_edges,
+        m_dim,
+        n_neg,
+        n_labels,
+        l_dim,
+        n_nodes=n_nodes,
+        n_dim=n_dim,
+    )
 
     msg_cols = [f"msg_{i}" for i in range(m_dim)]
     neg_cols = [f"neg_{i}" for i in range(n_neg)]
     label_cols = [f"node_y{i}" for i in range(l_dim)]
+    node_feat_cols = [f"node_x{i}" for i in range(n_dim)]
 
     try:
         edge_chunks = (n_edges + args.batch_size - 1) // args.batch_size
@@ -88,6 +107,19 @@ def main() -> None:
                         nodes=chunk["node_id"].values,
                         ts=chunk["time"].values,
                         labels=chunk[label_cols].values,
+                    )
+                    pbar.update(1)
+
+        if n_nodes > 0:
+            node_feat_chunks = (n_nodes + args.batch_size - 1) // args.batch_size
+            with tqdm(
+                total=node_feat_chunks, desc="Appending Node Feats", unit="chunk"
+            ) as pbar:
+                pbar.set_postfix({"batch_size": args.batch_size})
+                for chunk in pd.read_csv(args.node_feats, chunksize=args.batch_size):
+                    streamer.stream_node_feat_batch(
+                        nodes=chunk["node_id"].values,
+                        feats=chunk[node_feat_cols].values,
                     )
                     pbar.update(1)
 

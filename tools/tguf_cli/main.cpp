@@ -16,6 +16,8 @@ struct StreamHeader {
   std::uint64_t negatives_per_edge{};
   std::uint64_t label_capacity{};
   std::uint64_t label_dim{};
+  std::uint64_t node_capacity{};
+  std::uint64_t node_feat_dim{};
   std::uint64_t val_start{};
   std::uint64_t test_start{};
   std::uint64_t negatives_start_e_id{};
@@ -41,6 +43,12 @@ struct Scratch {
   auto reserve_labels(std::size_t bsize, std::size_t label_dim) -> void {
     i64.assign(bsize * 2, 0);  // n_id, t
     f32.assign(bsize * label_dim, 0.0);
+  }
+
+  auto reserve_node_feats(std::size_t bsize, std::size_t node_feat_dim)
+      -> void {
+    i64.assign(bsize * 1, 0);  // n_id
+    f32.assign(bsize * node_feat_dim, 0.0);
   }
 };
 
@@ -95,6 +103,21 @@ auto process_label_batch(const StreamHeader& h, const tgn::TGUFBuilder& builder,
           .clone());
 }
 
+auto process_node_feat_batch(const StreamHeader& h,
+                             const tgn::TGUFBuilder& builder,
+                             std::int64_t bsize, Scratch& scratch) -> void {
+  scratch.reserve_node_feats(bsize, h.node_feat_dim);
+  read_exactly(scratch.i64.data(), bsize * sizeof(std::int64_t));
+  read_exactly(scratch.f32.data(), bsize * h.node_feat_dim * sizeof(float));
+
+  builder.append_node_feats(
+      torch::from_blob(scratch.i64.data(), {bsize}, torch::kInt64).clone(),
+      torch::from_blob(scratch.f32.data(),
+                       {bsize, static_cast<std::int64_t>(h.node_feat_dim)},
+                       torch::kFloat32)
+          .clone());
+}
+
 }  // namespace
 
 auto main(int argc, char** argv) -> int {
@@ -114,8 +137,10 @@ auto main(int argc, char** argv) -> int {
         .path = out_path,
         .edge_capacity = h.edge_capacity,
         .label_capacity = h.label_capacity,
+        .node_capacity = h.node_capacity,
         .msg_dim = h.msg_dim,
         .label_dim = h.label_dim,
+        .node_feat_dim = h.node_feat_dim,
         .negatives_start_e_id = h.negatives_start_e_id,
         .negatives_per_edge = h.negatives_per_edge,
         .val_start = h.val_start,
@@ -136,6 +161,8 @@ auto main(int argc, char** argv) -> int {
         process_edge_batch(h, builder, bsize, scratch);
       } else if (cmd == 'L') {
         process_label_batch(h, builder, bsize, scratch);
+      } else if (cmd == 'N') {
+        process_node_feat_batch(h, builder, bsize, scratch);
       }
     }
     builder.finalize();
