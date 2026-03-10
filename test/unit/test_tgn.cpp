@@ -59,17 +59,15 @@ TEST_F(TGNTest, InitializationAndForwardShape) {
 }
 
 TEST_F(TGNTest, InitializationAndForwardWithStaticNodeFeatures) {
-  const std::int64_t num_nodes = 50;
-  const std::int64_t feat_dim = 16;
-
   // We only provide features for nodes 1, 3, and 5.
   // Nodes 2, 4, and 6 will rely on the store's zero-initialization.
-  auto node_feats = torch::zeros({num_nodes, feat_dim}, torch::kFloat32);
+  const std::int64_t feat_dim = 16;
+  auto node_feats = torch::zeros({50, feat_dim}, torch::kFloat32);
   node_feats[1] = torch::ones({feat_dim}) * 1.0F;
   node_feats[3] = torch::ones({feat_dim}) * 3.0F;
   node_feats[5] = torch::ones({feat_dim}) * 5.0F;
 
-  auto feat_store = tgn::TGStore::from_memory(
+  const auto feat_store = tgn::TGStore::from_memory(
       {.src = torch::tensor({1, 2, 3}, torch::kLong),
        .dst = torch::tensor({4, 5, 6}, torch::kLong),
        .time = torch::tensor({10, 20, 30}, torch::kLong),
@@ -86,12 +84,11 @@ TEST_F(TGNTest, InitializationAndForwardWithStaticNodeFeatures) {
   const auto [z_src, z_dst] = model->forward(src_ids, dst_ids);
 
   EXPECT_EQ(z_src.size(0), 3);
+  EXPECT_EQ(z_dst.size(0), 3);
   EXPECT_EQ(z_src.size(1), cfg.embedding_dim);
-
+  EXPECT_EQ(z_dst.size(1), cfg.embedding_dim);
   EXPECT_FALSE(torch::isnan(z_src).any().item<bool>());
   EXPECT_FALSE(torch::isnan(z_dst).any().item<bool>());
-
-  // Verify that the embeddings for nodes with features vs without are different
   EXPECT_FALSE(torch::allclose(z_src[0], z_src[1]));
 }
 
