@@ -288,9 +288,9 @@ struct TGNImpl::Impl {
         assoc_(torch::full({static_cast<std::int64_t>(store->node_count())}, -1,
                            torch::dtype(torch::kLong))) {
     time_encoder_ = detail::TimeEncoder(cfg.time_dim);
-    conv_ = detail::TransformerConv(cfg.memory_dim, cfg.embedding_dim / 2,
-                                    store->msg_dim() + cfg.time_dim,
-                                    cfg.num_heads, cfg.dropout);
+    conv_ = detail::TransformerConv(
+        cfg.memory_dim + store_->node_feat_dim(), cfg.embedding_dim / 2,
+        store->msg_dim() + cfg.time_dim, cfg.num_heads, cfg.dropout);
     memory_ = detail::TGNMemory(cfg, time_encoder_, store->msg_dim(),
                                 store->node_count());
   }
