@@ -16,7 +16,7 @@ struct StreamHeader {
   std::uint64_t negatives_per_edge{};
   std::uint64_t label_capacity{};
   std::uint64_t label_dim{};
-  std::uint64_t node_capacity{};
+  std::uint64_t node_feat_capacity{};
   std::uint64_t node_feat_dim{};
   std::uint64_t val_start{};
   std::uint64_t test_start{};
@@ -137,7 +137,7 @@ auto main(int argc, char** argv) -> int {
         .path = out_path,
         .edge_capacity = h.edge_capacity,
         .label_capacity = h.label_capacity,
-        .node_capacity = h.node_capacity,
+        .node_feat_capacity = h.node_feat_capacity,
         .msg_dim = h.msg_dim,
         .label_dim = h.label_dim,
         .node_feat_dim = h.node_feat_dim,

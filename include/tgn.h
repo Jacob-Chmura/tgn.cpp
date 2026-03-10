@@ -39,7 +39,7 @@ struct TGUFSchema {
 
   std::size_t edge_capacity;
   std::size_t label_capacity;
-  std::size_t node_capacity;
+  std::size_t node_feat_capacity;
   std::size_t msg_dim;
   std::size_t label_dim;
   std::size_t node_feat_dim;

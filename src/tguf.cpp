@@ -63,7 +63,7 @@ struct TGUFBuilder::Impl {
     if (schema.node_feat_dim > 0) {
       header_.node_feat_offset = last_offset;
       last_offset +=
-          align(schema.node_capacity * schema.node_feat_dim * sizeof(float));
+          align(schema.node_feat_capacity * schema.node_feat_dim * sizeof(float));
     }
 
     if (schema.label_capacity > 0) {
@@ -87,7 +87,7 @@ struct TGUFBuilder::Impl {
         "(msg_dim={}, label_dim={}, node_feat_dim={}, negatives_start_e_id={}, "
         "negatives_per_edge={})",
         mapped_bytes_ / (1024.0 * 1024.0 * 1024.0), schema.edge_capacity,
-        schema.label_capacity, schema.node_capacity, header_.msg_dim,
+        schema.label_capacity, schema.node_feat_capacity, header_.msg_dim,
         header_.label_dim, header_.node_feat_dim, header_.negatives_start_e_id,
         header_.negatives_per_edge);
 
@@ -288,7 +288,7 @@ auto TGUFBuilder::append_node_feats(const torch::Tensor& n_id,
   TGN_LOG_DEBUG("TGUFBuilder: Appending {} node_feats to TGUF file", count);
 
   const auto max_id_allowed =
-      static_cast<std::int64_t>(impl_->schema_.node_capacity);
+      static_cast<std::int64_t>(impl_->schema_.node_feat_capacity);
   const auto max_id_in_batch = n_id.max().item<std::int64_t>();
   const auto min_id_in_batch = n_id.min().item<std::int64_t>();
 
@@ -368,12 +368,12 @@ auto TGUFBuilder::finalize() -> void {
         "TGUF file will have some unused padding.",
         impl_->written_labels_, impl_->schema_.label_capacity);
   }
-  if (impl_->max_node_written_node_feats_ < impl_->schema_.node_capacity) {
+  if (impl_->max_node_written_node_feats_ < impl_->schema_.node_feat_capacity) {
     TGN_LOG_WARN(
         "TGUFBuilder: Finalizing with fewer unique node feats than declared "
         "({} < {}). "
         "TGUF file will have some unused padding.",
-        impl_->max_node_written_node_feats_, impl_->schema_.node_capacity);
+        impl_->max_node_written_node_feats_, impl_->schema_.node_feat_capacity);
   }
 
   // Update header_ with counts (user might have wrote less than declared)
