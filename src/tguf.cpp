@@ -24,6 +24,7 @@ struct TGUFBuilder::Impl {
   bool finalized_ = false;
   std::size_t written_edges_{};
   std::size_t written_labels_{};
+  std::size_t max_node_written_node_feats_{};
   std::size_t mapped_bytes_{};
 
   explicit Impl(const TGUFSchema& schema) : schema_(schema) {
@@ -81,12 +82,13 @@ struct TGUFBuilder::Impl {
     mapped_bytes_ = last_offset;
 
     TGN_LOG_INFO(
-        "TGUFBuilder: Pre-allocating {:.2f} GiB for {} edges and {} labels "
+        "TGUFBuilder: Pre-allocating {:.2f} GiB for {} edges, {} labels, and "
+        "{} unique node feats "
         "(msg_dim={}, label_dim={}, node_feat_dim={}, negatives_start_e_id={}, "
         "negatives_per_edge={})",
         mapped_bytes_ / (1024.0 * 1024.0 * 1024.0), schema.edge_capacity,
-        schema.label_capacity, header_.msg_dim, header_.label_dim,
-        header_.node_feat_dim, header_.negatives_start_e_id,
+        schema.label_capacity, schema.node_capacity, header_.msg_dim,
+        header_.label_dim, header_.node_feat_dim, header_.negatives_start_e_id,
         header_.negatives_per_edge);
 
     if (header_.val_start > 0 || header_.test_start > 0) {
@@ -285,8 +287,70 @@ auto TGUFBuilder::append_node_feats(const torch::Tensor& n_id,
   }
   TGN_LOG_DEBUG("TGUFBuilder: Appending {} node_feats to TGUF file", count);
 
-  // TODO(kuba): Implement write
+  const auto max_id_allowed =
+      static_cast<std::int64_t>(impl_->schema_.node_capacity);
+  const auto max_id_in_batch = n_id.max().item<std::int64_t>();
+  const auto min_id_in_batch = n_id.min().item<std::int64_t>();
+
+  if (min_id_in_batch < 0 || max_id_in_batch >= max_id_allowed) {
+    throw std::runtime_error(
+        "TGUFBuilder::append_node_feats: n_id out of bounds [0, " +
+        std::to_string(max_id_allowed) + "). Got range [" +
+        std::to_string(min_id_in_batch) + ", " +
+        std::to_string(max_id_in_batch) + "]");
+  }
+
+  if (node_feat.size(1) !=
+      static_cast<std::int64_t>(impl_->header_.node_feat_dim)) {
+    throw std::invalid_argument("TGUFBuilder: Node Feat dimension mismatch.");
+    throw std::invalid_argument(
+        "TGUFBuilder::append_labels: Node Feat dimension mismatch. Expected " +
+        std::to_string(impl_->header_.node_feat_dim) + ", got " +
+        std::to_string(node_feat.size(1)));
+  }
+
+  // Scattered Write
+  const auto feat_dim = impl_->header_.node_feat_dim;
+  const auto row_size_bytes = feat_dim * sizeof(float);
+  const auto base_offset = impl_->header_.node_feat_offset;
+  const auto* ids_ptr = n_id.to(torch::kInt64).data_ptr<std::int64_t>();
+
+  // Check if n_id is a contiguous range: [start, start+1, ..., start+count-1]
+  auto is_contiguous = true;
+  if (count > 1) {
+    is_contiguous = (ids_ptr[count - 1] == ids_ptr[0] + (count - 1));
+    for (std::int64_t i = 1; i < count && is_contiguous; ++i) {
+      if (ids_ptr[i] != ids_ptr[i - 1] + 1) {
+        is_contiguous = false;
+      }
+    }
+  }
+
+  if (is_contiguous) {  // Fast path: single memcpy
+    auto* dst = static_cast<std::uint8_t*>(impl_->base_ptr_) + base_offset +
+                (ids_ptr[0] * row_size_bytes);
+    std::memcpy(dst, node_feat.contiguous().data_ptr(), node_feat.nbytes());
+    TGN_LOG_DEBUG(
+        "TGUFBuilder:append_labels: Used fast-path for {} contiguous nodes",
+        count);
+  } else {  // Slow path: Scattered memcpy
+    const auto* feats_ptr = node_feat.contiguous().data_ptr<float>();
+    for (std::int64_t i = 0; i < count; ++i) {
+      auto* dst = static_cast<std::uint8_t*>(impl_->base_ptr_) + base_offset +
+                  (ids_ptr[i] * row_size_bytes);
+      std::memcpy(dst, feats_ptr + (i * feat_dim), row_size_bytes);
+    }
+    TGN_LOG_DEBUG(
+        "TGUFBuilder:::append_labels: Used slow-path for {} non-contiguous "
+        "nodes",
+        count);
+  }
+
+  impl_->max_node_written_node_feats_ =
+      std::max(impl_->max_node_written_node_feats_,
+               static_cast<std::size_t>(max_id_in_batch + 1));
 }
+
 auto TGUFBuilder::finalize() -> void {
   if (impl_->finalized_) {
     return;
@@ -295,14 +359,27 @@ auto TGUFBuilder::finalize() -> void {
   if (impl_->written_edges_ < impl_->schema_.edge_capacity) {
     TGN_LOG_WARN(
         "TGUFBuilder: Finalizing with fewer edges than declared ({} < {}). "
-        "File will have unused padding.",
+        "TGUF file will have some unused padding.",
         impl_->written_edges_, impl_->schema_.edge_capacity);
+  }
+  if (impl_->written_labels_ < impl_->schema_.label_capacity) {
+    TGN_LOG_WARN(
+        "TGUFBuilder: Finalizing with fewer labels than declared ({} < {}). "
+        "TGUF file will have some unused padding.",
+        impl_->written_labels_, impl_->schema_.label_capacity);
+  }
+  if (impl_->max_node_written_node_feats_ < impl_->schema_.node_capacity) {
+    TGN_LOG_WARN(
+        "TGUFBuilder: Finalizing with fewer unique node feats than declared "
+        "({} < {}). "
+        "TGUF file will have some unused padding.",
+        impl_->max_node_written_node_feats_, impl_->schema_.node_capacity);
   }
 
   // Update header_ with counts (user might have wrote less than declared)
   impl_->header_.num_edges = impl_->written_edges_;
   impl_->header_.num_labels = impl_->written_labels_;
-  // TODO(kuba): Update num_nodes and perform local/global alignment
+  impl_->header_.num_nodes = impl_->max_node_written_node_feats_;
   std::memcpy(impl_->base_ptr_, &impl_->header_, sizeof(TGUFHeader));
 
   msync(impl_->base_ptr_, impl_->mapped_bytes_, MS_SYNC);
@@ -311,7 +388,9 @@ auto TGUFBuilder::finalize() -> void {
   impl_->finalized_ = true;
 
   TGN_LOG_INFO(
-      "TGUFBuilder: Finalized to {} (Total edges: {}, Total labels: {})",
-      impl_->schema_.path, impl_->header_.num_edges, impl_->header_.num_labels);
+      "TGUFBuilder: Finalized to {} (Total edges: {}, Total labels: {}, Total "
+      "unique node feats: {})",
+      impl_->schema_.path, impl_->header_.num_edges, impl_->header_.num_labels,
+      impl_->header_.num_nodes);
 }
 }  // namespace tgn

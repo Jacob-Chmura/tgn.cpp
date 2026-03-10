@@ -83,15 +83,15 @@ def main() -> None:
 
     neg_start_e_id = val_start if full_negs is not None else 0
     streamer = TGUFStreamer(
-        args.output,
-        n_edges,
-        m_dim,
-        n_neg,
-        n_labels,
-        l_dim,
-        val_start,
-        test_start,
-        neg_start_e_id,
+        out_path=args.output,
+        n_edges=n_edges,
+        m_dim=m_dim,
+        n_neg=n_neg,
+        n_labels=n_labels,
+        l_dim=l_dim,
+        val_start=val_start,
+        test_start=test_start,
+        neg_start_e_id=neg_start_e_id,
     )
 
     try:

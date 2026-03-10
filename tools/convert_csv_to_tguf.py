@@ -2,7 +2,7 @@ import argparse
 import subprocess
 import sys
 from pathlib import Path
-from typing import Dict
+from typing import Dict, List
 
 import pandas as pd
 from tqdm import tqdm
@@ -59,23 +59,26 @@ def main() -> None:
     args.output.parent.mkdir(parents=True, exist_ok=True)
 
     e_info = get_csv_info(args.edges)
+    global_max_id = e_info["max_id"]
 
     l_info = {"n_rows": 0, "label_dim": 0}
     if args.labels:
         l_info = get_csv_info(args.labels)
+        global_max_id = max(global_max_id, l_info["max_id"])
 
     n_info = {"n_rows": 0, "feat_dim": 0}
     if args.node_feats:
         n_info = get_csv_info(args.node_feats)
+        global_max_id = max(global_max_id, n_info["max_id"])
 
     streamer = TGUFStreamer(
         args.output,
         n_edges=e_info["n_rows"],
         m_dim=e_info["msg_dim"],
-        n_neg=e_info["n_ng"],
+        n_neg=e_info["n_neg"],
         n_labels=l_info["n_rows"],
         l_dim=l_info["label_dim"],
-        n_nodes=n_info["n_rows"],
+        n_nodes=global_max_id + 1,
         n_dim=n_info["feat_dim"],
     )
 
@@ -136,13 +139,28 @@ def main() -> None:
 def get_csv_info(path: Path) -> Dict[str, int]:
     preview = pd.read_csv(path, nrows=1, comment="#")
     cols = preview.columns.tolist()
-    return {
+    info = {
         "n_rows": int(subprocess.check_output(["wc", "-l", path]).split()[0]) - 1,
         "msg_dim": sum(1 for c in cols if c.startswith("msg_")),
         "n_neg": sum(1 for c in cols if c.startswith("neg_")),
         "label_dim": sum(1 for c in cols if c.startswith("node_y")),
         "feat_dim": sum(1 for c in cols if c.startswith("node_x")),
+        "max_id": 0,
     }
+
+    def get_max_id_from_csv(
+        path: Path, id_cols: List[str], batch_size: int = 1_000_000
+    ) -> int:
+        max_val = 0
+        for chunk in pd.read_csv(path, usecols=id_cols, chunksize=batch_size):
+            max_val = max(max_val, int(chunk.max().max()))
+        return max_val
+
+    # Find the maximum ID to determine capacity
+    id_cols = [c for c in ["src", "dst", "node_id"] if c in cols]
+    if id_cols:
+        info["max_id"] = get_max_id_from_csv(path, id_cols)
+    return info
 
 
 if __name__ == "__main__":

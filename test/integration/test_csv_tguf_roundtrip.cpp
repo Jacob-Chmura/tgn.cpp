@@ -13,9 +13,10 @@ class CSV_TGUF_RoundtripTest : public ::testing::Test {
       "test/integration/resources/csv_tguf_roundtrip/";
   const std::string edges_csv = resource_dir + "edges.csv";
   const std::string labels_csv = resource_dir + "labels.csv";
+  const std::string node_feats_csv = resource_dir + "node_feats.csv";
   const std::string output_tguf = resource_dir + "out.tguf";
-  const std::string cmd = std::format("{} {} {} {}", script_path, edges_csv,
-                                      output_tguf, labels_csv);
+  const std::string cmd = std::format("{} {} {} {} {}", script_path, edges_csv,
+                                      output_tguf, labels_csv, node_feats_csv);
 
   void SetUp() override { ASSERT_EQ(std::system(cmd.c_str()), 0); }
 };
@@ -28,6 +29,7 @@ TEST_F(CSV_TGUF_RoundtripTest, Verify) {
   EXPECT_EQ(store->node_count(), 31);
   EXPECT_EQ(store->msg_dim(), 2);
   EXPECT_EQ(store->label_dim(), 2);
+  EXPECT_EQ(store->node_feat_dim(), 3);
 
   // Check Edges
   auto batch = store->get_batch(0, 3, tgn::TGStore::NegStrategy::PreComputed);
@@ -71,4 +73,23 @@ TEST_F(CSV_TGUF_RoundtripTest, Verify) {
   EXPECT_EQ(store->get_edge_cutoff_for_label_event(0), 2);
   // Label 1 (t=24) sees all edges (Index 0, 1, 2) -> Stop ID = 3
   EXPECT_EQ(store->get_edge_cutoff_for_label_event(1), 3);
+
+  // Check node features
+  const auto n_id = torch::arange(store->node_count(), torch::kLong);
+  const auto node_feats = store->gather_node_feats(n_id);
+  EXPECT_EQ(node_feats.size(0), n_id.size(0));
+  EXPECT_EQ(node_feats.size(1), store->node_feat_dim());
+  for (auto i = 0; i < node_feats.size(0); ++i) {
+    if (i % 5 == 0 && i <= 20) {
+      // Values in CSV are (node_id / 5) * multiplier
+      const auto multiplier = static_cast<float>(i) / 5.0F;
+      EXPECT_EQ(node_feats[i][0].item<float>(), 1.0F * multiplier);
+      EXPECT_EQ(node_feats[i][1].item<float>(), 2.0F * multiplier);
+      EXPECT_EQ(node_feats[i][2].item<float>(), 3.0F * multiplier);
+    } else {
+      EXPECT_EQ(node_feats[i][0].item<float>(), 0.0F);
+      EXPECT_EQ(node_feats[i][1].item<float>(), 0.0F);
+      EXPECT_EQ(node_feats[i][2].item<float>(), 0.0F);
+    }
+  }
 }

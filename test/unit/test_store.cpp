@@ -301,7 +301,7 @@ TYPED_TEST(TGStoreTest, GetBatchNegStrategyRandomThrowsIfTrainEmpty) {
                                 .msg = torch::zeros({10, 1}),
                                 .val_start = 0});
 
-  // TODO(kuba): There might be a use case for factoring out negatives
+  // Note: There might be a use case for factoring out negatives
   // into a more general API (e.g. you want random negatives in validation?)
   EXPECT_THROW(store->get_batch(0, 5, tgn::TGStore::NegStrategy::Random),
                c10::Error);
