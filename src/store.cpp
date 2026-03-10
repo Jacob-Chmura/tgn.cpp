@@ -81,7 +81,13 @@ struct TGData {
     }
 
     if (node_feats.has_value()) {
-      // TODO(kuba): validate static node feats
+      TORCH_CHECK(node_feats->device().is_cpu(), "node_feats must be on CPU");
+      TORCH_CHECK(node_feats->scalar_type() == torch::kFloat32,
+                  "node_feats must be torch::kFloat32");
+      const auto num_nodes = 1 + std::max(src.max().item<std::int64_t>(),
+                                          dst.max().item<std::int64_t>());
+      TORCH_CHECK(node_feats->dim() == 2 && node_feats->size(0) == num_nodes,
+                  "node_feats must be [num_nodes, d]");
     }
 
     if (label_n_id.has_value()) {
@@ -158,12 +164,15 @@ class TGStoreImpl final : public TGStore {
         val_(data.val_start.value_or(data.test_start.value_or(num_edges_)),
              data.test_start.value_or(num_edges_)),
         test_(data.test_start.value_or(num_edges_), num_edges_) {
-    // TODO(kuba): add validation and logs for static node feats
     TGN_LOG_INFO("TGStore: Loaded {} edges ({} nodes, msg_dim: {})", num_edges_,
                  num_nodes_, msg_dim_);
     if (neg_dst_.has_value()) {
       TGN_LOG_INFO("TGStore: Pre-computed negatives found ({} negatives/edge)",
                    neg_dst_->size(1));
+    }
+    if (node_feats_.has_value()) {
+      TGN_LOG_INFO("TGStore: Static node features found ({}, {})",
+                   node_feats_->size(0), node_feats_->size(1));
     }
     TGN_LOG_INFO("TGStore: Edge Splits Train[{}:{}] Val[{}:{}] Test[{}:{}]",
                  train_.start(), train_.end(), val_.start(), val_.end(),
@@ -364,7 +373,13 @@ class TGStoreImpl final : public TGStore {
 
   [[nodiscard]] auto gather_node_feats(const torch::Tensor& n_id) const
       -> torch::Tensor override {
-    return node_feats_->index_select(0, n_id.flatten());
+    // Default to zero for query n_ids outside of valid range (e.g. neg_dst)
+    const auto mask =
+        (n_id >= 0) & (n_id < static_cast<std::int64_t>(num_nodes_));
+    const auto safe_n_ids = torch::where(mask, n_id, torch::zeros_like(n_id));
+
+    auto out = node_feats_->index_select(0, safe_n_ids.flatten());
+    return out.masked_fill(~mask.unsqueeze(-1), 0.0);
   }
 
   [[nodiscard]] auto get_edge_cutoff_for_label_event(std::size_t l_id) const
