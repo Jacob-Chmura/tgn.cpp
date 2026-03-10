@@ -72,7 +72,7 @@ class TgufTGStoreFixture : public TGStoreFixture {
             data.label_n_id.has_value()
                 ? static_cast<std::size_t>(data.label_n_id->size(0))
                 : 0,
-        .node_capacity =
+        .node_feat_capacity =
             data.node_feats.has_value()
                 ? static_cast<std::size_t>(data.node_feats->size(0))
                 : 0,

@@ -116,11 +116,9 @@ def main() -> None:
                     pbar.update(1)
 
         if n_info["n_rows"] > 0:
-            node_feat_chunks = (
-                n_info["n_rows"] + args.batch_size - 1
-            ) // args.batch_size
+            feat_chunks = (n_info["n_rows"] + args.batch_size - 1) // args.batch_size
             with tqdm(
-                total=node_feat_chunks, desc="Appending Node Feats", unit="chunk"
+                total=feat_chunks, desc="Appending Node Feats", unit="chunk"
             ) as pbar:
                 pbar.set_postfix({"batch_size": args.batch_size})
                 for chunk in pd.read_csv(args.node_feats, chunksize=args.batch_size):
