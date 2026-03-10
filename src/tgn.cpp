@@ -336,7 +336,7 @@ auto TGNImpl::forward_internal(const std::vector<torch::Tensor>& input_list)
 
   // Load neighbors and fetch memory
   const auto [n_id, edge_index, e_id] = impl_->nbr_loader_(unique_global_ids);
-  const auto [x, last_update] = impl_->memory_->forward(n_id);
+  const auto [memory, last_update] = impl_->memory_->forward(n_id);
 
   // Update global-to-local buffer
   impl_->assoc_.index_put_(
@@ -352,8 +352,8 @@ auto TGNImpl::forward_internal(const std::vector<torch::Tensor>& input_list)
           : rel_t_z;
   const auto node_feat =
       impl_->store_->node_feat_dim() > 0
-          ? torch::cat({x, impl_->store_->gather_node_feats(n_id)}, -1)
-          : x;
+          ? torch::cat({memory, impl_->store_->gather_node_feats(n_id)}, -1)
+          : memory;
   const auto z = impl_->conv_->forward(node_feat, edge_index, edge_feat);
 
   // Map computed local embeddings back to global id input_list
