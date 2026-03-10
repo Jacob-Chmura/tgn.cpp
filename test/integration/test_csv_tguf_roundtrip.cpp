@@ -75,7 +75,8 @@ TEST_F(CSV_TGUF_RoundtripTest, Verify) {
   EXPECT_EQ(store->get_edge_cutoff_for_label_event(1), 3);
 
   // Check node features
-  const auto n_id = torch::arange(store->node_count(), torch::kLong);
+  const auto n_id = torch::arange(
+      static_cast<std::int64_t>(store->node_count()), torch::kLong);
   const auto node_feats = store->gather_node_feats(n_id);
   EXPECT_EQ(node_feats.size(0), n_id.size(0));
   EXPECT_EQ(node_feats.size(1), store->node_feat_dim());
