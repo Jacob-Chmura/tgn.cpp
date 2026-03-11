@@ -14,7 +14,8 @@
 struct TestData {
   torch::Tensor src, dst, time, msg;
   std::optional<torch::Tensor> neg_dst = std::nullopt;
-  std::optional<torch::Tensor> node_feats = std::nullopt;
+  std::optional<torch::Tensor> node_feats_n_id = std::nullopt,
+                               node_feats = std::nullopt;
   std::optional<torch::Tensor> label_n_id = std::nullopt,
                                label_time = std::nullopt,
                                label_target = std::nullopt;
@@ -103,6 +104,9 @@ class TgufTGStoreFixture : public TGStoreFixture {
       builder.append_labels(*data.label_n_id, *data.label_time,
                             *data.label_target);
     }
+    if (data.node_feats.has_value()) {
+      builder.append_node_feats(*data.node_feats_n_id, *data.node_feats);
+    }
     builder.finalize();
     const auto val_start =
         val_start_override.has_value() ? val_start_override : data.val_start;
@@ -125,17 +129,18 @@ TYPED_TEST(TGStoreTest, MakeStoreInit) {
   const std::int64_t n = 10;
   const std::int64_t d = 8;
   const std::int64_t m = 3;
-  const auto store = this->make_store(TestData{
-      .src = torch::zeros({n}, torch::kLong),
-      .dst = torch::full({n}, 5, torch::kLong),
-      .time = torch::arange(n, torch::kLong),
-      .msg = torch::randn({n, d}),
-      .neg_dst = torch::randint(0, 6, {n, m}, torch::kLong),
-      .node_feats = std::nullopt,
-  });
+  const auto store = this->make_store(
+      TestData{.src = torch::zeros({n}, torch::kLong),
+               .dst = torch::full({n}, 5, torch::kLong),
+               .time = torch::arange(n, torch::kLong),
+               .msg = torch::randn({n, d}),
+               .neg_dst = torch::randint(0, 6, {n, m}, torch::kLong),
+               .node_feats_n_id = torch::arange(6, torch::kLong),
+               .node_feats = torch::randn({6, 7})});
   ASSERT_NE(store, nullptr);
   EXPECT_EQ(store->edge_count(), n);
   EXPECT_EQ(store->msg_dim(), d);
+  EXPECT_EQ(store->node_feat_dim(), 7);
   EXPECT_EQ(store->label_dim(), 0);
   EXPECT_EQ(store->node_count(), 6);  // Max ID 5 + 1
 }
@@ -372,6 +377,78 @@ TYPED_TEST(TGStoreTest, GatherTimestamps) {
   EXPECT_EQ(timestamps[0].template item<float>(), 505);
   EXPECT_EQ(timestamps[1].template item<float>(), 101);
   EXPECT_EQ(timestamps[2].template item<float>(), 303);
+}
+
+TYPED_TEST(TGStoreTest, GatherNodeFeats) {
+  const std::int64_t n = 5;
+  const std::int64_t d = 2;
+  const auto store = this->make_store(TestData{
+      .src = torch::zeros({n}, torch::kLong),
+      .dst = torch::zeros({n}, torch::kLong),
+      .time = torch::zeros({n}, torch::kLong),
+      .msg = torch::zeros({n, d}),
+      .neg_dst = std::nullopt,
+      .node_feats_n_id = torch::arange(5, torch::kLong),
+      .node_feats = torch::tensor(
+          {{1.1, 1.1}, {2.2, 2.2}, {3.3, 3.3}, {4.4, 4.4}, {5.5, 5.5}}),
+  });
+
+  const auto n_ids = torch::tensor({4, 0, 2}, torch::kLong);
+  const auto x = store->gather_node_feats(n_ids);
+
+  ASSERT_EQ(x.dim(), 2);
+  ASSERT_EQ(x.size(0), 3);
+  ASSERT_EQ(x.size(1), 2);
+  EXPECT_FLOAT_EQ(x[0][0].template item<float>(), 5.5F);
+  EXPECT_FLOAT_EQ(x[1][0].template item<float>(), 1.1F);
+  EXPECT_FLOAT_EQ(x[2][0].template item<float>(), 3.3F);
+}
+
+TYPED_TEST(TGStoreTest, GatherNodeFeatsWithOutofRange) {
+  const std::int64_t n = 5;
+  const std::int64_t d = 2;
+  const auto store = this->make_store(TestData{
+      .src = torch::zeros({n}, torch::kLong),
+      .dst = torch::zeros({n}, torch::kLong),
+      .time = torch::zeros({n}, torch::kLong),
+      .msg = torch::zeros({n, d}),
+      .neg_dst = std::nullopt,
+      .node_feats_n_id = torch::arange(5, torch::kLong),
+      .node_feats = torch::tensor(
+          {{1.1, 1.1}, {2.2, 2.2}, {3.3, 3.3}, {4.4, 4.4}, {5.5, 5.5}}),
+  });
+
+  const auto n_ids = torch::tensor({0, 10}, torch::kLong);
+  const auto x = store->gather_node_feats(n_ids);
+
+  ASSERT_EQ(x.dim(), 2);
+  ASSERT_EQ(x.size(0), 2);
+  ASSERT_EQ(x.size(1), 2);
+  EXPECT_FLOAT_EQ(x[0][0].template item<float>(), 1.1F);
+  EXPECT_FLOAT_EQ(x[0][1].template item<float>(), 1.1F);
+  EXPECT_FLOAT_EQ(x[1][0].template item<float>(), 0.0F);
+  EXPECT_FLOAT_EQ(x[1][1].template item<float>(), 0.0F);
+}
+
+TYPED_TEST(TGStoreTest, GatherNodeFeatsEmptyNodeFeats) {
+  const std::int64_t n = 5;
+  const std::int64_t d = 2;
+  const auto store = this->make_store(TestData{
+      .src = torch::zeros({n}, torch::kLong),
+      .dst = torch::zeros({n}, torch::kLong),
+      .time = torch::zeros({n}, torch::kLong),
+      .msg = torch::zeros({n, d}),
+      .neg_dst = std::nullopt,
+      .node_feats_n_id = std::nullopt,
+      .node_feats = std::nullopt,
+  });
+
+  const auto n_ids = torch::tensor({4, 0, 2}, torch::kLong);
+  const auto x = store->gather_node_feats(n_ids);
+
+  ASSERT_EQ(x.dim(), 2);
+  ASSERT_EQ(x.size(0), 3);
+  ASSERT_EQ(x.size(1), 0);
 }
 
 TYPED_TEST(TGStoreTest, HandlesEmptyInputs) {
