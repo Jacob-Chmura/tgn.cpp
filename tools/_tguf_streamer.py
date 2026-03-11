@@ -20,6 +20,8 @@ class TGUFStreamer:
         n_neg: int,
         n_labels: int,
         l_dim: int,
+        n_capacity: int = 0,
+        n_dim: int = 0,
         val_start: int = 0,
         test_start: int = 0,
         neg_start_e_id: int = 0,
@@ -33,12 +35,14 @@ class TGUFStreamer:
 
         # Send header
         header = struct.pack(
-            "8Q",
+            "10Q",
             n_edges,
             m_dim,
             n_neg,
             n_labels,
             l_dim,
+            n_capacity,
+            n_dim,
             val_start,
             test_start,
             neg_start_e_id,
@@ -47,7 +51,6 @@ class TGUFStreamer:
 
         self.m_dim = m_dim
         self.n_neg = n_neg
-        self.l_dim = l_dim
 
     def stream_edge_batch(self, src, dst, ts, msg, negs):
         batch_size = len(src)
@@ -70,6 +73,14 @@ class TGUFStreamer:
         self._write_array(nodes, np.int64)
         self._write_array(ts, np.int64)
         self._write_array(labels, np.float32)
+
+    def stream_node_feat_batch(self, nodes, feats):
+        batch_size = len(nodes)
+        self.cpp_buffer.write(b"N")
+        self.cpp_buffer.write(struct.pack("Q", batch_size))
+
+        self._write_array(nodes, np.int64)
+        self._write_array(feats, np.float32)
 
     def finalize(self):
         if self.cpp_buffer:

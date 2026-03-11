@@ -26,6 +26,7 @@ struct TGData {
   torch::Tensor time;
   torch::Tensor msg;
   std::optional<torch::Tensor> neg_dst = std::nullopt;
+  std::optional<torch::Tensor> node_feats = std::nullopt;
 
   std::optional<torch::Tensor> label_n_id = std::nullopt;
   std::optional<torch::Tensor> label_time = std::nullopt;
@@ -79,6 +80,12 @@ struct TGData {
                   "neg_dst contains IDs outside the range of src/dst");
     }
 
+    if (node_feats.has_value()) {
+      TORCH_CHECK(node_feats->device().is_cpu(), "node_feats must be on CPU");
+      TORCH_CHECK(node_feats->scalar_type() == torch::kFloat32,
+                  "node_feats must be torch::kFloat32");
+    }
+
     if (label_n_id.has_value()) {
       TORCH_CHECK(
           label_time.has_value() && label_target.has_value(),
@@ -105,6 +112,9 @@ struct TGData {
     auto bytes = src.nbytes() + dst.nbytes() + time.nbytes() + msg.nbytes();
     if (neg_dst.has_value()) {
       bytes += neg_dst->nbytes();
+    }
+    if (node_feats.has_value()) {
+      bytes += node_feats->nbytes();
     }
     if (label_n_id.has_value()) {
       bytes += label_n_id->nbytes();
@@ -141,6 +151,8 @@ class TGStoreImpl final : public TGStore {
         msg_dim_(static_cast<std::size_t>(msg_.size(1))),
         label_dim_(static_cast<std::size_t>(
             data.label_target.has_value() ? data.label_target->size(1) : 0)),
+        node_feat_dim_(static_cast<std::size_t>(
+            data.node_feats.has_value() ? data.node_feats->size(1) : 0)),
         negatives_start_e_id_(data.negatives_start_e_id),
         train_(0,
                data.val_start.value_or(data.test_start.value_or(num_edges_))),
@@ -152,6 +164,15 @@ class TGStoreImpl final : public TGStore {
     if (neg_dst_.has_value()) {
       TGN_LOG_INFO("TGStore: Pre-computed negatives found ({} negatives/edge)",
                    neg_dst_->size(1));
+    }
+    if (data.node_feats.has_value()) {
+      TGN_LOG_INFO("TGStore: Static node features found shape: ({}, {})",
+                   data.node_feats->size(0), data.node_feats->size(1));
+      // Apply zero-row padding for faster gather_node_feats() without branching
+      node_feats_ = torch::cat(
+          {data.node_feats.value(), torch::zeros({1, data.node_feats->size(1)},
+                                                 data.node_feats->options())},
+          0);
     }
     TGN_LOG_INFO("TGStore: Edge Splits Train[{}:{}] Val[{}:{}] Test[{}:{}]",
                  train_.start(), train_.end(), val_.start(), val_.end(),
@@ -280,6 +301,9 @@ class TGStoreImpl final : public TGStore {
   [[nodiscard]] auto label_dim() const -> std::size_t override {
     return label_dim_;
   }
+  [[nodiscard]] auto node_feat_dim() const -> std::size_t override {
+    return node_feat_dim_;
+  }
   [[nodiscard]] auto train_split() const -> IndexRange override {
     return train_;
   }
@@ -347,6 +371,17 @@ class TGStoreImpl final : public TGStore {
     return msg_.index_select(0, e_id.flatten());
   }
 
+  [[nodiscard]] auto gather_node_feats(const torch::Tensor& n_id) const
+      -> torch::Tensor override {
+    if (!node_feats_.has_value()) {
+      return torch::empty({n_id.size(0), 0}, torch::kFloat32);
+    }
+
+    // Every ID outside [0, num_nodes-1] hits the padded row (all zeros)
+    const auto safe_ids = n_id.clamp(0, node_feats_->size(0) - 1);
+    return node_feats_->index_select(0, safe_ids.flatten());
+  }
+
   [[nodiscard]] auto get_edge_cutoff_for_label_event(std::size_t l_id) const
       -> std::size_t override {
     return stop_e_ids_.at(l_id);
@@ -360,11 +395,13 @@ class TGStoreImpl final : public TGStore {
  private:
   torch::Tensor src_, dst_, t_, msg_;
   std::optional<torch::Tensor> neg_dst_;
+  std::optional<torch::Tensor> node_feats_;
 
   std::size_t num_edges_{0};
   std::size_t num_nodes_{0};
   std::size_t msg_dim_{0};
   std::size_t label_dim_{0};
+  std::size_t node_feat_dim_{0};
   std::size_t negatives_start_e_id_{0};
 
   IndexRange train_, val_, test_;
@@ -378,7 +415,8 @@ class TGStoreImpl final : public TGStore {
 }  // namespace detail
 
 [[nodiscard]] auto TGStore::from_memory(
-    const Batch& edges, const std::optional<torch::Tensor>& label_n_id,
+    const Batch& edges, const std::optional<torch::Tensor>& node_feats,
+    const std::optional<torch::Tensor>& label_n_id,
     const std::optional<torch::Tensor>& label_time,
     const std::optional<torch::Tensor>& label_target,
     std::optional<std::size_t> val_start, std::optional<std::size_t> test_start)
@@ -389,6 +427,7 @@ class TGStoreImpl final : public TGStore {
                      .time = edges.time,
                      .msg = edges.msg,
                      .neg_dst = edges.neg_dst,
+                     .node_feats = node_feats,
                      .label_n_id = label_n_id,
                      .label_time = label_time,
                      .label_target = label_target,
@@ -502,6 +541,8 @@ class TGStoreImpl final : public TGStore {
       static_cast<std::int64_t>(header->negatives_per_edge);
   const auto n_labels = static_cast<std::int64_t>(header->num_labels);
   const auto l_dim = static_cast<std::int64_t>(header->label_dim);
+  const auto n_nodes = static_cast<std::int64_t>(header->num_nodes);
+  const auto n_dim = static_cast<std::int64_t>(header->node_feat_dim);
 
   data.src = mmap_tensor(header->src_offset, {n_edges}, torch::kLong);
   data.dst = mmap_tensor(header->dst_offset, {n_edges}, torch::kLong);
@@ -516,6 +557,10 @@ class TGStoreImpl final : public TGStore {
       data.neg_dst = mmap_tensor(header->neg_dst_offset,
                                  {n_neg, negatives_per_edge}, torch::kLong);
     }
+  }
+  if (header->node_feat_offset > 0 && header->node_feat_dim > 0) {
+    data.node_feats = mmap_tensor(header->node_feat_offset, {n_nodes, n_dim},
+                                  torch::kFloat32);
   }
   if (header->num_labels > 0) {
     data.label_n_id =

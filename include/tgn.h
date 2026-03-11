@@ -39,8 +39,10 @@ struct TGUFSchema {
 
   std::size_t edge_capacity;
   std::size_t label_capacity;
+  std::size_t node_feat_capacity;
   std::size_t msg_dim;
   std::size_t label_dim;
+  std::size_t node_feat_dim;
   std::size_t negatives_start_e_id;
   std::size_t negatives_per_edge;
 
@@ -56,6 +58,8 @@ class TGUFBuilder {
   auto append_edges(const Batch& batch) const -> void;
   auto append_labels(const torch::Tensor& n_id, const torch::Tensor& time,
                      const torch::Tensor& target) const -> void;
+  auto append_node_feats(const torch::Tensor& n_id,
+                         const torch::Tensor& node_feat) const -> void;
   auto finalize() -> void;
 
  private:
@@ -90,6 +94,7 @@ class TGStore {
 
   [[nodiscard]] static auto from_memory(
       const Batch& edges,
+      const std::optional<torch::Tensor>& node_feats = std::nullopt,
       const std::optional<torch::Tensor>& label_n_id = std::nullopt,
       const std::optional<torch::Tensor>& label_time = std::nullopt,
       const std::optional<torch::Tensor>& label_target = std::nullopt,
@@ -107,6 +112,7 @@ class TGStore {
   [[nodiscard]] virtual auto node_count() const -> std::size_t = 0;
   [[nodiscard]] virtual auto msg_dim() const -> std::size_t = 0;
   [[nodiscard]] virtual auto label_dim() const -> std::size_t = 0;
+  [[nodiscard]] virtual auto node_feat_dim() const -> std::size_t = 0;
 
   [[nodiscard]] virtual auto train_split() const -> IndexRange = 0;
   [[nodiscard]] virtual auto val_split() const -> IndexRange = 0;
@@ -122,6 +128,8 @@ class TGStore {
   [[nodiscard]] virtual auto gather_timestamps(const torch::Tensor& e_id) const
       -> torch::Tensor = 0;
   [[nodiscard]] virtual auto gather_msgs(const torch::Tensor& e_id) const
+      -> torch::Tensor = 0;
+  [[nodiscard]] virtual auto gather_node_feats(const torch::Tensor& n_id) const
       -> torch::Tensor = 0;
 
   [[nodiscard]] virtual auto get_edge_cutoff_for_label_event(

@@ -14,6 +14,8 @@
 struct TestData {
   torch::Tensor src, dst, time, msg;
   std::optional<torch::Tensor> neg_dst = std::nullopt;
+  std::optional<torch::Tensor> node_feats_n_id = std::nullopt,
+                               node_feats = std::nullopt;
   std::optional<torch::Tensor> label_n_id = std::nullopt,
                                label_time = std::nullopt,
                                label_target = std::nullopt;
@@ -36,9 +38,9 @@ class InMemoryTGStoreFixture : public TGStoreFixture {
                                                 .time = data.time,
                                                 .msg = data.msg,
                                                 .neg_dst = data.neg_dst},
-                                     data.label_n_id, data.label_time,
-                                     data.label_target, data.val_start,
-                                     data.test_start);
+                                     data.node_feats, data.label_n_id,
+                                     data.label_time, data.label_target,
+                                     data.val_start, data.test_start);
   }
 };
 
@@ -71,10 +73,18 @@ class TgufTGStoreFixture : public TGStoreFixture {
             data.label_n_id.has_value()
                 ? static_cast<std::size_t>(data.label_n_id->size(0))
                 : 0,
+        .node_feat_capacity =
+            data.node_feats.has_value()
+                ? static_cast<std::size_t>(data.node_feats->size(0))
+                : 0,
         .msg_dim = static_cast<std::size_t>(data.msg.size(1)),
         .label_dim = data.label_target.has_value()
                          ? static_cast<std::size_t>(data.label_target->size(1))
                          : 0,
+        .node_feat_dim =
+            data.node_feats.has_value()
+                ? static_cast<std::size_t>(data.node_feats->size(1))
+                : 0,
         .negatives_start_e_id = data.negatives_start_e_id,
         .negatives_per_edge =
             data.neg_dst.has_value()
@@ -93,6 +103,9 @@ class TgufTGStoreFixture : public TGStoreFixture {
     if (data.label_n_id.has_value()) {
       builder.append_labels(*data.label_n_id, *data.label_time,
                             *data.label_target);
+    }
+    if (data.node_feats.has_value()) {
+      builder.append_node_feats(*data.node_feats_n_id, *data.node_feats);
     }
     builder.finalize();
     const auto val_start =
@@ -116,16 +129,18 @@ TYPED_TEST(TGStoreTest, MakeStoreInit) {
   const std::int64_t n = 10;
   const std::int64_t d = 8;
   const std::int64_t m = 3;
-  const auto store = this->make_store(TestData{
-      .src = torch::zeros({n}, torch::kLong),
-      .dst = torch::full({n}, 5, torch::kLong),
-      .time = torch::arange(n, torch::kLong),
-      .msg = torch::randn({n, d}),
-      .neg_dst = torch::randint(0, 6, {n, m}, torch::kLong),
-  });
+  const auto store = this->make_store(
+      TestData{.src = torch::zeros({n}, torch::kLong),
+               .dst = torch::full({n}, 5, torch::kLong),
+               .time = torch::arange(n, torch::kLong),
+               .msg = torch::randn({n, d}),
+               .neg_dst = torch::randint(0, 6, {n, m}, torch::kLong),
+               .node_feats_n_id = torch::arange(6, torch::kLong),
+               .node_feats = torch::randn({6, 7})});
   ASSERT_NE(store, nullptr);
   EXPECT_EQ(store->edge_count(), n);
   EXPECT_EQ(store->msg_dim(), d);
+  EXPECT_EQ(store->node_feat_dim(), 7);
   EXPECT_EQ(store->label_dim(), 0);
   EXPECT_EQ(store->node_count(), 6);  // Max ID 5 + 1
 }
@@ -137,7 +152,8 @@ TYPED_TEST(TGStoreTest, GetBatchNegStrategyNone) {
                                 .dst = torch::zeros({n}, torch::kLong),
                                 .time = torch::zeros({n}, torch::kLong),
                                 .msg = torch::zeros({n, 4}),
-                                .neg_dst = std::nullopt});
+                                .neg_dst = std::nullopt,
+                                .node_feats = std::nullopt});
 
   const std::size_t start = 10;
   const std::size_t batch_size = 20;
@@ -163,7 +179,8 @@ TYPED_TEST(TGStoreTest, GetBatchNegStrategyPreComputed) {
                                 .dst = torch::full({n}, n, torch::kLong),
                                 .time = torch::zeros({n}, torch::kLong),
                                 .msg = torch::zeros({n, 4}),
-                                .neg_dst = negs});
+                                .neg_dst = negs,
+                                .node_feats = std::nullopt});
 
   const std::size_t start = 10;
   const std::size_t batch_size = 20;
@@ -196,6 +213,7 @@ TYPED_TEST(TGStoreTest, GetBatchNegStrategyPreComputedCustomNegativesStartEID) {
                                 .time = torch::zeros({n}, torch::kLong),
                                 .msg = torch::zeros({n, 4}),
                                 .neg_dst = negs,
+                                .node_feats = std::nullopt,
                                 .negatives_start_e_id = negatives_start_e_id});
 
   const std::size_t start = 50;
@@ -219,7 +237,8 @@ TYPED_TEST(TGStoreTest, GetBatchNegStrategyPreComputedThrowsIfNull) {
                                 .dst = torch::zeros({10}, torch::kLong),
                                 .time = torch::zeros({10}, torch::kLong),
                                 .msg = torch::zeros({10, 1}),
-                                .neg_dst = std::nullopt});
+                                .neg_dst = std::nullopt,
+                                .node_feats = std::nullopt});
 
   // Should throw because strategy is PreComputed but neg_dst is missing
   EXPECT_THROW(store->get_batch(0, 5, tgn::TGStore::NegStrategy::PreComputed),
@@ -243,6 +262,7 @@ TYPED_TEST(TGStoreTest,
                                 .time = torch::zeros({n}, torch::kLong),
                                 .msg = torch::zeros({n, 4}),
                                 .neg_dst = negs,
+                                .node_feats = std::nullopt,
                                 .negatives_start_e_id = negatives_start_e_id});
 
   // Retrieve the pre-computed negatives (which start at e_id 5)
@@ -286,7 +306,7 @@ TYPED_TEST(TGStoreTest, GetBatchNegStrategyRandomThrowsIfTrainEmpty) {
                                 .msg = torch::zeros({10, 1}),
                                 .val_start = 0});
 
-  // TODO(kuba): There might be a use case for factoring out negatives
+  // Note: There might be a use case for factoring out negatives
   // into a more general API (e.g. you want random negatives in validation?)
   EXPECT_THROW(store->get_batch(0, 5, tgn::TGStore::NegStrategy::Random),
                c10::Error);
@@ -299,7 +319,8 @@ TYPED_TEST(TGStoreTest, GetBatchPartialTail) {
                                 .dst = torch::zeros({n}, torch::kLong),
                                 .time = torch::zeros({n}, torch::kLong),
                                 .msg = torch::zeros({n, 4}),
-                                .neg_dst = std::nullopt});
+                                .neg_dst = std::nullopt,
+                                .node_feats = std::nullopt});
 
   // Start near the end and request a size that exceeds total edges
   const std::size_t start = 95;
@@ -324,7 +345,8 @@ TYPED_TEST(TGStoreTest, GatherMsgs) {
       .time = torch::zeros({n}, torch::kLong),
       .msg = torch::tensor(
           {{1.1, 1.1}, {2.2, 2.2}, {3.3, 3.3}, {4.4, 4.4}, {5.5, 5.5}}),
-      .neg_dst = std::nullopt});
+      .neg_dst = std::nullopt,
+      .node_feats = std::nullopt});
 
   const auto e_ids = torch::tensor({0, 4, 1}, torch::kLong);
   const auto msgs = store->gather_msgs(e_ids);
@@ -344,7 +366,8 @@ TYPED_TEST(TGStoreTest, GatherTimestamps) {
                .dst = torch::zeros({n}, torch::kLong),
                .time = torch::tensor({101, 202, 303, 404, 505}, torch::kLong),
                .msg = torch::zeros({n, 4}),
-               .neg_dst = std::nullopt});
+               .neg_dst = std::nullopt,
+               .node_feats = std::nullopt});
 
   const auto e_ids = torch::tensor({4, 0, 2}, torch::kLong);
   const auto timestamps = store->gather_timestamps(e_ids);
@@ -356,13 +379,86 @@ TYPED_TEST(TGStoreTest, GatherTimestamps) {
   EXPECT_EQ(timestamps[2].template item<float>(), 303);
 }
 
+TYPED_TEST(TGStoreTest, GatherNodeFeats) {
+  const std::int64_t n = 5;
+  const std::int64_t d = 2;
+  const auto store = this->make_store(TestData{
+      .src = torch::zeros({n}, torch::kLong),
+      .dst = torch::zeros({n}, torch::kLong),
+      .time = torch::zeros({n}, torch::kLong),
+      .msg = torch::zeros({n, d}),
+      .neg_dst = std::nullopt,
+      .node_feats_n_id = torch::arange(5, torch::kLong),
+      .node_feats = torch::tensor(
+          {{1.1, 1.1}, {2.2, 2.2}, {3.3, 3.3}, {4.4, 4.4}, {5.5, 5.5}}),
+  });
+
+  const auto n_ids = torch::tensor({4, 0, 2}, torch::kLong);
+  const auto x = store->gather_node_feats(n_ids);
+
+  ASSERT_EQ(x.dim(), 2);
+  ASSERT_EQ(x.size(0), 3);
+  ASSERT_EQ(x.size(1), 2);
+  EXPECT_FLOAT_EQ(x[0][0].template item<float>(), 5.5F);
+  EXPECT_FLOAT_EQ(x[1][0].template item<float>(), 1.1F);
+  EXPECT_FLOAT_EQ(x[2][0].template item<float>(), 3.3F);
+}
+
+TYPED_TEST(TGStoreTest, GatherNodeFeatsWithOutofRange) {
+  const std::int64_t n = 5;
+  const std::int64_t d = 2;
+  const auto store = this->make_store(TestData{
+      .src = torch::zeros({n}, torch::kLong),
+      .dst = torch::zeros({n}, torch::kLong),
+      .time = torch::zeros({n}, torch::kLong),
+      .msg = torch::zeros({n, d}),
+      .neg_dst = std::nullopt,
+      .node_feats_n_id = torch::arange(5, torch::kLong),
+      .node_feats = torch::tensor(
+          {{1.1, 1.1}, {2.2, 2.2}, {3.3, 3.3}, {4.4, 4.4}, {5.5, 5.5}}),
+  });
+
+  const auto n_ids = torch::tensor({0, 10}, torch::kLong);
+  const auto x = store->gather_node_feats(n_ids);
+
+  ASSERT_EQ(x.dim(), 2);
+  ASSERT_EQ(x.size(0), 2);
+  ASSERT_EQ(x.size(1), 2);
+  EXPECT_FLOAT_EQ(x[0][0].template item<float>(), 1.1F);
+  EXPECT_FLOAT_EQ(x[0][1].template item<float>(), 1.1F);
+  EXPECT_FLOAT_EQ(x[1][0].template item<float>(), 0.0F);
+  EXPECT_FLOAT_EQ(x[1][1].template item<float>(), 0.0F);
+}
+
+TYPED_TEST(TGStoreTest, GatherNodeFeatsEmptyNodeFeats) {
+  const std::int64_t n = 5;
+  const std::int64_t d = 2;
+  const auto store = this->make_store(TestData{
+      .src = torch::zeros({n}, torch::kLong),
+      .dst = torch::zeros({n}, torch::kLong),
+      .time = torch::zeros({n}, torch::kLong),
+      .msg = torch::zeros({n, d}),
+      .neg_dst = std::nullopt,
+      .node_feats_n_id = std::nullopt,
+      .node_feats = std::nullopt,
+  });
+
+  const auto n_ids = torch::tensor({4, 0, 2}, torch::kLong);
+  const auto x = store->gather_node_feats(n_ids);
+
+  ASSERT_EQ(x.dim(), 2);
+  ASSERT_EQ(x.size(0), 3);
+  ASSERT_EQ(x.size(1), 0);
+}
+
 TYPED_TEST(TGStoreTest, HandlesEmptyInputs) {
   const auto store =
       this->make_store(TestData{.src = torch::empty({0}, torch::kLong),
                                 .dst = torch::empty({0}, torch::kLong),
                                 .time = torch::empty({0}, torch::kLong),
                                 .msg = torch::empty({0, 4}),
-                                .neg_dst = std::nullopt});
+                                .neg_dst = std::nullopt,
+                                .node_feats = std::nullopt});
   EXPECT_EQ(store->edge_count(), 0);
   EXPECT_EQ(store->node_count(), 0);
 }
