@@ -22,7 +22,6 @@ find_package(nanobind CONFIG REQUIRED)
 
 set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
 set(CMAKE_INSTALL_RPATH "$ORIGIN;${CMAKE_BINARY_DIR}")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -stdlib=libstdc++")
 
 nanobind_add_module(
     _core
