@@ -6,14 +6,6 @@ EXAMPLE_LINK := $(BUILD_DIR)/examples/tgn_link_pred
 EXAMPLE_NODE := $(BUILD_DIR)/examples/tgn_node_pred
 EXAMPLE_LINK_PROF := $(PROFILE_DIR)/examples/tgn_link_pred
 EXAMPLE_NODE_PROF := $(PROFILE_DIR)/examples/tgn_node_pred
-UNAME_S := $(shell uname -s)
-
-ifeq ($(UNAME_S), Linux)
-    OMP_LIB = /usr/lib/llvm-18/lib/libomp.so
-endif
-ifeq ($(UNAME_S), Darwin)
-    OMP_LIB = /opt/homebrew/opt/libomp/lib/libomp.dylib
-endif
 
 MAKEFLAGS += --no-print-directory
 BUILD_TYPE ?= Release
