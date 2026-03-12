@@ -43,3 +43,10 @@ install.components = ["python_bindings"]
 build-dir = "build/{wheel_tag}"
 cmake.source-dir = ".."
 editable.rebuild = true
+
+[tool.pytest.ini_options]
+addopts = [
+    "--capture=no",
+    "--color=yes",
+    "-vvv",
+]
