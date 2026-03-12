@@ -42,9 +42,23 @@ cmake.args = [
     "-DTGN_BUILD_PYTHON=ON",
 ]
 install.components = ["python_bindings"]
-build-dir = "build/{wheel_tag}"
+build-dir = "build"
 cmake.source-dir = ".."
 editable.rebuild = true
+
+# --- Linux Specific Overrides ---
+[[tool.scikit-build.overrides]]
+if.platform-system = "linux"
+cmake.args = [
+    "-DOpenMP_omp_LIBRARY=/usr/lib/llvm-18/lib/libomp.so"
+]
+
+# --- macOS Specific Overrides ---
+[[tool.scikit-build.overrides]]
+if.platform-system = "darwin"
+cmake.args = [
+    "-DOpenMP_omp_LIBRARY=/opt/homebrew/opt/libomp/lib/libomp.dylib"
+]
 
 [tool.pytest.ini_options]
 addopts = [
