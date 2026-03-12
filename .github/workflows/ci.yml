@@ -122,7 +122,13 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Install System Deps (macOS)
+      - name: Install Clang Dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang libc++-dev libc++abi-dev
+
+      - name: Install OpenMP (MacOS)
         if: runner.os == 'macOS'
         run: brew install libomp
 
