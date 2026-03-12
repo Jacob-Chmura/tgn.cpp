@@ -39,7 +39,6 @@ cmake.args = [
     "-DCMAKE_CXX_COMPILER=clang++",
     "-DOpenMP_CXX_FLAGS=-fopenmp=libomp",
     "-DOpenMP_CXX_LIB_NAMES=omp",
-    "-DOpenMP_omp_LIBRARY=/usr/lib/llvm-18/lib/libomp.so",
     "-DTGN_BUILD_PYTHON=ON",
 ]
 install.components = ["python_bindings"]
