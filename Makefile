@@ -141,7 +141,6 @@ download-%: data/%.tguf
 python:
 	@(cd python && \
 		uv sync --group dev --no-install-project && \
-		#SKBUILD_CMAKE_ARGS="-DOpenMP_omp_LIBRARY=$(OMP_LIB)" \
 		SKBUILD_CMAKE_ARGS="-DTGN_BUILD_PYTHON=ON" \
 		uv pip install -e . --no-build-isolation)
 
