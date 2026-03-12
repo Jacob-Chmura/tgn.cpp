@@ -7,7 +7,7 @@ C++ Port of "Temporal Graph Networks for Deep Learning on Dynamic Graphs".
 
 ### Prerequisites
 
-You can just use the provided [Dockerfile](./Dockerfile). If you prefer to install dependencies manually, see below.
+You should just use the [Dockerfile](./Dockerfile), but if you prefer to install dependencies manually, see below.
 
 ##### Linux
 
@@ -43,3 +43,7 @@ make run-link-tgbl-wiki
 # Download `tgbn-trade` data, convert to `.tguf` and run examples/node_pred.cpp
 make run-node-tgbn-trade
 ```
+
+### Python Bindings
+
+We expose [Python bindings](./python) for the `TGUFBuilder` via [nanobind](https://nanobind.readthedocs.io/en/latest/).

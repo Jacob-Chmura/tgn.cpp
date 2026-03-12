@@ -1,0 +1,62 @@
+[project]
+name = "tguf"
+version = "0.1.0"
+description = "Python bindings for tgn.cpp TGUFBuilder"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "numpy",
+    "torch",
+    "nanobind>=2.0.0",
+    "scikit-build-core>=0.5.0",
+]
+
+[tool.uv]
+managed = true
+package = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[build-system]
+requires = ["scikit-build-core>=0.5.0", "nanobind>=2.0.0"]
+build-backend = "scikit_build_core.build"
+
+[tool.scikit-build]
+cmake.args = [
+    "-DCMAKE_CXX_COMPILER=clang++",
+    "-DOpenMP_CXX_FLAGS=-fopenmp=libomp",
+    "-DOpenMP_CXX_LIB_NAMES=omp",
+]
+install.components = ["python_bindings"]
+build-dir = "build"
+cmake.source-dir = ".."
+editable.rebuild = true
+
+[[tool.scikit-build.overrides]]
+if.platform-system = "linux"
+cmake.args = [
+    "-DOpenMP_omp_LIBRARY=/usr/lib/llvm-18/lib/libomp.so"
+]
+
+[[tool.scikit-build.overrides]]
+if.platform-system = "darwin"
+cmake.args = [
+    "-DOpenMP_omp_LIBRARY=/opt/homebrew/opt/libomp/lib/libomp.dylib"
+]
+
+[tool.pytest.ini_options]
+addopts = [
+    "--capture=no",
+    "--color=yes",
+    "-vvv",
+]
