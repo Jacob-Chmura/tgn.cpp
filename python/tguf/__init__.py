@@ -1,3 +1,3 @@
-from ._core import TGUFBuilder, TGUFSchema, Batch
+from ._core import Batch, TGUFBuilder, TGUFSchema
 
 __all__ = ["TGUFBuilder", "TGUFSchema", "Batch"]

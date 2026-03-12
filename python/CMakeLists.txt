@@ -6,7 +6,6 @@ project(
     LANGUAGES CXX
 )
 
-
 if (CMAKE_VERSION VERSION_LESS 3.18)
   set(DEV_MODULE Development)
 else()

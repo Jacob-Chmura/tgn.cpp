@@ -5,6 +5,9 @@
 #include <torch/torch.h>
 
 #include <cstdint>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "tgn.h"
 

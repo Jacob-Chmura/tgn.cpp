@@ -1,9 +1,10 @@
-import torch
-import numpy as np
-import pytest
 import tempfile
 from pathlib import Path
+
+import numpy as np
+import pytest
 import tguf
+import torch
 
 
 def get_data(lib, values, dtype):
@@ -45,6 +46,7 @@ def test_batch_init(lib):
         time=get_data(lib, [10, 11, 12], "int64"),
         msg=get_data(lib, np.random.randn(3, 8), "float32"),
     )
+
 
 @pytest.mark.parametrize("lib", ["torch", "numpy"])
 def test_batch_init_with_negs(lib):
