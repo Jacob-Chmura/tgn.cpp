@@ -42,6 +42,11 @@ help:
 	@echo ""
 	@echo "Data Targets:"
 	@echo "  make download-<ds>       - Download TGB dataset (e.g., make download-tgbl-wiki)"
+	@echo ""
+	@echo "Python Targets:"
+	@echo "  make python                - Build and install Python bindings"
+	@echo "  make test-python           - Run Python-specific tests"
+	@echo "  make clean-python          - Run Python-specific build artifacts"
 	@echo "========================================================================"
 
 $(BUILD_DIR)/CMakeCache.txt:
@@ -123,6 +128,34 @@ perf-node-%: profile-build data/%.tguf
 .PHONY: download-%
 download-%: data/%.tguf
 	@echo "Dataset $* is up to date."
+
+
+TGN_LIB_DIR   := $(shell find python/build -name "libtgn.so" -exec dirname {} \; | head -n 1)
+PYTHON_SO_DIR := $(shell find python/build -name "_core*.so" -exec dirname {} \; | head -n 1)
+
+.PHONY: python
+python:
+	@(cd python && \
+		uv sync --group dev --no-install-project && \
+		CMAKE_ARGS="-DTGN_BUILD_PYTHON=ON" \
+		uv pip install -e . --no-build-isolation)
+
+.PHONY: test-python
+test-python: python
+	@echo "🧪 Running tests..."
+	@if [ -z "$(TGN_LIB_DIR)" ]; then echo "❌ Error: libtgn.so not found. Run 'make python' first."; exit 1; fi
+	@echo "📍 Found Libs: $(TGN_LIB_DIR)"
+	@echo "📍 Found Ext:  $(PYTHON_SO_DIR)"
+	# PYTHONPATH: ensures 'import tguf' works by pointing to source and build artifacts
+	# LD_LIBRARY_PATH: ensures the linker finds libtgn.so at runtime
+	cd python && \
+	PYTHONPATH=$(PYTHON_SO_DIR):$(shell pwd)/python:$$PYTHONPATH \
+	LD_LIBRARY_PATH=$(TGN_LIB_DIR):$LD_LIBRARY_PATH \
+	uv run pytest test/ -v
+
+.PHONY: clean-python
+clean-python:
+	rm -rf python/build
 
 .PHONY: clean
 clean:

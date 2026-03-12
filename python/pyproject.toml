@@ -1,0 +1,45 @@
+[project]
+name = "tguf"
+version = "0.1.0"
+description = "Python bindings for tgn.cpp TGUFBuilder"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+
+[dependency-groups]
+dev = [
+    "pytest",
+    "numpy",
+    "torch==2.10.0+cpu",
+    "nanobind>=2.0.0",
+    "scikit-build-core>=0.5.0",
+]
+
+[tool.uv]
+index = [
+    { name = "pytorch-cpu", url = "https://download.pytorch.org/whl/cpu", explicit = true }
+]
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+
+[build-system]
+requires = ["scikit-build-core>=0.5.0", "nanobind>=2.0.0"]
+build-backend = "scikit_build_core.build"
+
+[tool.scikit-build]
+cmake.args = [
+    "-DTGN_BUILD_PYTHON=ON",
+    "-DCMAKE_BUILD_TYPE=Release",
+    "-DOpenMP_CXX_FLAGS=-fopenmp",
+    "-DOpenMP_CXX_LIB_NAMES=gomp",
+    "-DOpenMP_gomp_LIBRARY=/lib/x86_64-linux-gnu/libgomp.so.1",
+    "-DCMAKE_CXX_FLAGS=-I/usr/include -fopenmp",
+    "-DCMAKE_C_COMPILER=gcc",
+    "-DCMAKE_CXX_COMPILER=g++"
+]
+install.components = ["python_bindings"]
+build-dir = "build/{wheel_tag}"
+cmake.source-dir = ".."
+editable.rebuild = true
