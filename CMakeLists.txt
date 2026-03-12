@@ -91,9 +91,7 @@ if (TGN_BUILD_TOOLS)
     add_subdirectory(tools/tguf_cli)
 endif()
 
-message(STATUS "--- DEBUG: TGN_BUILD_PYTHON is [${TGN_BUILD_PYTHON}] ---")
 if (TGN_BUILD_PYTHON)
-    message(STATUS ">>> TGN_BUILD_PYTHON is ON - Adding python subdirectory")
     add_subdirectory(python)
 endif()
 
