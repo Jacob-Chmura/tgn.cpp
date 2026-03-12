@@ -133,13 +133,11 @@ download-%: data/%.tguf
 python:
 	@(cd python && \
 		uv sync --group dev --no-install-project && \
-		CMAKE_ARGS="-DTGN_BUILD_PYTHON=ON" \
 		uv pip install -e . --no-build-isolation)
 
 .PHONY: test-python
 test-python: python
-	@(cd python && \
-		uv run pytest test/)
+	@(cd python && uv run pytest test/)
 
 .PHONY: clean-python
 clean-python:
