@@ -36,7 +36,6 @@ build-backend = "scikit_build_core.build"
 cmake.args = [
     "-DCMAKE_BUILD_TYPE=Release",
     "-DCMAKE_CXX_COMPILER=g++",
-    "-DCMAKE_CXX_FLAGS=-I/usr/include -fopenmp",
     "-DCMAKE_C_COMPILER=gcc",
     "-DOpenMP_CXX_FLAGS=-fopenmp",
     "-DOpenMP_CXX_LIB_NAMES=gomp",
