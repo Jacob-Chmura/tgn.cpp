@@ -35,11 +35,11 @@ build-backend = "scikit_build_core.build"
 [tool.scikit-build]
 cmake.args = [
     "-DCMAKE_BUILD_TYPE=Release",
-    "-DCMAKE_CXX_COMPILER=g++",
-    "-DCMAKE_C_COMPILER=gcc",
-    "-DOpenMP_CXX_FLAGS=-fopenmp",
-    "-DOpenMP_CXX_LIB_NAMES=gomp",
-    "-DOpenMP_gomp_LIBRARY=/lib/x86_64-linux-gnu/libgomp.so.1",
+    "-DCMAKE_C_COMPILER=clang",
+    "-DCMAKE_CXX_COMPILER=clang++",
+    "-DOpenMP_CXX_FLAGS=-fopenmp=libomp",
+    "-DOpenMP_CXX_LIB_NAMES=omp",
+    "-DOpenMP_omp_LIBRARY=/usr/lib/llvm-18/lib/libomp.so",
     "-DTGN_BUILD_PYTHON=ON",
 ]
 install.components = ["python_bindings"]
