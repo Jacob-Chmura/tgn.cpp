@@ -98,3 +98,47 @@ jobs:
           docker run --rm \
           -v "$(pwd):/workspace:Z" \
             tgn-dev /bin/bash -c "make test"
+
+  python-tests:
+    needs: build
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python-version: ["3.10"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Build Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: build-${{ matrix.os }}
+          path: build/
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install System Deps (macOS)
+        if: runner.os == 'macOS'
+        run: brew install libomp
+
+      - name: Install & Test Python Bindings
+        run: |
+          make python
+          make test-python
+
+  python-tests-on-container:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Run Python Suite in Container
+        run: |
+          docker build -t tgn-dev .
+          docker run --rm \
+            -v "$(pwd):/workspace:Z" \
+            tgn-dev /bin/bash -c "make python && make test-python"

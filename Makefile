@@ -142,16 +142,10 @@ python:
 
 .PHONY: test-python
 test-python: python
-	@echo "🧪 Running tests..."
-	@if [ -z "$(TGN_LIB_DIR)" ]; then echo "❌ Error: libtgn.so not found. Run 'make python' first."; exit 1; fi
-	@echo "📍 Found Libs: $(TGN_LIB_DIR)"
-	@echo "📍 Found Ext:  $(PYTHON_SO_DIR)"
-	# PYTHONPATH: ensures 'import tguf' works by pointing to source and build artifacts
-	# LD_LIBRARY_PATH: ensures the linker finds libtgn.so at runtime
-	cd python && \
+	@(cd python && \
 	PYTHONPATH=$(PYTHON_SO_DIR):$(shell pwd)/python:$$PYTHONPATH \
 	LD_LIBRARY_PATH=$(TGN_LIB_DIR):$LD_LIBRARY_PATH \
-	uv run pytest test/ -v
+	uv run pytest test/ -v)
 
 .PHONY: clean-python
 clean-python:
