@@ -114,7 +114,7 @@ jobs:
       - name: Download Build Artifacts
         uses: actions/download-artifact@v4
         with:
-          name: build-${{ matrix.os }}
+          name: build-${{ matrix.os }}-Release
           path: build/
 
       - name: Setup uv
@@ -127,9 +127,7 @@ jobs:
         run: brew install libomp
 
       - name: Install & Test Python Bindings
-        run: |
-          make python
-          make test-python
+        run: make test-python
 
   python-tests-on-container:
     runs-on: ubuntu-latest
@@ -141,4 +139,4 @@ jobs:
           docker build -t tgn-dev .
           docker run --rm \
             -v "$(pwd):/workspace:Z" \
-            tgn-dev /bin/bash -c "make python && make test-python"
+            tgn-dev /bin/bash -c "make test-python"

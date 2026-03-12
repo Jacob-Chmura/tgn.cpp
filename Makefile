@@ -129,10 +129,6 @@ perf-node-%: profile-build data/%.tguf
 download-%: data/%.tguf
 	@echo "Dataset $* is up to date."
 
-
-TGN_LIB_DIR   := $(shell find python/build -name "libtgn.so" -exec dirname {} \; | head -n 1)
-PYTHON_SO_DIR := $(shell find python/build -name "_core*.so" -exec dirname {} \; | head -n 1)
-
 .PHONY: python
 python:
 	@(cd python && \
@@ -143,9 +139,7 @@ python:
 .PHONY: test-python
 test-python: python
 	@(cd python && \
-	PYTHONPATH=$(PYTHON_SO_DIR):$(shell pwd)/python:$$PYTHONPATH \
-	LD_LIBRARY_PATH=$(TGN_LIB_DIR):$LD_LIBRARY_PATH \
-	uv run pytest test/ -v)
+		uv run pytest test/)
 
 .PHONY: clean-python
 clean-python:
