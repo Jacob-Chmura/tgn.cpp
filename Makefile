@@ -85,12 +85,13 @@ test:
 	@cd $(BUILD_DIR) && ctest -L unit --output-on-failure -j $(NPROCS)
 
 .PHONY: test-integration
-test-integration:
+test-integration: python
+	@mkdir -p $(BUILD_DIR)
 	@cd $(BUILD_DIR) && cmake $(CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=Debug -DTGN_BUILD_TESTS=ON ..
 	@$(MAKE) build BUILD_TYPE=Debug
 	@cd $(BUILD_DIR) && ctest -L integration --output-on-failure -j $(NPROCS)
 
-data/%.tguf:
+data/%.tguf: python
 	@mkdir -p data
 	@if [ -f $@ ]; then \
 		echo "Dataset $* already exists at $@, skipping download."; \
