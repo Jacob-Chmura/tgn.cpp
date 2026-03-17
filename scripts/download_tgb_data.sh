@@ -24,6 +24,7 @@ uv run --no-project \
     --with torch \
     --with tqdm \
     --with pandas==2.2.3 \
+    --with-editable "$PROJECT_ROOT/python" \
     python "$PROJECT_ROOT/tools/download_tgb_to_tguf.py" \
     --name "$DATASET_NAME" \
     --output "$OUTPUT_PATH"

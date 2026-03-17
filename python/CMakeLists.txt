@@ -38,7 +38,7 @@ get_target_property(TGN_BINARY_DIR tgn BINARY_DIR)
 # $ORIGIN/..: Look in the parent folder (common in build trees)
 # ${TGN_BINARY_DIR}: Look exactly where the C++ build put libtgn.so
 # ${LOCAL_TORCH_LIB}: Look where FetchContent put LibTorch
-set_target_properties(_core PROPERTIES 
+set_target_properties(_core PROPERTIES
     BUILD_WITH_INSTALL_RPATH TRUE
     INSTALL_RPATH "$ORIGIN;$ORIGIN/..;${TGN_BINARY_DIR};${LOCAL_TORCH_LIB}"
 )

@@ -1,17 +1,12 @@
 import argparse
 import subprocess
-import sys
 from pathlib import Path
 from typing import Dict, List
 
+import numpy as np
 import pandas as pd
+import tguf
 from tqdm import tqdm
-
-current_dir = Path(__file__).parent.resolve()
-if str(current_dir) not in sys.path:
-    sys.path.insert(0, str(current_dir))
-
-from _tguf_streamer import TGUFStreamer  # noqa: E402
 
 parser = argparse.ArgumentParser(
     description="Convert CSV data to TGUF binary format.",
@@ -71,16 +66,17 @@ def main() -> None:
         n_info = get_csv_info(args.node_feats)
         global_max_id = max(global_max_id, n_info["max_id"])
 
-    streamer = TGUFStreamer(
-        args.output,
-        n_edges=e_info["n_rows"],
-        m_dim=e_info["msg_dim"],
-        n_neg=e_info["n_neg"],
-        n_labels=l_info["n_rows"],
-        l_dim=l_info["label_dim"],
-        n_capacity=global_max_id + 1,
-        n_dim=n_info["feat_dim"],
+    schema = tguf.TGUFSchema(
+        path=str(args.output),
+        edge_capacity=e_info["n_rows"],
+        msg_dim=e_info["msg_dim"],
+        label_dim=l_info["label_dim"],
+        node_feat_capacity=global_max_id + 1,
+        node_feat_dim=n_info["feat_dim"],
+        label_capacity=l_info["n_rows"],
+        negatives_per_edge=e_info["n_neg"],
     )
+    builder = tguf.TGUFBuilder(schema)
 
     msg_cols = [f"msg_{i}" for i in range(e_info["msg_dim"])]
     neg_cols = [f"neg_{i}" for i in range(e_info["n_neg"])]
@@ -92,13 +88,16 @@ def main() -> None:
         with tqdm(total=edge_chunks, desc="Appending Edges", unit="batch") as pbar:
             pbar.set_postfix({"batch_size": args.batch_size})
             for chunk in pd.read_csv(args.edges, chunksize=args.batch_size):
-                streamer.stream_edge_batch(
-                    src=chunk["src"].values,
-                    dst=chunk["dst"].values,
-                    ts=chunk["time"].values,
-                    msg=chunk[msg_cols].values,
-                    negs=chunk[neg_cols].values if e_info["n_neg"] > 0 else None,
+                batch = tguf.Batch(
+                    src=np.ascontiguousarray(chunk["src"].values, dtype="int64"),
+                    dst=np.ascontiguousarray(chunk["dst"].values, dtype="int64"),
+                    time=np.ascontiguousarray(chunk["time"].values, dtype="int64"),
+                    msg=np.ascontiguousarray(chunk[msg_cols].values, dtype="float32"),
+                    neg_dst=np.ascontiguousarray(chunk[neg_cols].values, dtype="int64")
+                    if e_info["n_neg"] > 0
+                    else None,
                 )
+                builder.append_edges(batch)
                 pbar.update(1)
 
         if l_info["n_rows"] > 0:
@@ -108,10 +107,14 @@ def main() -> None:
             ) as pbar:
                 pbar.set_postfix({"batch_size": args.batch_size})
                 for chunk in pd.read_csv(args.labels, chunksize=args.batch_size):
-                    streamer.stream_label_batch(
-                        nodes=chunk["node_id"].values,
-                        ts=chunk["time"].values,
-                        labels=chunk[label_cols].values,
+                    builder.append_labels(
+                        n_id=np.ascontiguousarray(
+                            chunk["node_id"].values, dtype="int64"
+                        ),
+                        time=np.ascontiguousarray(chunk["time"].values, dtype="int64"),
+                        target=np.ascontiguousarray(
+                            chunk[label_cols].values, dtype="float32"
+                        ),
                     )
                     pbar.update(1)
 
@@ -122,16 +125,19 @@ def main() -> None:
             ) as pbar:
                 pbar.set_postfix({"batch_size": args.batch_size})
                 for chunk in pd.read_csv(args.node_feats, chunksize=args.batch_size):
-                    streamer.stream_node_feat_batch(
-                        nodes=chunk["node_id"].values,
-                        feats=chunk[node_feat_cols].values,
+                    builder.append_node_feats(
+                        n_id=np.ascontiguousarray(
+                            chunk["node_id"].values, dtype="int64"
+                        ),
+                        node_feat=np.ascontiguousarray(
+                            chunk[node_feat_cols].values, dtype="float32"
+                        ),
                     )
                     pbar.update(1)
 
-        streamer.finalize()
+        builder.finalize()
     except Exception as e:
         print(f"Error during streaming: {e}")
-        streamer.proc.terminate()
 
 
 def get_csv_info(path: Path) -> Dict[str, int]:
