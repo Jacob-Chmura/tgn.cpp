@@ -58,7 +58,6 @@ jobs:
 
       - name: Restore Binary Permissions
         run: |
-          chmod +x build/tools/tguf_cli/tguf_cli
           chmod +x build/examples/tgn_link_pred
 
       - name: Set up uv
@@ -93,7 +92,6 @@ jobs:
 
       - name: Restore Binary Permissions
         run: |
-          chmod +x build/tools/tguf_cli/tguf_cli
           chmod +x build/examples/tgn_node_pred
 
       - name: Set up uv
@@ -127,7 +125,6 @@ jobs:
 
       - name: Restore Binary Permissions
         run: |
-          chmod +x build/tools/tguf_cli/tguf_cli
           chmod +x build/examples/tgn_node_pred
 
       - name: Set up uv

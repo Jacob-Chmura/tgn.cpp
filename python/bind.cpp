@@ -13,14 +13,16 @@
 
 namespace nb = nanobind;
 
+namespace {
 // This takes any Python object supporting DLPack/Buffer Protocol
-torch::Tensor tensor_view(nb::ndarray<> array, torch::ScalarType type) {
+torch::Tensor tensor_view(const nb::ndarray<> &array, torch::ScalarType type) {
   std::vector<std::int64_t> shape;
   for (auto i = 0; i < array.ndim(); ++i) {
     shape.push_back(array.shape(i));
   }
   return torch::from_blob(array.data(), shape,
-                          torch::TensorOptions().dtype(type));
+                          torch::TensorOptions().dtype(type))
+      .clone();
 }
 
 NB_MODULE(_core, m) {
@@ -78,13 +80,14 @@ NB_MODULE(_core, m) {
           [](tgn::Batch *self, nb::ndarray<> src, nb::ndarray<> dst,
              nb::ndarray<> time, nb::ndarray<> msg,
              std::optional<nb::ndarray<>> neg_dst) {
-            new (self) tgn::Batch{
-                tensor_view(src, torch::kLong), tensor_view(dst, torch::kLong),
-                tensor_view(time, torch::kLong),
-                tensor_view(msg, torch::kFloat),
-                neg_dst
-                    ? std::make_optional(tensor_view(*neg_dst, torch::kLong))
-                    : std::nullopt};
+            new (self)
+                tgn::Batch{.src = tensor_view(src, torch::kLong),
+                           .dst = tensor_view(dst, torch::kLong),
+                           .time = tensor_view(time, torch::kLong),
+                           .msg = tensor_view(msg, torch::kFloat),
+                           .neg_dst = neg_dst ? std::make_optional(tensor_view(
+                                                    *neg_dst, torch::kLong))
+                                              : std::nullopt};
           },
           nb::arg("src"), nb::arg("dst"), nb::arg("time"), nb::arg("msg"),
           nb::arg("neg_dst") = nb::none());
@@ -128,3 +131,4 @@ NB_MODULE(_core, m) {
         self.finalize();
       });
 }
+}  // namespace

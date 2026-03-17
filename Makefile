@@ -24,7 +24,6 @@ help:
 	@echo "  make                     - Build project (current: $(BUILD_TYPE))"
 	@echo "  make debug               - Build project with Debug symbols"
 	@echo "  make release             - Build project with High optimization"
-	@echo "  make tools               - Build CLI tools (tguf_cli)"
 	@echo "  make examples            - Build tgn_link_prop and tgn_node_prop"
 	@echo "  make clean               - Remove build directory"
 	@echo ""
@@ -72,12 +71,6 @@ debug:
 release:
 	@$(MAKE) build BUILD_TYPE=Release
 
-.PHONY: tools
-tools:
-	@mkdir -p $(BUILD_DIR)
-	@cd $(BUILD_DIR) && cmake $(CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DTGN_BUILD_TOOLS=ON ..
-	@$(MAKE) build
-
 .PHONY: examples
 examples: config
 	@mkdir -p $(BUILD_DIR)
@@ -92,12 +85,13 @@ test:
 	@cd $(BUILD_DIR) && ctest -L unit --output-on-failure -j $(NPROCS)
 
 .PHONY: test-integration
-test-integration: tools
-	@cd $(BUILD_DIR) && cmake $(CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=Debug -DTGN_BUILD_TESTS=ON -DTGN_BUILD_TOOLS=ON ..
+test-integration: python
+	@mkdir -p $(BUILD_DIR)
+	@cd $(BUILD_DIR) && cmake $(CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=Debug -DTGN_BUILD_TESTS=ON ..
 	@$(MAKE) build BUILD_TYPE=Debug
 	@cd $(BUILD_DIR) && ctest -L integration --output-on-failure -j $(NPROCS)
 
-data/%.tguf: tools
+data/%.tguf: python
 	@mkdir -p data
 	@if [ -f $@ ]; then \
 		echo "Dataset $* already exists at $@, skipping download."; \

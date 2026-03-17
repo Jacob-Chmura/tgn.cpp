@@ -27,4 +27,5 @@ uv run --no-project \
     --with numpy \
     --with tqdm \
     --with pandas==2.2.3 \
+    --with-editable "$PROJECT_ROOT/python" \
     python "$PROJECT_ROOT/tools/convert_csv_to_tguf.py" "${PY_ARGS[@]}"

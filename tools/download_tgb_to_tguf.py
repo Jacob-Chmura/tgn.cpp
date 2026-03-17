@@ -1,19 +1,13 @@
 import argparse
-import sys
 from pathlib import Path
 
 import numpy as np
+import tguf
 from tgb.linkproppred.dataset import LinkPropPredDataset
 from tgb.linkproppred.negative_sampler import NegativeEdgeSampler
 from tgb.nodeproppred.dataset import NodePropPredDataset
 from tgb.utils.info import DATA_VERSION_DICT, PROJ_DIR
 from tqdm import tqdm
-
-current_dir = Path(__file__).parent.resolve()
-if str(current_dir) not in sys.path:
-    sys.path.insert(0, str(current_dir))
-
-from _tguf_streamer import TGUFStreamer  # noqa: E402
 
 parser = argparse.ArgumentParser(
     description="Download TGB dataset directly to TGUF",
@@ -82,17 +76,19 @@ def main() -> None:
     test_start = int(np.argmax(ds.test_mask))
 
     neg_start_e_id = val_start if full_negs is not None else 0
-    streamer = TGUFStreamer(
-        out_path=args.output,
-        n_edges=n_edges,
-        m_dim=m_dim,
-        n_neg=n_neg,
-        n_labels=n_labels,
-        l_dim=l_dim,
+
+    schema = tguf.TGUFSchema(
+        path=str(args.output),
+        edge_capacity=n_edges,
+        msg_dim=m_dim,
+        label_dim=l_dim,
+        label_capacity=n_labels,
+        negatives_per_edge=n_neg,
+        negatives_start_e_id=neg_start_e_id,
         val_start=val_start,
         test_start=test_start,
-        neg_start_e_id=neg_start_e_id,
     )
+    builder = tguf.TGUFBuilder(schema)
 
     try:
         edge_chunks = (n_edges + args.batch_size - 1) // args.batch_size
@@ -100,13 +96,16 @@ def main() -> None:
             pbar.set_postfix({"batch_size": args.batch_size})
             for i in range(0, len(src), args.batch_size):
                 end = i + args.batch_size
-                streamer.stream_edge_batch(
-                    src=src[i:end],
-                    dst=dst[i:end],
-                    ts=ts[i:end],
-                    msg=edge_feat[i:end],
-                    negs=full_negs[i:end] if full_negs is not None else None,
+                batch = tguf.Batch(
+                    src=np.ascontiguousarray(src[i:end], dtype="int64"),
+                    dst=np.ascontiguousarray(dst[i:end], dtype="int64"),
+                    time=np.ascontiguousarray(ts[i:end], dtype="int64"),
+                    msg=np.ascontiguousarray(edge_feat[i:end], dtype="float32"),
+                    neg_dst=np.ascontiguousarray(full_negs[i:end], dtype="int64")
+                    if full_negs is not None
+                    else None,
                 )
+                builder.append_edges(batch)
                 pbar.update(1)
 
         if n_labels > 0:
@@ -118,17 +117,18 @@ def main() -> None:
                 pbar.set_postfix({"batch_size": args.batch_size})
                 for i in range(0, n_labels, args.batch_size):
                     end = i + args.batch_size
-                    streamer.stream_label_batch(
-                        ts=label_data[i:end, 0],
-                        nodes=label_data[i:end, 1],
-                        labels=label_data[i:end, 2:],
+                    builder.append_labels(
+                        time=np.ascontiguousarray(label_data[i:end, 0], dtype="int64"),
+                        n_id=np.ascontiguousarray(label_data[i:end, 1], dtype="int64"),
+                        target=np.ascontiguousarray(
+                            label_data[i:end, 2:], dtype="float32"
+                        ),
                     )
                     pbar.update(1)
 
-        streamer.finalize()
+        builder.finalize()
     except Exception as e:
         print(f"Error during streaming: {e}")
-        streamer.proc.terminate()
 
 
 def download_dataset(name: str) -> LinkPropPredDataset | NodePropPredDataset:

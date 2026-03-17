@@ -8,7 +8,6 @@ project(
 
 option(TGN_BUILD_TESTS "Build test binaries" OFF)
 option(TGN_BUILD_EXAMPLES "Build example binaries" OFF)
-option(TGN_BUILD_TOOLS "Build tool binaries" OFF)
 option(TGN_BUILD_PYTHON "Build Python Bindings" OFF)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -85,10 +84,6 @@ set_target_properties(${PROJECT_NAME} PROPERTIES COMPILE_FLAGS "${TORCH_CXX_FLAG
 
 if (TGN_BUILD_EXAMPLES)
     add_subdirectory(examples)
-endif()
-
-if (TGN_BUILD_TOOLS)
-    add_subdirectory(tools/tguf_cli)
 endif()
 
 if (TGN_BUILD_PYTHON)
