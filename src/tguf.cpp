@@ -132,6 +132,10 @@ struct TGUFBuilder::Impl {
     }
 #endif
 
+    TGN_LOG_INFO(
+        "TGUFBuilder: Memory mapping {:.2f} GiB, might take a sec for the OS "
+        "to find a contiguous allocation of this size",
+        mapped_bytes_ / (1024.0 * 1024.0 * 1024.0));
     base_ptr_ =
         mmap(nullptr, mapped_bytes_, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     close(fd);
