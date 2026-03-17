@@ -118,8 +118,8 @@ def main() -> None:
                 for i in range(0, n_labels, args.batch_size):
                     end = i + args.batch_size
                     builder.append_labels(
-                        n_id=np.ascontiguousarray(label_data[i:end, 0], dtype="int64"),
-                        time=np.ascontiguousarray(label_data[i:end, 1], dtype="int64"),
+                        time=np.ascontiguousarray(label_data[i:end, 0], dtype="int64"),
+                        n_id=np.ascontiguousarray(label_data[i:end, 1], dtype="int64"),
                         target=np.ascontiguousarray(
                             label_data[i:end, 2:], dtype="float32"
                         ),
