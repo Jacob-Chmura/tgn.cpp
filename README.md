@@ -1,6 +1,11 @@
-## tgn.cpp
+<div align="center">
 
-`tgn.cpp` is a systems library for Temporal Graph Learning at Scale, designed for dynamic graphs that exceed RAM.
+# tgn.cpp 
+
+<h3 style="font-size: 22px">A Systems Library for Temporal Graph Learning, designed for Dynamic Graphs that exceed RAM </h3>
+<a href="https://tgn.cpp.readthedocs.io/en/latest"/><strong style="font-size: 18px;"/>Read Our Docs»</strong></a>
+
+</div>
 
 It is build around two core components:
 

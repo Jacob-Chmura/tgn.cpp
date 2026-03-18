@@ -157,5 +157,9 @@ jobs:
         with:
           enable-cache: true
 
+      - name: Install Doxygen
+        run: |
+          sudo apt-get update && sudo apt install doxygen
+
       - name: Run Documentation Build
         run: make docs
