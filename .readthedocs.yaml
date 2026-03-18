@@ -8,10 +8,6 @@ build:
   apt_packages:
     - cmake
   jobs:
-    pre_install:
-      - |
-        apt-get update && apt-get install -y clang libc++-dev libc++abi-dev libomp-18-dev cmake
-
     post_install:
       - pip install uv
       - |
@@ -20,7 +16,6 @@ build:
         CXX=clang++-18 \
         CMAKE_ARGS="-DTGN_BUILD_PYTHON=ON -DCMAKE_CXX_COMPILER=clang++-18" \
         uv pip install \
-          -e ./python \
           mkdocs-material \
           "mkdocstrings[python]" \
           mkdoxy
