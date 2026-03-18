@@ -1,14 +1,14 @@
 <div align="center">
 
 ## Temporal Graph Learning on Streams that Exceed RAM
-<a href="https://tgn.cpp.readthedocs.io/en/latest"/><strong style="font-size: 18px;"/>Read Our Docs»</strong></a>
 
+![C++20](https://img.shields.io/badge/C++-20-blue)
+![Clang](https://img.shields.io/badge/Compiler-Clang-orange)
 [![Docs](https://readthedocs.org/projects/tgncpp/badge/?version=latest)](https://tgn.cpp.readthedocs.io/en/latest/)
-[![Release](https://img.shields.io/github/v/release/Jacob-Chmura/tgn.cpp?color=blue)](https://github.com/Jacob-Chmura/tgn.cpp/releases)
+[![C++ Release](https://img.shields.io/github/v/release/Jacob-Chmura/tgn.cpp?color=blue)](https://github.com/Jacob-Chmura/tgn.cpp/releases)
 [![PyPI](https://img.shields.io/pypi/v/tgncpp?color=orange)](https://pypi.org/project/tgncpp/)
-[![CI Linux](https://github.com/Jacob-Chmura/tgn.cpp/actions/workflows/ci.yml/badge.svg?branch=master&event=push&label=Linux%20CI)](https://github.com/Jacob-Chmura/tgn.cpp/actions/workflows/ci.yml)
-[![CI macOS](https://github.com/Jacob-Chmura/tgn.cpp/actions/workflows/ci.yml/badge.svg?branch=master&event=push&label=macOS%20CI)](https://github.com/Jacob-Chmura/tgn.cpp/actions/workflows/ci.yml)
-[![Coverage](https://img.shields.io/badge/coverage-90%25-brightgreen)](https://github.com/Jacob-Chmura/tgn.cpp/actions/workflows/ci.yml)
+[![CI-Linux](https://github.com/Jacob-Chmura/tgn.cpp/actions/workflows/ci.yml/badge.svg?branch=master&event=push&label=Linux%20CI)](https://github.com/Jacob-Chmura/tgn.cpp/actions/workflows/ci.yml)
+[![CI-macOS](https://github.com/Jacob-Chmura/tgn.cpp/actions/workflows/ci.yml/badge.svg?branch=master&event=push&label=macOS%20CI)](https://github.com/Jacob-Chmura/tgn.cpp/actions/workflows/ci.yml)
 
 </div>
 
