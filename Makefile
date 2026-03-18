@@ -84,7 +84,7 @@ examples: config
 .PHONY: test
 test:
 	@mkdir -p $(BUILD_DIR)
-	@cd $(BUILD_DIR) && cmake $(CMAKE_FLAGS) --coverage -DCMAKE_BUILD_TYPE=Debug -DTGN_BUILD_TESTS=ON ..
+	@cd $(BUILD_DIR) && cmake $(CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=Debug -DTGN_BUILD_TESTS=ON ..
 	@$(MAKE) build BUILD_TYPE=Debug
 	@cd $(BUILD_DIR) && ctest -L unit --output-on-failure -j $(NPROCS)
 
