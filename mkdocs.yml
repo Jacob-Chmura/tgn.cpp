@@ -1,0 +1,44 @@
+---
+site_name: tgn.cpp Docs
+site_url: https://tgn-cpp.readthedocs.io/en/latest/
+repo_url: https://github.com/Jacob-Chmura/tgn.cpp
+
+nav:
+  - Home: index.md
+  - TGUF Specification: tguf-spec.md
+  - Python Bindings: python-api.md
+  - C++ API:
+      - Classes: api/cpp/index_classes.md
+      - Files: api/cpp/index_files.md
+      - Namespaces: api/cpp/index_namespaces.md
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      accent: lime
+      primary: black
+  features:
+    - content.code.copy
+    - content.code.annotate
+    - navigation.indexes
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+
+plugins:
+  - search
+  - autorefs
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [python]
+          options:
+            show_source: false
+            docstring_section_style: list
+            show_root_heading: true
+            merge_init_into_class: true
+            heading_level: 3
+            signature_crossrefs: true

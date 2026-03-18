@@ -146,3 +146,23 @@ jobs:
           docker run --rm \
             -v "$(pwd):/workspace:Z" \
             tgn-dev /bin/bash -c "make test-python"
+
+  build-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y doxygen
+          wget https://github.com/matusnovak/doxybook2/releases/download/v1.5.0/doxybook2-linux-amd64-v1.5.0.zip
+          unzip doxybook2-linux-amd64-v1.5.0.zip -d doxy_dist
+          sudo mv doxybook2 /usr/local/bin/
+
+      - name: Run Documentation Build
+        run: make docs

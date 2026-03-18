@@ -27,6 +27,10 @@ help:
 	@echo "  make examples            - Build tgn_link_prop and tgn_node_prop"
 	@echo "  make clean               - Remove build directory"
 	@echo ""
+	@echo "Documentation Targets:"
+	@echo "  make docs                - Build project documentation"
+	@echo "  make docs-serve          - Build and serve project documentation"
+	@echo ""
 	@echo "Testing Targets:"
 	@echo "  make test                - Run C++ unit tests (no Python dep)"
 	@echo "  make test-integration    - Run Python-C++ TGUF roundtrip (requires uv)"
@@ -133,6 +137,14 @@ python:
 .PHONY: test-python
 test-python: python
 	@(cd python && uv run pytest test/)
+
+.PHONY: docs
+docs: python
+	@bash scripts/build_docs.sh
+
+.PHONY: docs-serve
+docs-serve: python
+	@bash scripts/build_docs.sh serve
 
 .PHONY: clean-python
 clean-python:

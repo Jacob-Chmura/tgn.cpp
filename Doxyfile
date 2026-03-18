@@ -1,0 +1,21 @@
+# Basic Metadata
+PROJECT_NAME           = "tgn.cpp"
+INPUT                  = include/tgn.h
+RECURSIVE              = NO
+
+# Output Settings (Crucial for Doxybook2)
+OUTPUT_DIRECTORY       = build/docs
+GENERATE_XML           = YES
+XML_OUTPUT             = xml
+GENERATE_HTML          = NO
+GENERATE_LATEX         = NO
+
+# Parsing Behavior
+JAVADOC_AUTOBRIEF      = YES
+EXTRACT_ALL            = YES
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = YES
+
+# Grouping
+MARKDOWN_SUPPORT       = YES
+AUTOLINK_SUPPORT       = YES

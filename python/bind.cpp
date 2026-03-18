@@ -26,7 +26,10 @@ torch::Tensor tensor_view(const nb::ndarray<> &array, torch::ScalarType type) {
 }
 
 NB_MODULE(_core, m) {
-  nb::class_<tgn::TGUFSchema>(m, "TGUFSchema")
+  m.doc() =
+      "Python bindings for tgn.cpp high-performance temporal graph learning.";
+  nb::class_<tgn::TGUFSchema>(m, "TGUFSchema",
+                              "Metadata defining the layout of a TGUF file.")
       .def(
           "__init__",
           [](tgn::TGUFSchema *self, std::string path,
@@ -74,7 +77,7 @@ NB_MODULE(_core, m) {
       .def_rw("val_start", &tgn::TGUFSchema::val_start)
       .def_rw("test_start", &tgn::TGUFSchema::test_start);
 
-  nb::class_<tgn::Batch>(m, "Batch")
+  nb::class_<tgn::Batch>(m, "Batch", "Container for temporal edge data.")
       .def(
           "__init__",
           [](tgn::Batch *self, nb::ndarray<> src, nb::ndarray<> dst,
@@ -92,7 +95,9 @@ NB_MODULE(_core, m) {
           nb::arg("src"), nb::arg("dst"), nb::arg("time"), nb::arg("msg"),
           nb::arg("neg_dst") = nb::none());
 
-  nb::class_<tgn::TGUFBuilder>(m, "TGUFBuilder")
+  nb::class_<tgn::TGUFBuilder>(
+      m, "TGUFBuilder",
+      "High-performance writer for creating TGUF datasets on disk.")
       .def(nb::init<const tgn::TGUFSchema &>(), nb::arg("schema"))
 
       .def(
@@ -101,7 +106,7 @@ NB_MODULE(_core, m) {
             nb::gil_scoped_release release;
             self.append_edges(batch);
           },
-          nb::arg("batch"))
+          nb::arg("batch"), "Appends a batch of edges to the persistent store.")
 
       .def(
           "append_labels",
@@ -113,7 +118,8 @@ NB_MODULE(_core, m) {
                                tensor_view(time, torch::kLong),
                                tensor_view(target, torch::kFloat));
           },
-          nb::arg("n_id"), nb::arg("time"), nb::arg("target"))
+          nb::arg("n_id"), nb::arg("time"), nb::arg("target"),
+          "Appends a batch of label events to the persistent store.")
 
       .def(
           "append_node_feats",
@@ -124,11 +130,15 @@ NB_MODULE(_core, m) {
             self.append_node_feats(tensor_view(n_id, torch::kLong),
                                    tensor_view(node_feat, torch::kFloat));
           },
-          nb::arg("n_id"), nb::arg("node_feat"))
+          nb::arg("n_id"), nb::arg("node_feat"),
+          "Appends a batch of static node features to the persistent store.")
 
-      .def("finalize", [](tgn::TGUFBuilder &self) {
-        nb::gil_scoped_release release;
-        self.finalize();
-      });
+      .def(
+          "finalize",
+          [](tgn::TGUFBuilder &self) {
+            nb::gil_scoped_release release;
+            self.finalize();
+          },
+          "Finalizes the .tguf file, writing headers and flushing buffers.");
 }
 }  // namespace
