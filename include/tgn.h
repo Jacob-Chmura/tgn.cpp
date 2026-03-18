@@ -59,7 +59,7 @@ struct TGUFSchema {
   std::size_t node_feat_capacity;  ///< Max nodes with static features.
   std::size_t msg_dim;             ///< Fixed edge feature dimension.
   std::size_t label_dim;           ///< Fixed label target dimension.
-  std::size_t node_feat_dim;       ///< Fixed static nod feature dimension.
+  std::size_t node_feat_dim;       ///< Fixed static node feature dimension.
 
   /** @brief For link prediction evaluation, the e_id where pre-computed
    * negatives begin. */

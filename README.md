@@ -1,11 +1,28 @@
 ## tgn.cpp
 
-C++ Port of "Temporal Graph Networks for Deep Learning on Dynamic Graphs".
+`tgn.cpp` is a systems library for Temporal Graph Learning at Scale, designed for dynamic graphs that exceed RAM.
+
+It is build around two core components:
+
+**1. Temporal Graph Unified Format (TGUF)**: A binary, flatbuffer-style memory mappable format for temporal graph streams, supporting:
+
+- Dynamic edge events, static node features, dynamic node labels, negative edges, and datasets splits
+- Zero-copy tensor reads via memory mapping
+- Out-of-core training and inference
+- Optimized sequential access patterns common in CTDG style methods
+
+**2. High-Performance TGN Implementation**: A C++20 Port of [Temporal Graph Networks for Deep Learning on Dynamic Graphs](https://arxiv.org/abs/2006.10637) over pure LibTorch:
+
+- Built on top of TGUF storage engine for efficient sampling kernels and data loading
+- Minimal abstractions for predictable performance
+
+> \[!TIP\]
+> We expose [Python bindings](./python) for the TGUF ingestion, allowing easy conversion of your dataset into the binary file format.
+
+### Prerequisites
 
 > \[!Note\]
 > Tested on Linux (Ubuntu 22.04+) and macOS (Apple Silicon)
-
-### Prerequisites
 
 You should just use the [Dockerfile](./Dockerfile), but if you prefer to install dependencies manually, see below.
 
@@ -43,7 +60,3 @@ make run-link-tgbl-wiki
 # Download `tgbn-trade` data, convert to `.tguf` and run examples/node_pred.cpp
 make run-node-tgbn-trade
 ```
-
-### Python Bindings
-
-We expose [Python bindings](./python) for the `TGUFBuilder` via [nanobind](https://nanobind.readthedocs.io/en/latest/).
