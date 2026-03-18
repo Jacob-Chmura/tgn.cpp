@@ -2,8 +2,8 @@
 
 ## Temporal Graph Learning on Streams that Exceed RAM
 
-![C++20](https://img.shields.io/badge/C%2B%2B-20?style=flat&labelColor=white&logo=c%2B%2B&logoColor=black)
-![Clang](https://img.shields.io/badge/Compiler-Clang?style=flat&labelColor=white&logo=clang&logoColor=black)
+![C++20](https://img.shields.io/badge/C++-20-blue?style=flat&labelColor=white&logo=c%2B%2B&logoColor=black)
+![Clang](https://img.shields.io/badge/Compiler-Clang-orange?style=flat&labelColor=white&logo=clang&logoColor=black)
 ![Linux](https://img.shields.io/badge/Linux-FCC624?style=flat&logo=linux&logoColor=black)
 ![macOS](https://img.shields.io/badge/macOS-000000?style=flat&logo=apple&logoColor=white)
 [![Docs](https://img.shields.io/readthedocs/tgm?style=flat&label=Docs&labelColor=white&logo=readthedocs&logoColor=black)](https://tgn.cpp.readthedocs.io/en/latest/?badge=latest)
