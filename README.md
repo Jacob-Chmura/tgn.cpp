@@ -1,8 +1,6 @@
 <div align="center">
 
-# tgn.cpp 
-
-<h3 style="font-size: 22px">A Systems Library for Temporal Graph Learning, designed for Dynamic Graphs that exceed RAM </h3>
+<h3 style="font-size: 22px">Temporal Graph Learning on Dynamic Graphs that exceed RAM </h3>
 <a href="https://tgn.cpp.readthedocs.io/en/latest"/><strong style="font-size: 18px;"/>Read Our Docs»</strong></a>
 
 </div>
