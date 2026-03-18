@@ -15,6 +15,7 @@
 **tgn.cpp** is a library for large-scale Temporal Graph Learning, built around two components:
 
 #### Temporal Graph Unified Format (TGUF)
+
 A binary, flatbuffer-style on-disc format for graph streams, supporting:
 
 - Dynamic node and edge events, static node features, pre-computed negatives (for link prediction)
@@ -22,6 +23,7 @@ A binary, flatbuffer-style on-disc format for graph streams, supporting:
 - Optimized sequential access patterns common in CTDG style methods
 
 #### High-Performance TGN Implementation
+
 A C++20 Port of [TGN](https://arxiv.org/abs/2006.10637) over pure LibTorch:
 
 - Built on the TGUF storage engine
@@ -55,6 +57,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
 ### Usage
+
 > \[!Note\]
 > Tested on Linux (Ubuntu 22.04+) and macOS (Apple Silicon)
 

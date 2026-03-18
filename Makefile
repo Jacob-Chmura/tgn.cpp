@@ -84,7 +84,7 @@ examples: config
 .PHONY: test
 test:
 	@mkdir -p $(BUILD_DIR)
-	@cd $(BUILD_DIR) && cmake $(CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=Debug -DTGN_BUILD_TESTS=ON ..
+	@cd $(BUILD_DIR) && cmake $(CMAKE_FLAGS) --coverage -DCMAKE_BUILD_TYPE=Debug -DTGN_BUILD_TESTS=ON ..
 	@$(MAKE) build BUILD_TYPE=Debug
 	@cd $(BUILD_DIR) && ctest -L unit --output-on-failure -j $(NPROCS)
 
@@ -94,6 +94,13 @@ test-integration: python
 	@cd $(BUILD_DIR) && cmake $(CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=Debug -DTGN_BUILD_TESTS=ON ..
 	@$(MAKE) build BUILD_TYPE=Debug
 	@cd $(BUILD_DIR) && ctest -L integration --output-on-failure -j $(NPROCS)
+
+.PHONY: coverage
+coverage:
+	@cd $(BUILD_DIR) && \
+	lcov --capture --directory . --output-file coverage.info && \
+	lcov --remove coverage.info '/usr/*' --output-file coverage.info && \
+	genhtml coverage.info --output-directory coverage_html
 
 data/%.tguf: python
 	@mkdir -p data
