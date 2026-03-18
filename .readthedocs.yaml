@@ -12,8 +12,8 @@ build:
         VIRTUAL_ENV=$READTHEDOCS_VIRTUALENV_PATH \
         CXX=clang++-18 \
         CMAKE_ARGS="-DTGN_BUILD_PYTHON=ON" \
+        uv pip install -e ./python && \
         uv pip install mkdocs-material "mkdocstrings[python]" mkdoxy \
-        uv pip install -e ./python
 
 mkdocs:
   configuration: mkdocs.yml
