@@ -3,18 +3,22 @@
 ## Temporal Graph Learning on Streams that Exceed RAM
 <a href="https://tgn.cpp.readthedocs.io/en/latest"/><strong style="font-size: 18px;"/>Read Our Docs»</strong></a>
 
+[![Docs](https://readthedocs.org/projects/tgncpp/badge/?version=latest)](https://tgn.cpp.readthedocs.io/en/latest/)
+[![Release](https://img.shields.io/github/v/release/Jacob-Chmura/tgn.cpp?color=blue)](https://github.com/Jacob-Chmura/tgn.cpp/releases)
+[![PyPI](https://img.shields.io/pypi/v/tgncpp?color=orange)](https://pypi.org/project/tgncpp/)
+[![CI Linux](https://github.com/Jacob-Chmura/tgn.cpp/actions/workflows/ci.yml/badge.svg?branch=master&event=push&label=Linux%20CI)](https://github.com/Jacob-Chmura/tgn.cpp/actions/workflows/ci.yml)
+[![CI macOS](https://github.com/Jacob-Chmura/tgn.cpp/actions/workflows/ci.yml/badge.svg?branch=master&event=push&label=macOS%20CI)](https://github.com/Jacob-Chmura/tgn.cpp/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/badge/coverage-90%25-brightgreen)](https://github.com/Jacob-Chmura/tgn.cpp/actions/workflows/ci.yml)
+
 </div>
 
-### About The Project
-**tgn.cpp** is a systems-first library for large-scale Temporal Graph Learning, built around two core components:
+`tgn.cpp` is a systems-first library for large-scale Temporal Graph Learning, built around two core components:
 
 #### Temporal Graph Unified Format (TGUF)
 A binary, flatbuffer-style memory mappable format for graph streams, supporting:
 
-- Dynamic node and edge events, static node features
-- Pre-computed negatives for link prediction
-- Zero-copy tensor reads via memory mapping
-- Out-of-core training and inference
+- Dynamic node and edge events, static node features, pre-computed negatives (for link prediction)
+- Zero-copy tensor reads via memory mapping for out-of-core training and inference
 - Optimized sequential access patterns common in CTDG style methods
 
 #### High-Performance TGN Implementation
@@ -27,9 +31,6 @@ A C++20 Port of [TGN](https://arxiv.org/abs/2006.10637) over pure LibTorch:
 > Our [Python bindings](./python) for TGUF ingestion allow easy conversion of your dataset into TGUF
 
 ### Installation
-
-> \[!Note\]
-> Tested on Linux (Ubuntu 22.04+) and macOS (Apple Silicon)
 
 You should just use the [Dockerfile](./Dockerfile), but if you prefer to install dependencies manually, see below.
 
@@ -54,6 +55,8 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
 ### Usage
+> \[!Note\]
+> Tested on Linux (Ubuntu 22.04+) and macOS (Apple Silicon)
 
 ```sh
 git clone git@github.com:Jacob-Chmura/tgn.cpp.git && cd tgn.cpp
