@@ -8,10 +8,13 @@ build:
   jobs:
     post_install:
       - pip install uv
-      - VIRTUAL_ENV=$READTHEDOCS_VIRTUALENV_PATH uv pip install \
-        -e ./python \
-        mkdocs-material \
-        "mkdocstrings[python]" \
+      - |
+        VIRTUAL_ENV=$READTHEDOCS_VIRTUALENV_PATH
+        CMAKE_ARGS="-DTGN_BUILD_PYTHON=ON"
+        uv pip install
+        -e ./python
+        mkdocs-material
+        "mkdocstrings[python]"
         mkdoxy
 
 mkdocs:
