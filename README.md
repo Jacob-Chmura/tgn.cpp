@@ -30,7 +30,7 @@ A C++20 Port of [TGN](https://arxiv.org/abs/2006.10637) over pure LibTorch:
 - Minimal abstractions, with efficient sampling kernels and data loading
 
 > \[!TIP\]
-> [Python bindings](./python) for TGUF ingestion allow easy conversion of your datasets into TGUF
+> Use the [Python bindings](./python) for easy conversion of your datasets into TGUF
 
 ### Installation
 
