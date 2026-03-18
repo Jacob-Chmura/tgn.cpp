@@ -2,8 +2,8 @@
 
 ## Temporal Graph Learning on Streams that Exceed RAM
 
-![C++20](https://img.shields.io/badge/C++-20-blue)
-![Clang](https://img.shields.io/badge/Compiler-Clang-orange)
+![C++20](https://img.shields.io/badge/C%2B%2B-20?style=flat&labelColor=white&logo=c%2B%2B&logoColor=black)
+![Clang](https://img.shields.io/badge/Compiler-Clang?style=flat&labelColor=white&logo=clang&logoColor=black)
 ![Linux](https://img.shields.io/badge/Linux-FCC624?style=flat&logo=linux&logoColor=black)
 ![macOS](https://img.shields.io/badge/macOS-000000?style=flat&logo=apple&logoColor=white)
 [![Docs](https://img.shields.io/readthedocs/tgm?style=flat&label=Docs&labelColor=white&logo=readthedocs&logoColor=black)](https://tgn.cpp.readthedocs.io/en/latest/?badge=latest)
@@ -12,7 +12,7 @@
 
 </div>
 
-`tgn.cpp` is a systems-first library for large-scale Temporal Graph Learning, built around two core components:
+**tgn.cpp** is a library for large-scale Temporal Graph Learning, built around two components:
 
 #### Temporal Graph Unified Format (TGUF)
 A binary, flatbuffer-style memory mappable format for graph streams, supporting:
@@ -28,11 +28,11 @@ A C++20 Port of [TGN](https://arxiv.org/abs/2006.10637) over pure LibTorch:
 - Minimal abstractions, with efficient sampling kernels and data loading
 
 > \[!TIP\]
-> Our [Python bindings](./python) for TGUF ingestion allow easy conversion of your dataset into TGUF
+> [Python bindings](./python) for TGUF ingestion allow easy conversion of your datasets into TGUF
 
 ### Installation
 
-You should just use the [Dockerfile](./Dockerfile), but if you prefer to install dependencies manually, see below.
+You should just use the [Dockerfile](./Dockerfile), but if you prefer to install dependencies manually:
 
 ##### Linux
 
@@ -59,6 +59,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 > Tested on Linux (Ubuntu 22.04+) and macOS (Apple Silicon)
 
 ```sh
+# Clone the repo
 git clone git@github.com:Jacob-Chmura/tgn.cpp.git && cd tgn.cpp
 
 # See available targets
