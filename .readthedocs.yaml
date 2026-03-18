@@ -5,15 +5,25 @@ build:
   os: "ubuntu-22.04"
   tools:
     python: "3.10"
+  apt_packages:
+    - cmake
   jobs:
+    pre_install:
+      - |
+        sudo apt-get update && sudo apt-get install -y clang libc++-dev libc++abi-dev libomp-18-dev cmake
+
     post_install:
       - pip install uv
       - |
         VIRTUAL_ENV=$READTHEDOCS_VIRTUALENV_PATH \
+        CC=clang-18 \
         CXX=clang++-18 \
-        CMAKE_ARGS="-DTGN_BUILD_PYTHON=ON" \
-        uv pip install -e ./python && \
-        uv pip install mkdocs-material "mkdocstrings[python]" mkdoxy \
+        CMAKE_ARGS="-DTGN_BUILD_PYTHON=ON -DCMAKE_CXX_COMPILER=clang++-18" \
+        uv pip install \
+          -e ./python \
+          mkdocs-material \
+          "mkdocstrings[python]" \
+          mkdoxy
 
 mkdocs:
   configuration: mkdocs.yml
