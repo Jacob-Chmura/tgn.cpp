@@ -1,26 +1,27 @@
 <div align="center">
 
-<h3 style="font-size: 22px">Temporal Graph Learning on Dynamic Graphs that exceed RAM </h3>
+<h3 style="font-size: 28px">Temporal Graph Learning on Graphs that Exceed RAM </h3>
 <a href="https://tgn.cpp.readthedocs.io/en/latest"/><strong style="font-size: 18px;"/>Read Our Docs»</strong></a>
 
 </div>
 
-It is build around two core components:
+**tgn.cpp** is built around two core components:
 
-**1. Temporal Graph Unified Format (TGUF)**: A binary, flatbuffer-style memory mappable format for temporal graph streams, supporting:
+**1. Temporal Graph Unified Format (TGUF)**: A binary, flatbuffer-style memory mappable format for graph streams, supporting:
 
-- Dynamic edge events, static node features, dynamic node labels, negative edges, and datasets splits
+- Dynamic node/edge events, static node features
+- Pre-computed negatives (for link prediction)
 - Zero-copy tensor reads via memory mapping
 - Out-of-core training and inference
 - Optimized sequential access patterns common in CTDG style methods
 
-**2. High-Performance TGN Implementation**: A C++20 Port of [Temporal Graph Networks for Deep Learning on Dynamic Graphs](https://arxiv.org/abs/2006.10637) over pure LibTorch:
+**2. High-Performance TGN Implementation**: A C++20 Port of [TGN](https://arxiv.org/abs/2006.10637) over pure LibTorch:
 
-- Built on top of TGUF storage engine for efficient sampling kernels and data loading
-- Minimal abstractions for predictable performance
+- Built on the TGUF storage engine
+- Minimal abstractions, with efficient sampling kernels and data loading
 
 > \[!TIP\]
-> We expose [Python bindings](./python) for the TGUF ingestion, allowing easy conversion of your dataset into the binary file format.
+> Our [Python bindings](./python) for TGUF ingestion allow easy conversion of your dataset into TGUF
 
 ### Prerequisites
 
