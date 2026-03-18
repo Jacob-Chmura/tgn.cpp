@@ -10,34 +10,20 @@ if ! command -v uv >/dev/null 2>&1; then
     exit 1
 fi
 
-if ! command -v doxygen >/dev/null 2>&1; then
-    echo "doxygen is not installed. Install it first: https://www.doxygen.nl/"
-    exit 1
-fi
-
-if ! command -v doxybook2 >/dev/null 2>&1; then
-    echo "doxybook2 is not installed. Install it first: https://github.com/matusnovak/doxybook2/releases/tag/v1.5.0"
-    exit 1
-fi
-
 cd "$PROJECT_ROOT"
-mkdir -p build/docs
-doxygen Doxyfile
-
-mkdir -p docs/api/cpp
-doxybook2 --input build/docs/xml \
-          --output docs/api/cpp
 
 if [ "$BUILD_MODE" == "serve" ]; then
     uv run \
         --with mkdocs-material \
         --with mkdocstrings[python] \
+        --with mkdoxy \
         --with-editable "$PROJECT_ROOT/python" \
         mkdocs serve
 else
     uv run \
         --with mkdocs-material \
         --with mkdocstrings[python] \
+        --with mkdoxy \
         --with-editable "$PROJECT_ROOT/python" \
         mkdocs build
 fi

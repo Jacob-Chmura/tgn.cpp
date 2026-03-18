@@ -157,12 +157,5 @@ jobs:
         with:
           enable-cache: true
 
-      - name: Install Dependencies
-        run: |
-          sudo apt-get update && sudo apt-get install -y doxygen
-          wget https://github.com/matusnovak/doxybook2/releases/download/v1.5.0/doxybook2-linux-amd64-v1.5.0.zip
-          unzip doxybook2-linux-amd64-v1.5.0.zip -d doxy_dist
-          sudo mv doxybook2 /usr/local/bin/
-
       - name: Run Documentation Build
         run: make docs

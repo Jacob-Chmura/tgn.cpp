@@ -3,7 +3,7 @@ PROJECT_NAME           = "tgn.cpp"
 INPUT                  = include/tgn.h
 RECURSIVE              = NO
 
-# Output Settings (Crucial for Doxybook2)
+# Output Settings
 OUTPUT_DIRECTORY       = build/docs
 GENERATE_XML           = YES
 XML_OUTPUT             = xml
@@ -16,6 +16,20 @@ EXTRACT_ALL            = YES
 EXTRACT_PRIVATE        = NO
 EXTRACT_STATIC         = YES
 
-# Grouping
+# Clean Output (Strictly Classes, Namespaces, Files)
+GENERATE_TODOLIST      = NO
+GENERATE_TESTLIST      = NO
+GENERATE_BUGLIST       = NO
+GENERATE_DEPRECATEDLIST= NO
+SHOW_USED_FILES        = YES
+SHOW_FILES             = YES
+SHOW_NAMESPACES        = YES
+
+# Disable "Modules" (Groups) and "Related Pages"
+GENERATE_GROUP_INDICES = NO
+GENERATE_PAGE_INDICES  = NO
+SHOW_GROUPED_MEMBERS   = NO
+
+# Grouping / Formatting
 MARKDOWN_SUPPORT       = YES
 AUTOLINK_SUPPORT       = YES
