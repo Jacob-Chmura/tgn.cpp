@@ -1,14 +1,14 @@
 <div align="center">
 
-# Temporal Graph Learning on Streams that Exceed RAM
+## Temporal Graph Learning on Streams that Exceed RAM
 <a href="https://tgn.cpp.readthedocs.io/en/latest"/><strong style="font-size: 18px;"/>Read Our Docs»</strong></a>
 
 </div>
 
-## About The Project
+### About The Project
 **tgn.cpp** is a systems-first library for large-scale Temporal Graph Learning, built around two core components:
 
-### Temporal Graph Unified Format (TGUF)
+#### Temporal Graph Unified Format (TGUF)
 A binary, flatbuffer-style memory mappable format for graph streams, supporting:
 
 - Dynamic node and edge events, static node features
@@ -17,7 +17,7 @@ A binary, flatbuffer-style memory mappable format for graph streams, supporting:
 - Out-of-core training and inference
 - Optimized sequential access patterns common in CTDG style methods
 
-### High-Performance TGN Implementation
+#### High-Performance TGN Implementation
 A C++20 Port of [TGN](https://arxiv.org/abs/2006.10637) over pure LibTorch:
 
 - Built on the TGUF storage engine
@@ -26,9 +26,7 @@ A C++20 Port of [TGN](https://arxiv.org/abs/2006.10637) over pure LibTorch:
 > \[!TIP\]
 > Our [Python bindings](./python) for TGUF ingestion allow easy conversion of your dataset into TGUF
 
-## Installation
-
-### Prerequisites
+### Installation
 
 > \[!Note\]
 > Tested on Linux (Ubuntu 22.04+) and macOS (Apple Silicon)
