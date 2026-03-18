@@ -1,6 +1,6 @@
 # Python API Reference
 
-The following classes are high-performance C++ components exposed via `nanobind`.
+Core C++ components exposed as a Python API via `nanobind`.
 
 ::: tguf.TGUFSchema
 

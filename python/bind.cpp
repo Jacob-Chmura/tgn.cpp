@@ -25,11 +25,58 @@ torch::Tensor tensor_view(const nb::ndarray<> &array, torch::ScalarType type) {
       .clone();
 }
 
-NB_MODULE(_core, m) {
-  m.doc() =
-      "Python bindings for tgn.cpp high-performance temporal graph learning.";
-  nb::class_<tgn::TGUFSchema>(m, "TGUFSchema",
-                              "Metadata defining the layout of a TGUF file.")
+NB_MODULE(_tguf, m) {
+  m.doc() = R"doc(
+    High-performance temporal graph learning primitives exposed from C++ via nanobind.
+
+    This module provides core data structures for constructing and writing
+    Temporal Graph Unified Format (TGUF) datasets.
+
+    )doc";
+  nb::class_<tgn::TGUFSchema>(m, "TGUFSchema", R"doc(
+Metadata defining the layout of a TGUF dataset.
+
+This schema specifies dataset capacities, feature dimensions, and optional
+evaluation splits. It is required to initialize a :class:`TGUFBuilder`.
+
+Args:
+    path (str):
+        Path to the `.tguf` binary file.
+
+    edge_capacity (int, optional):
+        Maximum number of edges.
+
+    msg_dim (int, optional):
+        Dimension of edge features.
+
+    label_dim (int, optional):
+        Dimension of label targets.
+
+    node_feat_capacity (int, optional):
+        Maximum number of nodes with static features.
+
+    node_feat_dim (int, optional):
+        Dimension of node features.
+
+    label_capacity (int, optional):
+        Maximum number of label events.
+
+    negatives_start_e_id (int, optional):
+        Edge index where precomputed negatives begin (for evaluation).
+
+    negatives_per_edge (int, optional):
+        Number of negatives per edge.
+
+    val_start (int, optional):
+        Global edge index where validation split begins.
+
+    test_start (int, optional):
+        Global edge index where test split begins.
+
+Notes:
+    If `val_start` or `test_start` are not provided, the dataset is treated
+    as fully training unless overridden during loading.
+)doc")
       .def(
           "__init__",
           [](tgn::TGUFSchema *self, std::string path,
@@ -77,7 +124,35 @@ NB_MODULE(_core, m) {
       .def_rw("val_start", &tgn::TGUFSchema::val_start)
       .def_rw("test_start", &tgn::TGUFSchema::test_start);
 
-  nb::class_<tgn::Batch>(m, "Batch", "Container for temporal edge data.")
+  nb::class_<tgn::Batch>(m, "Batch", R"doc(
+Container for temporal edge data.
+
+This structure represents a batch of temporal interactions and is used
+as input to :meth:`TGUFBuilder.append_edges`.
+
+Args:
+    src (ndarray):
+        Source node IDs of shape [B], dtype=int64.
+
+    dst (ndarray):
+        Destination node IDs of shape [B], dtype=int64.
+
+    time (ndarray):
+        Timestamps of shape [B], dtype=int64.
+
+    msg (ndarray):
+        Edge features of shape [B, msg_dim], dtype=float32.
+
+    neg_dst (ndarray, optional):
+        Negative destination nodes for link prediction of shape
+        [B, negatives_per_edge], dtype=int64.
+
+Notes:
+    All inputs are converted to PyTorch tensors internally.
+
+See also:
+    - :class:`TGUFBuilder`
+)doc")
       .def(
           "__init__",
           [](tgn::Batch *self, nb::ndarray<> src, nb::ndarray<> dst,
@@ -95,9 +170,20 @@ NB_MODULE(_core, m) {
           nb::arg("src"), nb::arg("dst"), nb::arg("time"), nb::arg("msg"),
           nb::arg("neg_dst") = nb::none());
 
-  nb::class_<tgn::TGUFBuilder>(
-      m, "TGUFBuilder",
-      "High-performance writer for creating TGUF datasets on disk.")
+  nb::class_<tgn::TGUFBuilder>(m, "TGUFBuilder",
+                               R"doc(
+High-performance writer for creating TGUF datasets on disk.
+
+Uses an internal buffering strategy to minimize disk I/O.
+
+Args:
+    schema (TGUFSchema):
+        Dataset schema defining layout and capacities.
+
+See also:
+    - :class:`TGUFSchema`
+    - :class:`Batch`
+)doc")
       .def(nb::init<const tgn::TGUFSchema &>(), nb::arg("schema"))
 
       .def(
@@ -106,7 +192,17 @@ NB_MODULE(_core, m) {
             nb::gil_scoped_release release;
             self.append_edges(batch);
           },
-          nb::arg("batch"), "Appends a batch of edges to the persistent store.")
+          nb::arg("batch"),
+          R"doc(
+Append a batch of temporal edges to the dataset.
+
+Args:
+    batch (Batch):
+        A batch of temporal edge data.
+
+Notes:
+    Releases the Python GIL during execution.
+)doc")
 
       .def(
           "append_labels",
@@ -119,7 +215,22 @@ NB_MODULE(_core, m) {
                                tensor_view(target, torch::kFloat));
           },
           nb::arg("n_id"), nb::arg("time"), nb::arg("target"),
-          "Appends a batch of label events to the persistent store.")
+          R"doc(
+Append label events to the dataset.
+
+Args:
+    n_id (ndarray):
+        Node IDs of shape [B], dtype=int64.
+
+    time (ndarray):
+        Event timestamps of shape [B], dtype=int64.
+
+    target (ndarray):
+        Label targets of shape [B, label_dim], dtype=float32.
+
+Notes:
+    Releases the Python GIL during execution.
+)doc")
 
       .def(
           "append_node_feats",
@@ -131,7 +242,19 @@ NB_MODULE(_core, m) {
                                    tensor_view(node_feat, torch::kFloat));
           },
           nb::arg("n_id"), nb::arg("node_feat"),
-          "Appends a batch of static node features to the persistent store.")
+          R"doc(
+Append static node features to the dataset.
+
+Args:
+    n_id (ndarray):
+        Node IDs of shape [N], dtype=int64.
+
+    node_feat (ndarray):
+        Node features of shape [N, node_feat_dim], dtype=float32.
+
+Notes:
+    Releases the Python GIL during execution.
+)doc")
 
       .def(
           "finalize",
@@ -139,6 +262,14 @@ NB_MODULE(_core, m) {
             nb::gil_scoped_release release;
             self.finalize();
           },
-          "Finalizes the .tguf file, writing headers and flushing buffers.");
+          R"doc(
+Finalize the dataset.
+
+Writes headers and flushes all buffered data to disk.
+
+Notes:
+    Must be called after all data has been appended.
+    Releases the Python GIL during execution.
+)doc");
 }
 }  // namespace

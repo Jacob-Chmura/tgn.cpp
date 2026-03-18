@@ -53,3 +53,6 @@ plugins:
             merge_init_into_class: true
             heading_level: 3
             signature_crossrefs: true
+            show_signature: true
+            show_signature_annotations: true
+            annotations_path: "full"
