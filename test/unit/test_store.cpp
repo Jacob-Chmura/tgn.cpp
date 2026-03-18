@@ -9,7 +9,7 @@
 #include <string>
 #include <utility>
 
-#include "tgn.h"
+#include "tguf.h"
 
 struct TestData {
   torch::Tensor src, dst, time, msg;
@@ -27,20 +27,20 @@ struct TestData {
 class TGStoreFixture : public ::testing::Test {
  public:
   virtual ~TGStoreFixture() = default;
-  virtual auto make_store(TestData data) -> std::shared_ptr<tgn::TGStore> = 0;
+  virtual auto make_store(TestData data) -> std::shared_ptr<tguf::TGStore> = 0;
 };
 
 class InMemoryTGStoreFixture : public TGStoreFixture {
  public:
-  auto make_store(TestData data) -> std::shared_ptr<tgn::TGStore> override {
-    return tgn::TGStore::from_memory(tgn::Batch{.src = data.src,
-                                                .dst = data.dst,
-                                                .time = data.time,
-                                                .msg = data.msg,
-                                                .neg_dst = data.neg_dst},
-                                     data.node_feats, data.label_n_id,
-                                     data.label_time, data.label_target,
-                                     data.val_start, data.test_start);
+  auto make_store(TestData data) -> std::shared_ptr<tguf::TGStore> override {
+    return tguf::TGStore::from_memory(tguf::Batch{.src = data.src,
+                                                  .dst = data.dst,
+                                                  .time = data.time,
+                                                  .msg = data.msg,
+                                                  .neg_dst = data.neg_dst},
+                                      data.node_feats, data.label_n_id,
+                                      data.label_time, data.label_target,
+                                      data.val_start, data.test_start);
   }
 };
 
@@ -57,7 +57,7 @@ class TgufTGStoreFixture : public TGStoreFixture {
     }
   }
 
-  auto make_store(TestData data) -> std::shared_ptr<tgn::TGStore> override {
+  auto make_store(TestData data) -> std::shared_ptr<tguf::TGStore> override {
     return make_store_with_opts(std::move(data));
   }
 
@@ -65,8 +65,8 @@ class TgufTGStoreFixture : public TGStoreFixture {
       TestData data,
       std::optional<std::size_t> val_start_override = std::nullopt,
       std::optional<std::size_t> test_start_override = std::nullopt)
-      -> std::shared_ptr<tgn::TGStore> {
-    const tgn::TGUFSchema schema{
+      -> std::shared_ptr<tguf::TGStore> {
+    const tguf::TGUFSchema schema{
         .path = tguf_path_.string(),
         .edge_capacity = static_cast<std::size_t>(data.src.size(0)),
         .label_capacity =
@@ -93,13 +93,13 @@ class TgufTGStoreFixture : public TGStoreFixture {
         .val_start = data.val_start,
         .test_start = data.test_start,
     };
-    tgn::TGUFBuilder builder(schema);
+    tguf::TGUFBuilder builder(schema);
 
-    builder.append_edges(tgn::Batch{.src = data.src,
-                                    .dst = data.dst,
-                                    .time = data.time,
-                                    .msg = data.msg,
-                                    .neg_dst = data.neg_dst});
+    builder.append_edges(tguf::Batch{.src = data.src,
+                                     .dst = data.dst,
+                                     .time = data.time,
+                                     .msg = data.msg,
+                                     .neg_dst = data.neg_dst});
     if (data.label_n_id.has_value()) {
       builder.append_labels(*data.label_n_id, *data.label_time,
                             *data.label_target);
@@ -112,7 +112,7 @@ class TgufTGStoreFixture : public TGStoreFixture {
         val_start_override.has_value() ? val_start_override : data.val_start;
     const auto test_start =
         test_start_override.has_value() ? test_start_override : data.test_start;
-    return tgn::TGStore::from_tguf(tguf_path_, val_start, test_start);
+    return tguf::TGStore::from_tguf(tguf_path_, val_start, test_start);
   }
 
  private:
@@ -185,7 +185,7 @@ TYPED_TEST(TGStoreTest, GetBatchNegStrategyPreComputed) {
   const std::size_t start = 10;
   const std::size_t batch_size = 20;
   const auto batch = store->get_batch(start, batch_size,
-                                      tgn::TGStore::NegStrategy::PreComputed);
+                                      tguf::TGStore::NegStrategy::PreComputed);
 
   ASSERT_EQ(batch.src.size(0), 20);
   ASSERT_TRUE(batch.neg_dst.has_value());
@@ -219,7 +219,7 @@ TYPED_TEST(TGStoreTest, GetBatchNegStrategyPreComputedCustomNegativesStartEID) {
   const std::size_t start = 50;
   const std::size_t batch_size = 50;
   const auto batch = store->get_batch(start, batch_size,
-                                      tgn::TGStore::NegStrategy::PreComputed);
+                                      tguf::TGStore::NegStrategy::PreComputed);
 
   ASSERT_EQ(batch.src.size(0), batch_size);
   ASSERT_TRUE(batch.neg_dst.has_value());
@@ -241,7 +241,7 @@ TYPED_TEST(TGStoreTest, GetBatchNegStrategyPreComputedThrowsIfNull) {
                                 .node_feats = std::nullopt});
 
   // Should throw because strategy is PreComputed but neg_dst is missing
-  EXPECT_THROW(store->get_batch(0, 5, tgn::TGStore::NegStrategy::PreComputed),
+  EXPECT_THROW(store->get_batch(0, 5, tguf::TGStore::NegStrategy::PreComputed),
                c10::Error);
 }
 
@@ -267,13 +267,13 @@ TYPED_TEST(TGStoreTest,
 
   // Retrieve the pre-computed negatives (which start at e_id 5)
   EXPECT_NO_THROW(store->get_batch(negatives_start_e_id, n,
-                                   tgn::TGStore::NegStrategy::PreComputed));
+                                   tguf::TGStore::NegStrategy::PreComputed));
 
   // Should throw because precomputed negatives not available for e_id < 5
-  EXPECT_THROW(store->get_batch(0, 3, tgn::TGStore::NegStrategy::PreComputed),
+  EXPECT_THROW(store->get_batch(0, 3, tguf::TGStore::NegStrategy::PreComputed),
                std::runtime_error);
   // Batches can't cross negatives_start_e_id boundary)
-  EXPECT_THROW(store->get_batch(3, 10, tgn::TGStore::NegStrategy::PreComputed),
+  EXPECT_THROW(store->get_batch(3, 10, tguf::TGStore::NegStrategy::PreComputed),
                std::runtime_error);
 }
 
@@ -285,7 +285,8 @@ TYPED_TEST(TGStoreTest, GetBatchNegStrategyRandom) {
       .msg = torch::zeros({2, 1}),
       .val_start = 2});
 
-  const auto batch = store->get_batch(0, 10, tgn::TGStore::NegStrategy::Random);
+  const auto batch =
+      store->get_batch(0, 10, tguf::TGStore::NegStrategy::Random);
 
   ASSERT_TRUE(batch.neg_dst.has_value());
 
@@ -308,7 +309,7 @@ TYPED_TEST(TGStoreTest, GetBatchNegStrategyRandomThrowsIfTrainEmpty) {
 
   // Note: There might be a use case for factoring out negatives
   // into a more general API (e.g. you want random negatives in validation?)
-  EXPECT_THROW(store->get_batch(0, 5, tgn::TGStore::NegStrategy::Random),
+  EXPECT_THROW(store->get_batch(0, 5, tguf::TGStore::NegStrategy::Random),
                c10::Error);
 }
 
@@ -707,9 +708,9 @@ TYPED_TEST(TGStoreTest, ValidateRejectsInvalidShapes) {
   const auto msg = torch::zeros({n, 4});
   const auto neg_dst = torch::zeros({n, 1}, torch::kLong);
 
-  const auto edges = tgn::Batch{
+  const auto edges = tguf::Batch{
       .src = src, .dst = dst, .time = t, .msg = msg, .neg_dst = neg_dst};
-  EXPECT_THROW(std::ignore = tgn::TGStore::from_memory(edges), c10::Error);
+  EXPECT_THROW(std::ignore = tguf::TGStore::from_memory(edges), c10::Error);
 }
 
 TYPED_TEST(TGStoreTest, ValidateRejectsInvalidNegativesShapes) {
@@ -720,9 +721,9 @@ TYPED_TEST(TGStoreTest, ValidateRejectsInvalidNegativesShapes) {
   const auto msg = torch::zeros({n, 4});
   const auto neg_dst = torch::zeros({n}, torch::kLong);  // Should be [n, m]
 
-  const auto edges = tgn::Batch{
+  const auto edges = tguf::Batch{
       .src = src, .dst = dst, .time = t, .msg = msg, .neg_dst = neg_dst};
-  EXPECT_THROW(std::ignore = tgn::TGStore::from_memory(edges), c10::Error);
+  EXPECT_THROW(std::ignore = tguf::TGStore::from_memory(edges), c10::Error);
 }
 
 TYPED_TEST(TGStoreTest, ValidateRejectsOutOfRangeNegatives) {
@@ -733,9 +734,9 @@ TYPED_TEST(TGStoreTest, ValidateRejectsOutOfRangeNegatives) {
   const auto neg_dst =
       torch::zeros({99}, torch::kLong);  // 99 is out of range [0, 2]
 
-  const auto edges = tgn::Batch{
+  const auto edges = tguf::Batch{
       .src = src, .dst = dst, .time = t, .msg = msg, .neg_dst = neg_dst};
-  EXPECT_THROW(std::ignore = tgn::TGStore::from_memory(edges), c10::Error);
+  EXPECT_THROW(std::ignore = tguf::TGStore::from_memory(edges), c10::Error);
 }
 
 TYPED_TEST(TGStoreTest, ValidateRejectsFloatingPointIDs) {
@@ -745,9 +746,9 @@ TYPED_TEST(TGStoreTest, ValidateRejectsFloatingPointIDs) {
   const auto t = torch::zeros({n}, torch::kLong);
   const auto msg = torch::zeros({n, 4});
 
-  const auto edges = tgn::Batch{
+  const auto edges = tguf::Batch{
       .src = src, .dst = dst, .time = t, .msg = msg, .neg_dst = std::nullopt};
-  EXPECT_THROW(std::ignore = tgn::TGStore::from_memory(edges), c10::Error);
+  EXPECT_THROW(std::ignore = tguf::TGStore::from_memory(edges), c10::Error);
 }
 
 TYPED_TEST(TGStoreTest, ValidateRejectsFloatingPointTimestamps) {
@@ -757,9 +758,9 @@ TYPED_TEST(TGStoreTest, ValidateRejectsFloatingPointTimestamps) {
   const auto t = torch::zeros({n});  // Float instead of long
   const auto msg = torch::zeros({n, 4});
 
-  const auto edges = tgn::Batch{
+  const auto edges = tguf::Batch{
       .src = src, .dst = dst, .time = t, .msg = msg, .neg_dst = std::nullopt};
-  EXPECT_THROW(std::ignore = tgn::TGStore::from_memory(edges), c10::Error);
+  EXPECT_THROW(std::ignore = tguf::TGStore::from_memory(edges), c10::Error);
 }
 
 TEST_F(TgufTGStoreFixture, SplitResolutionUsesHeaderWhenOptsEmpty) {
@@ -804,19 +805,19 @@ TEST_F(TgufTGStoreFixture, SplitResolutionOverrideHeader) {
 }
 
 TEST(TGRange, ValidRange) {
-  const auto split = tgn::TGStore::IndexRange(1, 5);
+  const auto split = tguf::TGStore::IndexRange(1, 5);
   EXPECT_EQ(split.start(), 1);
   EXPECT_EQ(split.end(), 5);
   EXPECT_EQ(split.size(), 4);
 }
 
 TEST(TGRange, ValidEmptyRange) {
-  const auto split = tgn::TGStore::IndexRange();
+  const auto split = tguf::TGStore::IndexRange();
   EXPECT_EQ(split.start(), 0);
   EXPECT_EQ(split.end(), 0);
   EXPECT_EQ(split.size(), 0);
 }
 
 TEST(TGRange, RejectsInvalidRange) {
-  EXPECT_THROW(tgn::TGStore::IndexRange(5, 3), std::out_of_range);
+  EXPECT_THROW(tguf::TGStore::IndexRange(5, 3), std::out_of_range);
 }

@@ -33,16 +33,17 @@ class TGNTest : public ::testing::Test {
   void SetUp() override {
     const std::int64_t n = 10;
     const std::int64_t d = 8;
-    auto edges = tgn::Batch{.src = torch::randint(0, 100, {n}, torch::kLong),
-                            .dst = torch::randint(0, 100, {n}, torch::kLong),
-                            .time = torch::linspace(0, 100, n).to(torch::kLong),
-                            .msg = torch::randn({n, d}),
-                            .neg_dst = std::nullopt};
-    store = tgn::TGStore::from_memory(edges);
+    auto edges =
+        tguf::Batch{.src = torch::randint(0, 100, {n}, torch::kLong),
+                    .dst = torch::randint(0, 100, {n}, torch::kLong),
+                    .time = torch::linspace(0, 100, n).to(torch::kLong),
+                    .msg = torch::randn({n, d}),
+                    .neg_dst = std::nullopt};
+    store = tguf::TGStore::from_memory(edges);
   }
 
   tgn::TGNConfig cfg;
-  std::shared_ptr<tgn::TGStore> store;
+  std::shared_ptr<tguf::TGStore> store;
 };
 
 TEST_F(TGNTest, InitializationAndForwardShape) {
@@ -67,7 +68,7 @@ TEST_F(TGNTest, InitializationAndForwardWithStaticNodeFeatures) {
   node_feats[3] = torch::ones({feat_dim}) * 3.0F;
   node_feats[5] = torch::ones({feat_dim}) * 5.0F;
 
-  const auto feat_store = tgn::TGStore::from_memory(
+  const auto feat_store = tguf::TGStore::from_memory(
       {.src = torch::tensor({1, 2, 3}, torch::kLong),
        .dst = torch::tensor({4, 5, 6}, torch::kLong),
        .time = torch::tensor({10, 20, 30}, torch::kLong),

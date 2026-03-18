@@ -15,6 +15,7 @@
 #include "logging.h"
 #include "sampler.h"
 #include "scatter_ops.h"
+#include "tguf.h"
 
 namespace tgn {
 namespace detail {
@@ -281,7 +282,7 @@ TORCH_MODULE(TGNMemory);
 }  // namespace detail
 
 struct TGNImpl::Impl {
-  Impl(const TGNConfig& cfg, const std::shared_ptr<TGStore>& store)
+  Impl(const TGNConfig& cfg, const std::shared_ptr<tguf::TGStore>& store)
       : cfg_(cfg),
         store_(store),
         nbr_loader_(cfg.num_nbrs, store->node_count()),
@@ -296,7 +297,7 @@ struct TGNImpl::Impl {
   }
 
   const TGNConfig cfg_;
-  std::shared_ptr<TGStore> store_;
+  std::shared_ptr<tguf::TGStore> store_;
   detail::TimeEncoder time_encoder_{nullptr};
   detail::TransformerConv conv_{nullptr};
   detail::TGNMemory memory_{nullptr};
@@ -304,7 +305,8 @@ struct TGNImpl::Impl {
   torch::Tensor assoc_;
 };
 
-TGNImpl::TGNImpl(const TGNConfig& cfg, const std::shared_ptr<TGStore>& store)
+TGNImpl::TGNImpl(const TGNConfig& cfg,
+                 const std::shared_ptr<tguf::TGStore>& store)
     : impl_(std::make_unique<Impl>(cfg, store)) {
   register_module("time_encoder", impl_->time_encoder_);
   register_module("memory", impl_->memory_);

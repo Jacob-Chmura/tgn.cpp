@@ -12,6 +12,7 @@
 
 #include "logging.h"
 #include "tgn.h"
+#include "tguf.h"
 #include "util.h"
 
 namespace {
@@ -59,7 +60,7 @@ auto compute_ndcg(const torch::Tensor& y_pred, const torch::Tensor& y_true,
 }
 
 auto train(tgn::TGN& encoder, NodePredictor& decoder, torch::optim::Adam& opt,
-           const std::shared_ptr<tgn::TGStore>& store) -> void {
+           const std::shared_ptr<tguf::TGStore>& store) -> void {
   auto start_time = std::chrono::steady_clock::now();
   encoder->train();
   decoder->train();
@@ -108,7 +109,7 @@ auto train(tgn::TGN& encoder, NodePredictor& decoder, torch::optim::Adam& opt,
 }
 
 auto eval(tgn::TGN& encoder, NodePredictor& decoder,
-          const std::shared_ptr<tgn::TGStore>& store) -> void {
+          const std::shared_ptr<tguf::TGStore>& store) -> void {
   auto start_time = std::chrono::steady_clock::now();
 
   torch::NoGradGuard no_grad;
@@ -154,7 +155,7 @@ auto main(int argc, char** argv) -> int {
   args = util::parse_args(argc, argv);
   util::log_torch_backend_info();
 
-  const auto store = tgn::TGStore::from_tguf(args.tguf_path);
+  const auto store = tguf::TGStore::from_tguf(args.tguf_path);
   const auto cfg = tgn::TGNConfig{.embedding_dim = args.embedding_dim,
                                   .memory_dim = args.memory_dim,
                                   .time_dim = args.time_dim,

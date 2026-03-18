@@ -146,3 +146,20 @@ jobs:
           docker run --rm \
             -v "$(pwd):/workspace:Z" \
             tgn-dev /bin/bash -c "make test-python"
+
+  build-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install Doxygen
+        run: |
+          sudo apt-get update && sudo apt install doxygen
+
+      - name: Run Documentation Build
+        run: make docs

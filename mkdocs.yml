@@ -1,0 +1,58 @@
+---
+site_name: tgn.cpp Docs
+site_url: https://tgn-cpp.readthedocs.io/en/latest/
+repo_url: https://github.com/Jacob-Chmura/tgn.cpp
+
+nav:
+  - Home: index.md
+  - TGUF Specification: tguf-spec.md
+  - Python Bindings: python-api.md
+  - C++ API:
+      - Classes: tgn.cpp/annotated.md
+      - Files: tgn.cpp/files.md
+      - Namespaces: tgn.cpp/namespaces.md
+      - Members: tgn.cpp/class_members.md
+      - Macros: tgn.cpp/macros.md
+      - Index: tgn.cpp/links.md
+
+theme:
+  name: material
+  palette:
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      accent: lime
+      primary: black
+  features:
+    - content.code.copy
+    - content.code.annotate
+    - navigation.indexes
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+
+plugins:
+  - search
+  - autorefs
+  - mkdoxy:
+      projects:
+        tgn.cpp: # name of project must be alphanumeric + numbers (without spaces)
+          src-dirs: ./include # path to source code (support multiple paths separated by space) => INPUT
+          full-doc: true # if you want to generate full documentation
+          doxy-cfg: # standard doxygen configuration (key: value)
+            FILE_PATTERNS: "*.cpp *.h*" # specify file patterns to filter out
+            RECURSIVE: true # recursive search in source directories
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [python]
+          options:
+            show_source: false
+            docstring_section_style: list
+            show_root_heading: true
+            merge_init_into_class: true
+            heading_level: 3
+            signature_crossrefs: true
+            show_signature: true
+            show_signature_annotations: true
+            annotations_path: "full"

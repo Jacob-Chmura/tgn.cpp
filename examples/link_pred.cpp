@@ -11,6 +11,7 @@
 
 #include "logging.h"
 #include "tgn.h"
+#include "tguf.h"
 #include "util.h"
 
 namespace {
@@ -53,7 +54,7 @@ auto compute_mrr(const torch::Tensor& pred_pos, const torch::Tensor& pred_neg)
 }
 
 auto train(tgn::TGN& encoder, LinkPredictor& decoder, torch::optim::Adam& opt,
-           const std::shared_ptr<tgn::TGStore>& store) -> void {
+           const std::shared_ptr<tguf::TGStore>& store) -> void {
   auto start_time = std::chrono::steady_clock::now();
   encoder->train();
   decoder->train();
@@ -67,7 +68,7 @@ auto train(tgn::TGN& encoder, LinkPredictor& decoder, torch::optim::Adam& opt,
     opt.zero_grad();
 
     const auto batch = store->get_batch(e_id, args.batch_size,
-                                        tgn::TGStore::NegStrategy::Random);
+                                        tguf::TGStore::NegStrategy::Random);
     const auto [z_src, z_dst, z_neg] =
         encoder->forward(batch.src, batch.dst, batch.neg_dst->flatten());
 
@@ -97,7 +98,7 @@ auto train(tgn::TGN& encoder, LinkPredictor& decoder, torch::optim::Adam& opt,
 }
 
 auto eval(tgn::TGN& encoder, LinkPredictor& decoder,
-          const std::shared_ptr<tgn::TGStore>& store) -> void {
+          const std::shared_ptr<tguf::TGStore>& store) -> void {
   auto start_time = std::chrono::steady_clock::now();
 
   torch::NoGradGuard no_grad;
@@ -109,8 +110,8 @@ auto eval(tgn::TGN& encoder, LinkPredictor& decoder,
 
   for (auto e_id = e_range.start(); e_id < e_range.end();
        e_id += args.batch_size) {
-    const auto batch = store->get_batch(e_id, args.batch_size,
-                                        tgn::TGStore::NegStrategy::PreComputed);
+    const auto batch = store->get_batch(
+        e_id, args.batch_size, tguf::TGStore::NegStrategy::PreComputed);
     const auto [z_src, z_dst, z_neg] =
         encoder->forward(batch.src, batch.dst, batch.neg_dst->flatten());
 
@@ -146,7 +147,7 @@ auto main(int argc, char** argv) -> int {
   args = util::parse_args(argc, argv);
   util::log_torch_backend_info();
 
-  const auto store = tgn::TGStore::from_tguf(args.tguf_path);
+  const auto store = tguf::TGStore::from_tguf(args.tguf_path);
   const auto cfg = tgn::TGNConfig{.embedding_dim = args.embedding_dim,
                                   .memory_dim = args.memory_dim,
                                   .time_dim = args.time_dim,

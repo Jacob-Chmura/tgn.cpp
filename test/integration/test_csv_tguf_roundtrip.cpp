@@ -4,7 +4,7 @@
 #include <cstdlib>
 #include <string>
 
-#include "tgn.h"
+#include "tguf.h"
 
 class CSV_TGUF_RoundtripTest : public ::testing::Test {
  protected:
@@ -22,7 +22,7 @@ class CSV_TGUF_RoundtripTest : public ::testing::Test {
 };
 
 TEST_F(CSV_TGUF_RoundtripTest, Verify) {
-  auto store = tgn::TGStore::from_tguf(output_tguf);
+  auto store = tguf::TGStore::from_tguf(output_tguf);
 
   // TODO(kuba): Would be nice to read in expect out from resources
   EXPECT_EQ(store->edge_count(), 3);
@@ -32,7 +32,7 @@ TEST_F(CSV_TGUF_RoundtripTest, Verify) {
   EXPECT_EQ(store->node_feat_dim(), 3);
 
   // Check Edges
-  auto batch = store->get_batch(0, 3, tgn::TGStore::NegStrategy::PreComputed);
+  auto batch = store->get_batch(0, 3, tguf::TGStore::NegStrategy::PreComputed);
 
   EXPECT_EQ(batch.src[0].item<std::int64_t>(), 1);
   EXPECT_EQ(batch.src[1].item<std::int64_t>(), 2);
