@@ -21,8 +21,7 @@ torch::Tensor tensor_view(const nb::ndarray<> &array, torch::ScalarType type) {
     shape.push_back(array.shape(i));
   }
   return torch::from_blob(array.data(), shape,
-                          torch::TensorOptions().dtype(type))
-      .clone();
+                          torch::TensorOptions().dtype(type));
 }
 
 NB_MODULE(_tguf_py, m) {
