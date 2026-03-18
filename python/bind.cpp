@@ -9,7 +9,7 @@
 #include <utility>
 #include <vector>
 
-#include "tgn.h"
+#include "tguf.h"
 
 namespace nb = nanobind;
 
@@ -25,7 +25,7 @@ torch::Tensor tensor_view(const nb::ndarray<> &array, torch::ScalarType type) {
       .clone();
 }
 
-NB_MODULE(_tguf, m) {
+NB_MODULE(_tguf_py, m) {
   m.doc() = R"doc(
     High-performance temporal graph learning primitives exposed from C++ via nanobind.
 
@@ -33,7 +33,7 @@ NB_MODULE(_tguf, m) {
     Temporal Graph Unified Format (TGUF) datasets.
 
     )doc";
-  nb::class_<tgn::TGUFSchema>(m, "TGUFSchema", R"doc(
+  nb::class_<tguf::TGUFSchema>(m, "TGUFSchema", R"doc(
 Metadata defining the layout of a TGUF dataset.
 
 This schema specifies dataset capacities, feature dimensions, and optional
@@ -79,7 +79,7 @@ Notes:
 )doc")
       .def(
           "__init__",
-          [](tgn::TGUFSchema *self, std::string path,
+          [](tguf::TGUFSchema *self, std::string path,
              std::optional<std::size_t> edge_capacity,
              std::optional<std::size_t> msg_dim,
              std::optional<std::size_t> label_dim,
@@ -90,7 +90,7 @@ Notes:
              std::optional<std::size_t> negatives_per_edge,
              std::optional<std::size_t> val_start,
              std::optional<std::size_t> test_start) {
-            new (self) tgn::TGUFSchema();
+            new (self) tguf::TGUFSchema();
             self->path = std::move(path);
             self->edge_capacity = edge_capacity.value_or(0);
             self->msg_dim = msg_dim.value_or(0);
@@ -112,19 +112,19 @@ Notes:
           nb::arg("negatives_per_edge") = nb::none(),
           nb::arg("val_start") = nb::none(), nb::arg("test_start") = nb::none())
 
-      .def_rw("path", &tgn::TGUFSchema::path)
-      .def_rw("edge_capacity", &tgn::TGUFSchema::edge_capacity)
-      .def_rw("msg_dim", &tgn::TGUFSchema::msg_dim)
-      .def_rw("label_dim", &tgn::TGUFSchema::label_dim)
-      .def_rw("node_feat_capacity", &tgn::TGUFSchema::node_feat_capacity)
-      .def_rw("node_feat_dim", &tgn::TGUFSchema::node_feat_dim)
-      .def_rw("label_capacity", &tgn::TGUFSchema::label_capacity)
-      .def_rw("negatives_start_e_id", &tgn::TGUFSchema::negatives_start_e_id)
-      .def_rw("negatives_per_edge", &tgn::TGUFSchema::negatives_per_edge)
-      .def_rw("val_start", &tgn::TGUFSchema::val_start)
-      .def_rw("test_start", &tgn::TGUFSchema::test_start);
+      .def_rw("path", &tguf::TGUFSchema::path)
+      .def_rw("edge_capacity", &tguf::TGUFSchema::edge_capacity)
+      .def_rw("msg_dim", &tguf::TGUFSchema::msg_dim)
+      .def_rw("label_dim", &tguf::TGUFSchema::label_dim)
+      .def_rw("node_feat_capacity", &tguf::TGUFSchema::node_feat_capacity)
+      .def_rw("node_feat_dim", &tguf::TGUFSchema::node_feat_dim)
+      .def_rw("label_capacity", &tguf::TGUFSchema::label_capacity)
+      .def_rw("negatives_start_e_id", &tguf::TGUFSchema::negatives_start_e_id)
+      .def_rw("negatives_per_edge", &tguf::TGUFSchema::negatives_per_edge)
+      .def_rw("val_start", &tguf::TGUFSchema::val_start)
+      .def_rw("test_start", &tguf::TGUFSchema::test_start);
 
-  nb::class_<tgn::Batch>(m, "Batch", R"doc(
+  nb::class_<tguf::Batch>(m, "Batch", R"doc(
 Container for temporal edge data.
 
 This structure represents a batch of temporal interactions and is used
@@ -155,23 +155,23 @@ See also:
 )doc")
       .def(
           "__init__",
-          [](tgn::Batch *self, nb::ndarray<> src, nb::ndarray<> dst,
+          [](tguf::Batch *self, nb::ndarray<> src, nb::ndarray<> dst,
              nb::ndarray<> time, nb::ndarray<> msg,
              std::optional<nb::ndarray<>> neg_dst) {
             new (self)
-                tgn::Batch{.src = tensor_view(src, torch::kLong),
-                           .dst = tensor_view(dst, torch::kLong),
-                           .time = tensor_view(time, torch::kLong),
-                           .msg = tensor_view(msg, torch::kFloat),
-                           .neg_dst = neg_dst ? std::make_optional(tensor_view(
-                                                    *neg_dst, torch::kLong))
-                                              : std::nullopt};
+                tguf::Batch{.src = tensor_view(src, torch::kLong),
+                            .dst = tensor_view(dst, torch::kLong),
+                            .time = tensor_view(time, torch::kLong),
+                            .msg = tensor_view(msg, torch::kFloat),
+                            .neg_dst = neg_dst ? std::make_optional(tensor_view(
+                                                     *neg_dst, torch::kLong))
+                                               : std::nullopt};
           },
           nb::arg("src"), nb::arg("dst"), nb::arg("time"), nb::arg("msg"),
           nb::arg("neg_dst") = nb::none());
 
-  nb::class_<tgn::TGUFBuilder>(m, "TGUFBuilder",
-                               R"doc(
+  nb::class_<tguf::TGUFBuilder>(m, "TGUFBuilder",
+                                R"doc(
 High-performance writer for creating TGUF datasets on disk.
 
 Uses an internal buffering strategy to minimize disk I/O.
@@ -184,11 +184,11 @@ See also:
     - :class:`TGUFSchema`
     - :class:`Batch`
 )doc")
-      .def(nb::init<const tgn::TGUFSchema &>(), nb::arg("schema"))
+      .def(nb::init<const tguf::TGUFSchema &>(), nb::arg("schema"))
 
       .def(
           "append_edges",
-          [](const tgn::TGUFBuilder &self, const tgn::Batch &batch) {
+          [](const tguf::TGUFBuilder &self, const tguf::Batch &batch) {
             nb::gil_scoped_release release;
             self.append_edges(batch);
           },
@@ -206,7 +206,7 @@ Notes:
 
       .def(
           "append_labels",
-          [](const tgn::TGUFBuilder &self, nb::ndarray<> n_id,
+          [](const tguf::TGUFBuilder &self, nb::ndarray<> n_id,
              nb::ndarray<> time, nb::ndarray<> target) {
             nb::gil_scoped_release release;
 
@@ -234,7 +234,7 @@ Notes:
 
       .def(
           "append_node_feats",
-          [](const tgn::TGUFBuilder &self, nb::ndarray<> n_id,
+          [](const tguf::TGUFBuilder &self, nb::ndarray<> n_id,
              nb::ndarray<> node_feat) {
             nb::gil_scoped_release release;
 
@@ -258,7 +258,7 @@ Notes:
 
       .def(
           "finalize",
-          [](tgn::TGUFBuilder &self) {
+          [](tguf::TGUFBuilder &self) {
             nb::gil_scoped_release release;
             self.finalize();
           },

@@ -7,7 +7,6 @@
 #include <random>
 #include <string>
 
-#include "tgn.h"
 #include "tguf.h"
 
 class TGUFBuilderTest : public ::testing::Test {
@@ -21,16 +20,16 @@ class TGUFBuilderTest : public ::testing::Test {
     }
   }
 
-  auto read_header() -> tgn::TGUFHeader {
-    tgn::TGUFHeader h;
+  auto read_header() -> tguf::TGUFHeader {
+    tguf::TGUFHeader h;
     std::ifstream is(tguf_path_, std::ios::binary);
-    is.read(reinterpret_cast<char*>(&h), sizeof(tgn::TGUFHeader));
+    is.read(reinterpret_cast<char*>(&h), sizeof(tguf::TGUFHeader));
     return h;
   }
 };
 
 TEST_F(TGUFBuilderTest, PhysicalLayoutAndAlignment) {
-  const tgn::TGUFSchema schema{
+  const tguf::TGUFSchema schema{
       .path = tguf_path_,
       .edge_capacity = 100,
       .label_capacity = 50,
@@ -43,18 +42,18 @@ TEST_F(TGUFBuilderTest, PhysicalLayoutAndAlignment) {
       .val_start = 70,
       .test_start = 85,
   };
-  tgn::TGUFBuilder builder(schema);
+  tguf::TGUFBuilder builder(schema);
   builder.finalize();
 
   auto h = read_header();
-  EXPECT_EQ(h.magic, tgn::TGUF_MAGIC);
+  EXPECT_EQ(h.magic, tguf::TGUF_MAGIC);
   EXPECT_EQ(h.msg_dim, schema.msg_dim);
   EXPECT_EQ(h.negatives_start_e_id, schema.negatives_start_e_id);
   EXPECT_EQ(h.negatives_per_edge, schema.negatives_per_edge);
   EXPECT_EQ(h.val_start, schema.val_start);
   EXPECT_EQ(h.test_start, schema.test_start);
 
-  auto is_aligned = [](uint64_t off) { return off % tgn::TGUF_PAGE == 0; };
+  auto is_aligned = [](uint64_t off) { return off % tguf::TGUF_PAGE == 0; };
 
   EXPECT_TRUE(is_aligned(h.src_offset));
   EXPECT_TRUE(is_aligned(h.msg_offset));
@@ -77,7 +76,7 @@ TEST_F(TGUFBuilderTest, PhysicalLayoutAndAlignment) {
 }
 
 TEST_F(TGUFBuilderTest, AppendEdges) {
-  const tgn::TGUFSchema schema{
+  const tguf::TGUFSchema schema{
       .path = tguf_path_,
       .edge_capacity = 2,
       .label_capacity = 0,
@@ -88,9 +87,9 @@ TEST_F(TGUFBuilderTest, AppendEdges) {
       .negatives_start_e_id = 0,
       .negatives_per_edge = 0,
   };
-  tgn::TGUFBuilder builder(schema);
+  tguf::TGUFBuilder builder(schema);
 
-  auto batch = tgn::Batch{
+  auto batch = tguf::Batch{
       .src = torch::tensor({1, 2}, torch::kLong),
       .dst = torch::tensor({3, 4}, torch::kLong),
       .time = torch::tensor({10, 11}, torch::kLong),
@@ -101,8 +100,8 @@ TEST_F(TGUFBuilderTest, AppendEdges) {
   builder.finalize();
 
   const auto h = read_header();
-  EXPECT_EQ(h.magic, tgn::TGUF_MAGIC);
-  EXPECT_EQ(h.version, tgn::TGUF_VERSION);
+  EXPECT_EQ(h.magic, tguf::TGUF_MAGIC);
+  EXPECT_EQ(h.version, tguf::TGUF_VERSION);
   EXPECT_EQ(h.num_edges, schema.edge_capacity);
   EXPECT_EQ(h.num_labels, schema.label_capacity);
   EXPECT_EQ(h.msg_dim, schema.msg_dim);
@@ -113,7 +112,7 @@ TEST_F(TGUFBuilderTest, AppendEdges) {
 }
 
 TEST_F(TGUFBuilderTest, AppendEdgesNegatives) {
-  const tgn::TGUFSchema schema{
+  const tguf::TGUFSchema schema{
       .path = tguf_path_,
       .edge_capacity = 4,
       .label_capacity = 0,
@@ -124,10 +123,10 @@ TEST_F(TGUFBuilderTest, AppendEdgesNegatives) {
       .negatives_start_e_id = 1,
       .negatives_per_edge = 1,
   };
-  tgn::TGUFBuilder builder(schema);
+  tguf::TGUFBuilder builder(schema);
 
   // First batch negatives should be skipped (since negatives_start_e_id = 1)
-  auto batch = tgn::Batch{
+  auto batch = tguf::Batch{
       .src = torch::tensor({1, 2}, torch::kLong),
       .dst = torch::tensor({3, 4}, torch::kLong),
       .time = torch::tensor({10, 11}, torch::kLong),
@@ -136,7 +135,7 @@ TEST_F(TGUFBuilderTest, AppendEdgesNegatives) {
   builder.append_edges(batch);
 
   // Second batch should be written
-  batch = tgn::Batch{
+  batch = tguf::Batch{
       .src = torch::tensor({1, 2}, torch::kLong),
       .dst = torch::tensor({3, 4}, torch::kLong),
       .time = torch::tensor({10, 11}, torch::kLong),
@@ -146,8 +145,8 @@ TEST_F(TGUFBuilderTest, AppendEdgesNegatives) {
   builder.finalize();
 
   const auto h = read_header();
-  EXPECT_EQ(h.magic, tgn::TGUF_MAGIC);
-  EXPECT_EQ(h.version, tgn::TGUF_VERSION);
+  EXPECT_EQ(h.magic, tguf::TGUF_MAGIC);
+  EXPECT_EQ(h.version, tguf::TGUF_VERSION);
   EXPECT_EQ(h.num_edges, schema.edge_capacity);
   EXPECT_EQ(h.num_labels, schema.label_capacity);
   EXPECT_EQ(h.msg_dim, schema.msg_dim);
@@ -159,7 +158,7 @@ TEST_F(TGUFBuilderTest, AppendEdgesNegatives) {
 }
 
 TEST_F(TGUFBuilderTest, AppendLabels) {
-  const tgn::TGUFSchema schema{
+  const tguf::TGUFSchema schema{
       .path = tguf_path_,
       .edge_capacity = 0,
       .label_capacity = 2,
@@ -170,7 +169,7 @@ TEST_F(TGUFBuilderTest, AppendLabels) {
       .negatives_start_e_id = 0,
       .negatives_per_edge = 0,
   };
-  tgn::TGUFBuilder builder(schema);
+  tguf::TGUFBuilder builder(schema);
 
   auto n_id = torch::tensor({100, 200}, torch::kLong);
   auto t = torch::tensor({50, 60}, torch::kLong);
@@ -181,8 +180,8 @@ TEST_F(TGUFBuilderTest, AppendLabels) {
   builder.finalize();
 
   const auto h = read_header();
-  EXPECT_EQ(h.magic, tgn::TGUF_MAGIC);
-  EXPECT_EQ(h.version, tgn::TGUF_VERSION);
+  EXPECT_EQ(h.magic, tguf::TGUF_MAGIC);
+  EXPECT_EQ(h.version, tguf::TGUF_VERSION);
   EXPECT_EQ(h.num_edges, schema.edge_capacity);
   EXPECT_EQ(h.num_labels, schema.label_capacity);
   EXPECT_EQ(h.msg_dim, schema.msg_dim);
@@ -193,7 +192,7 @@ TEST_F(TGUFBuilderTest, AppendLabels) {
 }
 
 TEST_F(TGUFBuilderTest, AppendNodeFeats) {
-  const tgn::TGUFSchema schema{
+  const tguf::TGUFSchema schema{
       .path = tguf_path_,
       .edge_capacity = 0,
       .label_capacity = 0,
@@ -204,7 +203,7 @@ TEST_F(TGUFBuilderTest, AppendNodeFeats) {
       .negatives_start_e_id = 0,
       .negatives_per_edge = 0,
   };
-  tgn::TGUFBuilder builder(schema);
+  tguf::TGUFBuilder builder(schema);
 
   auto n_id = torch::tensor({100, 200}, torch::kLong);
   auto x =
@@ -214,8 +213,8 @@ TEST_F(TGUFBuilderTest, AppendNodeFeats) {
   builder.finalize();
 
   const auto h = read_header();
-  EXPECT_EQ(h.magic, tgn::TGUF_MAGIC);
-  EXPECT_EQ(h.version, tgn::TGUF_VERSION);
+  EXPECT_EQ(h.magic, tguf::TGUF_MAGIC);
+  EXPECT_EQ(h.version, tguf::TGUF_VERSION);
   EXPECT_EQ(h.num_edges, schema.edge_capacity);
   EXPECT_EQ(h.num_labels, schema.label_capacity);
   EXPECT_EQ(h.msg_dim, schema.msg_dim);
@@ -228,7 +227,7 @@ TEST_F(TGUFBuilderTest, AppendNodeFeats) {
 }
 
 TEST_F(TGUFBuilderTest, AppendNodeFeatsContiguousIDFastPath) {
-  const tgn::TGUFSchema schema{
+  const tguf::TGUFSchema schema{
       .path = tguf_path_,
       .edge_capacity = 0,
       .label_capacity = 0,
@@ -239,7 +238,7 @@ TEST_F(TGUFBuilderTest, AppendNodeFeatsContiguousIDFastPath) {
       .negatives_start_e_id = 0,
       .negatives_per_edge = 0,
   };
-  tgn::TGUFBuilder builder(schema);
+  tguf::TGUFBuilder builder(schema);
 
   auto n_id = torch::tensor({199, 200}, torch::kLong);
   auto x =
@@ -249,8 +248,8 @@ TEST_F(TGUFBuilderTest, AppendNodeFeatsContiguousIDFastPath) {
   builder.finalize();
 
   const auto h = read_header();
-  EXPECT_EQ(h.magic, tgn::TGUF_MAGIC);
-  EXPECT_EQ(h.version, tgn::TGUF_VERSION);
+  EXPECT_EQ(h.magic, tguf::TGUF_MAGIC);
+  EXPECT_EQ(h.version, tguf::TGUF_VERSION);
   EXPECT_EQ(h.num_edges, schema.edge_capacity);
   EXPECT_EQ(h.num_labels, schema.label_capacity);
   EXPECT_EQ(h.msg_dim, schema.msg_dim);
@@ -263,7 +262,7 @@ TEST_F(TGUFBuilderTest, AppendNodeFeatsContiguousIDFastPath) {
 }
 
 TEST_F(TGUFBuilderTest, FailureAppendEdgesAfterFinalize) {
-  const tgn::TGUFSchema schema{
+  const tguf::TGUFSchema schema{
       .path = tguf_path_,
       .edge_capacity = 1,
       .label_capacity = 0,
@@ -274,19 +273,19 @@ TEST_F(TGUFBuilderTest, FailureAppendEdgesAfterFinalize) {
       .negatives_start_e_id = 0,
       .negatives_per_edge = 0,
   };
-  tgn::TGUFBuilder builder(schema);
+  tguf::TGUFBuilder builder(schema);
   builder.finalize();
 
-  auto batch = tgn::Batch{.src = torch::zeros({1}, torch::kLong),
-                          .dst = torch::zeros({1}, torch::kLong),
-                          .time = torch::zeros({1}, torch::kLong),
-                          .msg = torch::zeros({1, 1}),
-                          .neg_dst = std::nullopt};
+  auto batch = tguf::Batch{.src = torch::zeros({1}, torch::kLong),
+                           .dst = torch::zeros({1}, torch::kLong),
+                           .time = torch::zeros({1}, torch::kLong),
+                           .msg = torch::zeros({1, 1}),
+                           .neg_dst = std::nullopt};
   EXPECT_THROW(builder.append_edges(batch), std::runtime_error);
 }
 
 TEST_F(TGUFBuilderTest, FailureAppendLabelsAfterFinalize) {
-  const tgn::TGUFSchema schema{
+  const tguf::TGUFSchema schema{
       .path = tguf_path_,
       .edge_capacity = 0,
       .label_capacity = 1,
@@ -297,7 +296,7 @@ TEST_F(TGUFBuilderTest, FailureAppendLabelsAfterFinalize) {
       .negatives_start_e_id = 0,
       .negatives_per_edge = 0,
   };
-  tgn::TGUFBuilder builder(schema);
+  tguf::TGUFBuilder builder(schema);
   builder.finalize();
 
   auto t = torch::zeros({1}, torch::kLong);
@@ -306,7 +305,7 @@ TEST_F(TGUFBuilderTest, FailureAppendLabelsAfterFinalize) {
 }
 
 TEST_F(TGUFBuilderTest, FailureAppendNodeFeatsAfterFinalize) {
-  const tgn::TGUFSchema schema{
+  const tguf::TGUFSchema schema{
       .path = tguf_path_,
       .edge_capacity = 0,
       .label_capacity = 0,
@@ -317,7 +316,7 @@ TEST_F(TGUFBuilderTest, FailureAppendNodeFeatsAfterFinalize) {
       .negatives_start_e_id = 0,
       .negatives_per_edge = 0,
   };
-  tgn::TGUFBuilder builder(schema);
+  tguf::TGUFBuilder builder(schema);
   builder.finalize();
 
   auto n_id = torch::tensor({199, 200}, torch::kLong);
@@ -327,7 +326,7 @@ TEST_F(TGUFBuilderTest, FailureAppendNodeFeatsAfterFinalize) {
 }
 
 TEST_F(TGUFBuilderTest, FailureEdgeExceedCapacity) {
-  const tgn::TGUFSchema schema{
+  const tguf::TGUFSchema schema{
       .path = tguf_path_,
       .edge_capacity = 2,
       .label_capacity = 0,
@@ -338,18 +337,18 @@ TEST_F(TGUFBuilderTest, FailureEdgeExceedCapacity) {
       .negatives_start_e_id = 0,
       .negatives_per_edge = 0,
   };
-  tgn::TGUFBuilder builder(schema);
+  tguf::TGUFBuilder builder(schema);
 
-  auto batch = tgn::Batch{.src = torch::zeros({3}, torch::kLong),  // Size 3
-                          .dst = torch::zeros({3}, torch::kLong),
-                          .time = torch::zeros({3}, torch::kLong),
-                          .msg = torch::zeros({3, 1}),
-                          .neg_dst = std::nullopt};
+  auto batch = tguf::Batch{.src = torch::zeros({3}, torch::kLong),  // Size 3
+                           .dst = torch::zeros({3}, torch::kLong),
+                           .time = torch::zeros({3}, torch::kLong),
+                           .msg = torch::zeros({3, 1}),
+                           .neg_dst = std::nullopt};
   EXPECT_THROW(builder.append_edges(batch), std::runtime_error);
 }
 
 TEST_F(TGUFBuilderTest, FailureLabelExceedCapacity) {
-  const tgn::TGUFSchema schema{
+  const tguf::TGUFSchema schema{
       .path = tguf_path_,
       .edge_capacity = 0,
       .label_capacity = 2,
@@ -360,7 +359,7 @@ TEST_F(TGUFBuilderTest, FailureLabelExceedCapacity) {
       .negatives_start_e_id = 0,
       .negatives_per_edge = 0,
   };
-  tgn::TGUFBuilder builder(schema);
+  tguf::TGUFBuilder builder(schema);
 
   auto n_id = torch::zeros({3}, torch::kLong);  // Size 3
   auto t = torch::zeros({3}, torch::kLong);
@@ -370,7 +369,7 @@ TEST_F(TGUFBuilderTest, FailureLabelExceedCapacity) {
 }
 
 TEST_F(TGUFBuilderTest, FailureAppendNodeFeatsExceedCapacity) {
-  const tgn::TGUFSchema schema{
+  const tguf::TGUFSchema schema{
       .path = tguf_path_,
       .edge_capacity = 0,
       .label_capacity = 0,
@@ -381,7 +380,7 @@ TEST_F(TGUFBuilderTest, FailureAppendNodeFeatsExceedCapacity) {
       .negatives_start_e_id = 0,
       .negatives_per_edge = 0,
   };
-  tgn::TGUFBuilder builder(schema);
+  tguf::TGUFBuilder builder(schema);
   builder.finalize();
 
   auto n_id = torch::tensor({5, 15}, torch::kLong);  // id 15 > 10 = capacity
@@ -391,7 +390,7 @@ TEST_F(TGUFBuilderTest, FailureAppendNodeFeatsExceedCapacity) {
 }
 
 TEST_F(TGUFBuilderTest, FailureEdgeMsgDimMismatch) {
-  const tgn::TGUFSchema schema{
+  const tguf::TGUFSchema schema{
       .path = tguf_path_,
       .edge_capacity = 10,
       .label_capacity = 0,
@@ -402,19 +401,19 @@ TEST_F(TGUFBuilderTest, FailureEdgeMsgDimMismatch) {
       .negatives_start_e_id = 0,
       .negatives_per_edge = 0,
   };
-  tgn::TGUFBuilder builder(schema);
+  tguf::TGUFBuilder builder(schema);
 
-  auto batch = tgn::Batch{.src = torch::zeros({1}, torch::kLong),
-                          .dst = torch::zeros({1}, torch::kLong),
-                          .time = torch::zeros({1}, torch::kLong),
-                          .msg = torch::zeros({1, 64}),  // Got 64
-                          .neg_dst = std::nullopt};
+  auto batch = tguf::Batch{.src = torch::zeros({1}, torch::kLong),
+                           .dst = torch::zeros({1}, torch::kLong),
+                           .time = torch::zeros({1}, torch::kLong),
+                           .msg = torch::zeros({1, 64}),  // Got 64
+                           .neg_dst = std::nullopt};
 
   EXPECT_THROW(builder.append_edges(batch), std::invalid_argument);
 }
 
 TEST_F(TGUFBuilderTest, FailureLabelDimMismatch) {
-  const tgn::TGUFSchema schema{
+  const tguf::TGUFSchema schema{
       .path = tguf_path_,
       .edge_capacity = 0,
       .label_capacity = 10,
@@ -425,7 +424,7 @@ TEST_F(TGUFBuilderTest, FailureLabelDimMismatch) {
       .negatives_start_e_id = 0,
       .negatives_per_edge = 0,
   };
-  tgn::TGUFBuilder builder(schema);
+  tguf::TGUFBuilder builder(schema);
 
   auto n_id = torch::zeros({1}, torch::kLong);
   auto t = torch::zeros({1}, torch::kLong);
@@ -435,7 +434,7 @@ TEST_F(TGUFBuilderTest, FailureLabelDimMismatch) {
 }
 
 TEST_F(TGUFBuilderTest, FailureAppendNodeFeatsDimMismatch) {
-  const tgn::TGUFSchema schema{
+  const tguf::TGUFSchema schema{
       .path = tguf_path_,
       .edge_capacity = 0,
       .label_capacity = 0,
@@ -446,7 +445,7 @@ TEST_F(TGUFBuilderTest, FailureAppendNodeFeatsDimMismatch) {
       .negatives_start_e_id = 0,
       .negatives_per_edge = 0,
   };
-  tgn::TGUFBuilder builder(schema);
+  tguf::TGUFBuilder builder(schema);
   builder.finalize();
 
   auto n_id = torch::tensor({5, 15}, torch::kLong);  // id 15 > 10 = capacity
@@ -455,7 +454,7 @@ TEST_F(TGUFBuilderTest, FailureAppendNodeFeatsDimMismatch) {
   EXPECT_THROW(builder.append_node_feats(n_id, x), std::runtime_error);
 }
 TEST_F(TGUFBuilderTest, FailureNegDstMissing) {
-  const tgn::TGUFSchema schema{
+  const tguf::TGUFSchema schema{
       .path = tguf_path_,
       .edge_capacity = 10,
       .label_capacity = 0,
@@ -466,19 +465,19 @@ TEST_F(TGUFBuilderTest, FailureNegDstMissing) {
       .negatives_start_e_id = 0,
       .negatives_per_edge = 5,
   };
-  tgn::TGUFBuilder builder(schema);
+  tguf::TGUFBuilder builder(schema);
 
-  auto batch = tgn::Batch{.src = torch::zeros({1}, torch::kLong),
-                          .dst = torch::zeros({1}, torch::kLong),
-                          .time = torch::zeros({1}, torch::kLong),
-                          .msg = torch::zeros({1, 4}),
-                          .neg_dst = std::nullopt};  // Expected neg dst
+  auto batch = tguf::Batch{.src = torch::zeros({1}, torch::kLong),
+                           .dst = torch::zeros({1}, torch::kLong),
+                           .time = torch::zeros({1}, torch::kLong),
+                           .msg = torch::zeros({1, 4}),
+                           .neg_dst = std::nullopt};  // Expected neg dst
 
   EXPECT_THROW(builder.append_edges(batch), std::invalid_argument);
 }
 
 TEST_F(TGUFBuilderTest, FailureNegDstDimMisMatch) {
-  const tgn::TGUFSchema schema{
+  const tguf::TGUFSchema schema{
       .path = tguf_path_,
       .edge_capacity = 10,
       .label_capacity = 0,
@@ -489,13 +488,13 @@ TEST_F(TGUFBuilderTest, FailureNegDstDimMisMatch) {
       .negatives_start_e_id = 0,
       .negatives_per_edge = 5,
   };
-  tgn::TGUFBuilder builder(schema);
+  tguf::TGUFBuilder builder(schema);
 
-  auto batch = tgn::Batch{.src = torch::zeros({1}, torch::kLong),
-                          .dst = torch::zeros({1}, torch::kLong),
-                          .time = torch::zeros({1}, torch::kLong),
-                          .msg = torch::zeros({1, 4}),
-                          .neg_dst = torch::zeros({1, 3})};  // Expected 5, got
+  auto batch = tguf::Batch{.src = torch::zeros({1}, torch::kLong),
+                           .dst = torch::zeros({1}, torch::kLong),
+                           .time = torch::zeros({1}, torch::kLong),
+                           .msg = torch::zeros({1, 4}),
+                           .neg_dst = torch::zeros({1, 3})};  // Expected 5, got
 
   EXPECT_THROW(builder.append_edges(batch), std::invalid_argument);
 }

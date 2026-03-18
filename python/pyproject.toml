@@ -1,7 +1,7 @@
 [project]
-name = "tguf"
+name = "tguf-py"
 version = "0.1.0"
-description = "Python bindings for tgn.cpp TGUFBuilder"
+description = "Python bindings for tgn.cpp TGUF"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = []
@@ -40,6 +40,7 @@ cmake.args = [
 install.components = ["python_bindings"]
 build-dir = "build"
 cmake.source-dir = ".."
+wheel.packages = ["tguf"]
 editable.rebuild = true
 
 [[tool.scikit-build.overrides]]

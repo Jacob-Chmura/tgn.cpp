@@ -14,10 +14,9 @@
 #include <vector>
 
 #include "logging.h"
-#include "tgn.h"
 #include "tguf.h"
 
-namespace tgn {
+namespace tguf {
 namespace detail {
 
 struct TGData {
@@ -577,4 +576,4 @@ class TGStoreImpl final : public TGStore {
   return std::make_shared<detail::TGStoreImpl>(std::move(data));
 }
 
-}  // namespace tgn
+}  // namespace tguf

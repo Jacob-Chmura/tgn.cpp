@@ -8,13 +8,12 @@
 ![macOS](https://img.shields.io/badge/macOS-000000?style=flat&logo=apple&logoColor=white)
 [![Docs](https://img.shields.io/readthedocs/tgn.cpp?style=flat&label=Docs&labelColor=white&logo=readthedocs&logoColor=black)](https://tgn.cpp.readthedocs.io/en/latest/?badge=latest)
 [![Tests](https://img.shields.io/github/actions/workflow/status/Jacob-Chmura/tgn.cpp/ci.yml?label=Tests&style=flat&labelColor=white&logo=github-actions&logoColor=black)](https://github.com/Jacob-Chmura/tgn.cpp/actions/workflows/ci.yml)
-[![Coverage](https://img.shields.io/codecov/c/github/Jacob-Chmura/tgn.cpp?style=flat&label=Coverage&labelColor=white&logo=codecov&logoColor=black)](https://codecov.io/gh/Jacob-Chmura/tgn.cpp)
 
 </div>
 
 **tgn.cpp** is a library for large-scale Temporal Graph Learning, built around two components:
 
-#### Temporal Graph Unified Format (TGUF)
+#### 1. Temporal Graph Unified Format (TGUF)
 
 A binary, flatbuffer-style on-disc format for graph streams, supporting:
 
@@ -22,7 +21,7 @@ A binary, flatbuffer-style on-disc format for graph streams, supporting:
 - Zero-copy tensor reads via memory mapping for out-of-core training and inference
 - Optimized sequential access patterns common in CTDG style methods
 
-#### High-Performance TGN Implementation
+#### 2. High-Performance TGN Implementation
 
 A C++20 Port of [TGN](https://arxiv.org/abs/2006.10637) over pure LibTorch:
 

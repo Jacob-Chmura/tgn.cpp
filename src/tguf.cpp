@@ -12,9 +12,8 @@
 #include <string>
 
 #include "logging.h"
-#include "tgn.h"
 
-namespace tgn {
+namespace tguf {
 
 struct TGUFBuilder::Impl {
   TGUFSchema schema_{};
@@ -397,4 +396,4 @@ auto TGUFBuilder::finalize() -> void {
       impl_->schema_.path, impl_->header_.num_edges, impl_->header_.num_labels,
       impl_->header_.num_nodes);
 }
-}  // namespace tgn
+}  // namespace tguf
