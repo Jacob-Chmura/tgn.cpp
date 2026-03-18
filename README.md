@@ -4,11 +4,10 @@
 
 ![C++20](https://img.shields.io/badge/C++-20-blue)
 ![Clang](https://img.shields.io/badge/Compiler-Clang-orange)
+![Linux](https://img.shields.io/badge/Linux-FCC624?style=flat&logo=linux&logoColor=black)
+![macOS](https://img.shields.io/badge/macOS-000000?style=flat&logo=apple&logoColor=white)
 [![Docs](https://readthedocs.org/projects/tgncpp/badge/?version=latest)](https://tgn.cpp.readthedocs.io/en/latest/)
-[![C++ Release](https://img.shields.io/github/v/release/Jacob-Chmura/tgn.cpp?color=blue)](https://github.com/Jacob-Chmura/tgn.cpp/releases)
-[![PyPI](https://img.shields.io/pypi/v/tgncpp?color=orange)](https://pypi.org/project/tgncpp/)
-[![CI-Linux](https://github.com/Jacob-Chmura/tgn.cpp/actions/workflows/ci.yml/badge.svg?branch=master&event=push&label=Linux%20CI)](https://github.com/Jacob-Chmura/tgn.cpp/actions/workflows/ci.yml)
-[![CI-macOS](https://github.com/Jacob-Chmura/tgn.cpp/actions/workflows/ci.yml/badge.svg?branch=master&event=push&label=macOS%20CI)](https://github.com/Jacob-Chmura/tgn.cpp/actions/workflows/ci.yml)
+[![Tests](https://github.com/Jacob-Chmura/tgn.cpp/actions/workflows/ci.yml/badge.svg?branch=master&event=push&label=macOS%20CI)](https://github.com/Jacob-Chmura/tgn.cpp/actions/workflows/ci.yml)
 
 </div>
 
