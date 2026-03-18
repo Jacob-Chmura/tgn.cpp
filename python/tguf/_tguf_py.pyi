@@ -5,6 +5,8 @@ This module provides core data structures for constructing and writing
 Temporal Graph Unified Format (TGUF) datasets.
 """
 
+import enum
+
 from numpy.typing import NDArray
 
 class TGUFSchema:
@@ -151,6 +153,142 @@ class Batch:
         msg: NDArray,
         neg_dst: NDArray | None = None,
     ) -> None: ...
+    @property
+    def src(self) -> object:
+        """Source node IDs"""
+
+    @property
+    def dst(self) -> object:
+        """Destination node IDs"""
+
+    @property
+    def time(self) -> object:
+        """Timestamps"""
+
+    @property
+    def msg(self) -> object:
+        """Edge Features"""
+
+    @property
+    def neg_dst(self) -> object:
+        """Optional negative destinations for link prediction"""
+
+class NegStrategy(enum.Enum):
+    """Negative sampling strategies for batch retrieval."""
+
+    Random = 1
+    """Samples one random negative node per edge."""
+
+    PreComputed = 2
+    """Uses fixed negatives stored in TGUF (for eval)."""
+
+Random: NegStrategy = NegStrategy.Random
+
+PreComputed: NegStrategy = NegStrategy.PreComputed
+
+class IndexRange:
+    """A contiguous slice of the graph data."""
+
+    def __init__(self, arg0: int, arg1: int, /) -> None: ...
+    @property
+    def start(self) -> int: ...
+    @property
+    def end(self) -> int: ...
+    @property
+    def size(self) -> int: ...
+
+class TGStore:
+    """
+    Abstract interface for temporal graph storage.
+
+    Implementations can be purely in-memory or memory-mapped TGUF files.
+    Use :meth:`from_memory` or :meth:`from_tguf` to instantiate.
+    """
+
+    @staticmethod
+    def from_memory(
+        edges: Batch,
+        node_feats: "at::Tensor" | None = None,
+        label_n_id: "at::Tensor" | None = None,
+        label_time: "at::Tensor" | None = None,
+        label_target: "at::Tensor" | None = None,
+        val_start: int | None = None,
+        test_start: int | None = None,
+    ) -> TGStore:
+        """Create a high-speed, purely RAM-based store."""
+
+    @staticmethod
+    def from_tguf(
+        path: str, val_start: int | None = None, test_start: int | None = None
+    ) -> TGStore:
+        """Create a memory-mapped store from a TGUF file."""
+
+    @property
+    def edge_count(self) -> int: ...
+    @property
+    def node_count(self) -> int: ...
+    @property
+    def msg_dim(self) -> int: ...
+    @property
+    def label_dim(self) -> int: ...
+    @property
+    def node_feat_dim(self) -> int: ...
+    @property
+    def train_split(self) -> IndexRange: ...
+    @property
+    def val_split(self) -> IndexRange: ...
+    @property
+    def test_split(self) -> IndexRange: ...
+    @property
+    def train_label_split(self) -> IndexRange: ...
+    @property
+    def val_label_split(self) -> IndexRange: ...
+    @property
+    def test_label_split(self) -> IndexRange: ...
+    def get_batch(
+        self, start: int, size: int, strategy: NegStrategy = NegStrategy.None_
+    ) -> Batch:
+        """Retrieve a zero-copy slice of the graph interaction data."""
+
+    def gather_timestamps(self, e_id: NDArray) -> object:
+        """Vectorized gather of edge timestamps."""
+
+    def gather_msgs(self, e_id: NDArray) -> object:
+        """Vectorized gather of edge features (messages)."""
+
+    def gather_node_feats(self, n_id: NDArray) -> object:
+        """Vectorized gather of static node features."""
+
+    def get_edge_cutoff_for_label_event(self, l_id: int) -> int:
+        """
+        Retrieves the maximum edge_id that can be safely processed before a label.
+        """
+
+    def get_label_event(self, l_id: int) -> LabelEvent:
+        """Retrieve a specific label event."""
+
+class LabelEvent:
+    """
+    Container for a label event at a single point in time.
+
+    This structure represents node-centric targets (classification or regression)
+    occurring at a specific timestamp in the temporal graph.
+
+    Args:
+        n_id (ndarray):
+            Node IDs associated with the labels, shape [B], dtype=int64.
+        target (ndarray):
+            Label target values, shape [B, label_dim], dtype=float32.
+    """
+
+    def __init__(self, n_id: NDArray, target: NDArray) -> None: ...
+    @property
+    def n_id(self) -> object:
+        """Node IDs associated with this label event."""
+
+    @property
+    def target(self) -> object:
+        """Label target values (features/classes)"""
 
 class TGUFBuilder:
     """
