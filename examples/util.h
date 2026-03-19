@@ -182,6 +182,30 @@ inline auto log_torch_backend_info() -> void {
 #else
   TGN_LOG_WARN("LibTorch Backend | BLAS: Intel MKL not found");
 #endif
+
+  if (torch::cuda::is_available()) {
+    const auto device_count = torch::cuda::device_count();
+    TGN_LOG_INFO("LibTorch Backend | CUDA: Enabled ({} device(s) found)",
+                 device_count);
+
+    for (auto i = 0; i < device_count; ++i) {
+      auto prop = torch::cuda::get_device_properties(i);
+      TGN_LOG_INFO(
+          "LibTorch Backend | Device {}: {} | Compute Capability: {}.{}", i,
+          prop->name, prop->major, prop->minor);
+    }
+
+    if (torch::cuda::cudnn_is_available()) {
+      TGN_LOG_INFO("LibTorch Backend | cuDNN: Enabled (Version: {})",
+                   cudnnGetVersion());
+    } else {
+      TGN_LOG_WARN("LibTorch Backend | cuDNN: Not found or disabled");
+    }
+  } else {
+    TGN_LOG_ERROR(
+        "LibTorch Backend | CUDA: NOT FOUND (Check your LD_LIBRARY_PATH and "
+        "driver)");
+  }
 };
 
 }  // namespace util

@@ -146,9 +146,10 @@ auto main(int argc, char** argv) -> int {
   TGN_LOG_INFO("Running Link Prediction");
   if (torch::cuda::is_available()) {
     TGN_LOG_INFO("CUDA is available!");
-    torch::Device device(torch::kCUDA);
+    const auto device = torch::Device(torch::kCUDA);
   } else {
     TGN_LOG_INFO("CUDA not found!");
+    const auto device = torch::Device(torch::kCPU);
   }
   args = util::parse_args(argc, argv);
   util::log_torch_backend_info();
@@ -160,8 +161,8 @@ auto main(int argc, char** argv) -> int {
                                   .num_heads = args.num_heads,
                                   .num_nbrs = args.num_nbrs,
                                   .dropout = args.dropout};
-  tgn::TGN encoder(cfg, store);
-  LinkPredictor decoder{cfg.embedding_dim};
+  tgn::TGN encoder(cfg, store).to(device);
+  LinkPredictor decoder(cfg.embedding_dim).to(device);
 
   auto params = encoder->parameters();
   auto dec_params = decoder->parameters();
