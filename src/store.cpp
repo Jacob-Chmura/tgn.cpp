@@ -38,10 +38,10 @@ struct TGData {
   auto validate() const -> void {
     const auto n = src.size(0);
 
-    TORCH_CHECK(src.device().is_cpu(), "src must be on CPU");
-    TORCH_CHECK(dst.device().is_cpu(), "dst must be on CPU");
-    TORCH_CHECK(time.device().is_cpu(), "time must be on CPU");
-    TORCH_CHECK(msg.device().is_cpu(), "msg must be on CPU");
+    //TORCH_CHECK(src.device().is_cpu(), "src must be on CPU");
+    //TORCH_CHECK(dst.device().is_cpu(), "dst must be on CPU");
+    //TORCH_CHECK(time.device().is_cpu(), "time must be on CPU");
+    //TORCH_CHECK(msg.device().is_cpu(), "msg must be on CPU");
 
     TORCH_CHECK(src.scalar_type() == torch::kLong, "src must be torch::kLong");
     TORCH_CHECK(dst.scalar_type() == torch::kLong, "dst must be torch::kLong");
@@ -57,7 +57,7 @@ struct TGData {
                 "msg must be [num_edges, d]");
 
     if (neg_dst.has_value()) {
-      TORCH_CHECK(neg_dst->device().is_cpu(), "neg_dst must be on CPU");
+      //TORCH_CHECK(neg_dst->device().is_cpu(), "neg_dst must be on CPU");
       TORCH_CHECK(neg_dst->scalar_type() == torch::kLong,
                   "neg_dst must be torch::Long");
 
@@ -80,7 +80,7 @@ struct TGData {
     }
 
     if (node_feats.has_value()) {
-      TORCH_CHECK(node_feats->device().is_cpu(), "node_feats must be on CPU");
+      //TORCH_CHECK(node_feats->device().is_cpu(), "node_feats must be on CPU");
       TORCH_CHECK(node_feats->scalar_type() == torch::kFloat32,
                   "node_feats must be torch::kFloat32");
     }
@@ -90,10 +90,10 @@ struct TGData {
           label_time.has_value() && label_target.has_value(),
           "If label_n_id is provided, label_time and label_target must exist");
 
-      TORCH_CHECK(label_n_id->device().is_cpu(), "label_n_id must be on CPU");
-      TORCH_CHECK(label_time->device().is_cpu(), "label_time must be on CPU");
-      TORCH_CHECK(label_target->device().is_cpu(),
-                  "label_target must be on CPU");
+      //TORCH_CHECK(label_n_id->device().is_cpu(), "label_n_id must be on CPU");
+      //TORCH_CHECK(label_time->device().is_cpu(), "label_time must be on CPU");
+      //TORCH_CHECK(label_target->device().is_cpu(),
+      //            "label_target must be on CPU");
 
       TORCH_CHECK(label_n_id->scalar_type() == torch::kLong,
                   "label_n_id must be torch::kLong");
@@ -139,8 +139,8 @@ class TGStoreImpl final : public TGStore {
   explicit TGStoreImpl(TGData data)
       : src_(std::move(data.src)),
         dst_(std::move(data.dst)),
-        t_(std::move(data.time)),
-        msg_(std::move(data.msg)),
+        t_(std::move(data.time).to(torch::device(torch::kCUDA))),
+        msg_(std::move(data.msg).to(torch::device(torch::kCUDA))),
         neg_dst_(std::move(data.neg_dst)),
         num_edges_(static_cast<std::size_t>(src_.size(0))),
         num_nodes_(num_edges_ > 0

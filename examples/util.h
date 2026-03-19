@@ -2,6 +2,7 @@
 
 #include <logging.h>
 #include <torch/torch.h>
+#include <ATen/cuda/CUDAContext.h>
 
 #include <chrono>
 #include <cmath>
@@ -14,7 +15,7 @@ struct TGNArgs {
   std::string tguf_path;
 
   std::size_t epochs = 10;
-  std::size_t batch_size = 200;
+  std::size_t batch_size = 600;
   double lr = 1e-4;
 
   std::size_t embedding_dim = 100;
@@ -189,17 +190,10 @@ inline auto log_torch_backend_info() -> void {
                  device_count);
 
     for (auto i = 0; i < device_count; ++i) {
-      auto prop = torch::cuda::get_device_properties(i);
+      auto prop = at::cuda::getDeviceProperties(i);
       TGN_LOG_INFO(
           "LibTorch Backend | Device {}: {} | Compute Capability: {}.{}", i,
           prop->name, prop->major, prop->minor);
-    }
-
-    if (torch::cuda::cudnn_is_available()) {
-      TGN_LOG_INFO("LibTorch Backend | cuDNN: Enabled (Version: {})",
-                   cudnnGetVersion());
-    } else {
-      TGN_LOG_WARN("LibTorch Backend | cuDNN: Not found or disabled");
     }
   } else {
     TGN_LOG_ERROR(

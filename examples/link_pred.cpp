@@ -67,7 +67,7 @@ auto train(tgn::TGN& encoder, LinkPredictor& decoder, torch::optim::Adam& opt,
        e_id += args.batch_size) {
     opt.zero_grad();
 
-    const auto batch = store->get_batch(e_id, args.batch_size,
+    auto batch = store->get_batch(e_id, args.batch_size,
                                         tguf::TGStore::NegStrategy::Random);
     const auto [z_src, z_dst, z_neg] =
         encoder->forward(batch.src, batch.dst, batch.neg_dst->flatten());
@@ -110,7 +110,7 @@ auto eval(tgn::TGN& encoder, LinkPredictor& decoder,
 
   for (auto e_id = e_range.start(); e_id < e_range.end();
        e_id += args.batch_size) {
-    const auto batch = store->get_batch(
+    auto batch = store->get_batch(
         e_id, args.batch_size, tguf::TGStore::NegStrategy::PreComputed);
     const auto [z_src, z_dst, z_neg] =
         encoder->forward(batch.src, batch.dst, batch.neg_dst->flatten());
@@ -144,12 +144,10 @@ auto eval(tgn::TGN& encoder, LinkPredictor& decoder,
 
 auto main(int argc, char** argv) -> int {
   TGN_LOG_INFO("Running Link Prediction");
+  auto device = torch::Device(torch::kCPU);
   if (torch::cuda::is_available()) {
     TGN_LOG_INFO("CUDA is available!");
-    const auto device = torch::Device(torch::kCUDA);
-  } else {
-    TGN_LOG_INFO("CUDA not found!");
-    const auto device = torch::Device(torch::kCPU);
+    device = torch::Device(torch::kCUDA);
   }
   args = util::parse_args(argc, argv);
   util::log_torch_backend_info();
@@ -161,8 +159,10 @@ auto main(int argc, char** argv) -> int {
                                   .num_heads = args.num_heads,
                                   .num_nbrs = args.num_nbrs,
                                   .dropout = args.dropout};
-  tgn::TGN encoder(cfg, store).to(device);
-  LinkPredictor decoder(cfg.embedding_dim).to(device);
+  tgn::TGN encoder(cfg, store);
+  LinkPredictor decoder{cfg.embedding_dim};
+  encoder->to(device);
+  decoder->to(device);
 
   auto params = encoder->parameters();
   auto dec_params = decoder->parameters();

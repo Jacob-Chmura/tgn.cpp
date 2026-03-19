@@ -45,8 +45,8 @@ class TGNImpl : public torch::nn::Module {
   auto reset_state() -> void;
 
   /** @brief Updates internal memory given a batch of true edge events. */
-  auto update_state(const torch::Tensor& src, const torch::Tensor& dst,
-                    const torch::Tensor& time, const torch::Tensor& msg)
+  auto update_state(torch::Tensor& src, torch::Tensor& dst,
+                    torch::Tensor& time, torch::Tensor& msg)
       -> void;
 
   /**

@@ -23,7 +23,7 @@ auto inline prepare_scatter(const torch::Tensor& src,
 auto scatter_max(const torch::Tensor& src, const torch::Tensor& index,
                  std::int64_t dim_size) -> torch::Tensor {
   const auto [shape, idx] = prepare_scatter(src, index, dim_size);
-  auto out = torch::zeros(shape, src.options());
+  auto out = torch::zeros(shape, src.options().device(torch::kCUDA));
   out.scatter_reduce_(0, idx, src, "amax", false);
   return out;
 }
@@ -31,7 +31,7 @@ auto scatter_max(const torch::Tensor& src, const torch::Tensor& index,
 auto scatter_add(const torch::Tensor& src, const torch::Tensor& index,
                  std::int64_t dim_size) -> torch::Tensor {
   const auto [shape, idx] = prepare_scatter(src, index, dim_size);
-  auto out = torch::zeros(shape, src.options());
+  auto out = torch::zeros(shape, src.options().device(torch::kCUDA));
   out.scatter_add_(0, idx, src);
   return out;
 }
@@ -50,7 +50,7 @@ auto scatter_softmax(const torch::Tensor& src, const torch::Tensor& index,
 auto scatter_argmax(const torch::Tensor& src, const torch::Tensor& index,
                     std::int64_t dim_size) -> torch::Tensor {
   auto res = scatter_max(src, index, dim_size);
-  auto out = torch::full({dim_size}, /*fill_value*/ dim_size - 1);
+  auto out = torch::full({dim_size}, /*fill_value*/ dim_size - 1).to(torch::device(torch::kCUDA));
 
   // Find where edge values match the winning max for each node
   const auto mask = src == res.index_select(0, index);

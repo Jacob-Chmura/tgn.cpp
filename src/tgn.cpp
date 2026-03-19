@@ -102,10 +102,10 @@ struct TGNMemoryImpl : torch::nn::Module {
     torch::Tensor src_, dst_, time_, msg_;
 
     MsgStore(std::int64_t num_nodes, std::int64_t msg_dim) {
-      src_ = torch::zeros({num_nodes}, torch::kLong);
-      dst_ = torch::zeros({num_nodes}, torch::kLong);
-      time_ = torch::zeros({num_nodes}, torch::kLong);
-      msg_ = torch::zeros({num_nodes, msg_dim}, torch::kFloat);
+      src_ = torch::zeros({num_nodes}, torch::device(torch::kCUDA).dtype(torch::kLong));
+      dst_ = torch::zeros({num_nodes}, torch::device(torch::kCUDA).dtype(torch::kLong));
+      time_ = torch::zeros({num_nodes}, torch::device(torch::kCUDA).dtype(torch::kLong));
+      msg_ = torch::zeros({num_nodes, msg_dim}, torch::device(torch::kCUDA).dtype(torch::kFloat));
     }
 
     auto reset() -> void {
@@ -137,11 +137,11 @@ struct TGNMemoryImpl : torch::nn::Module {
       : msg_dim_(msg_dim),
         num_nodes_(num_nodes),
         memory_(torch::empty(
-            {num_nodes, static_cast<std::int64_t>(cfg.memory_dim)})),
+            {num_nodes, static_cast<std::int64_t>(cfg.memory_dim)}, torch::device(torch::kCUDA))),
         last_update_(torch::empty({num_nodes},
-                                  torch::TensorOptions().dtype(torch::kLong))),
+                                  torch::device(torch::kCUDA).dtype(torch::kLong))),
         assoc_(torch::empty({num_nodes},
-                            torch::TensorOptions().dtype(torch::kLong))),
+                            torch::device(torch::kCUDA).dtype(torch::kLong))),
         time_encoder_(time_encoder),
         src_store_(num_nodes, msg_dim),
         dst_store_(num_nodes, msg_dim) {
@@ -211,7 +211,7 @@ struct TGNMemoryImpl : torch::nn::Module {
       TGN_LOG_DEBUG(
           "TGNMemory: Switching to Eval. Flushing memory for all {} nodes",
           num_nodes_);
-      update_memory(torch::arange(static_cast<std::int64_t>(num_nodes_)));
+      update_memory(torch::arange(static_cast<std::int64_t>(num_nodes_)).to(torch::kCUDA));
       src_store_.reset();
       dst_store_.reset();
     }
@@ -294,6 +294,11 @@ struct TGNImpl::Impl {
         store->msg_dim() + cfg.time_dim, cfg.num_heads, cfg.dropout);
     memory_ = detail::TGNMemory(cfg, time_encoder_, store->msg_dim(),
                                 store->node_count());
+
+    // TODO
+    time_encoder_->to(torch::Device(torch::kCUDA));
+    conv_->to(torch::Device(torch::kCUDA));
+    memory_->to(torch::Device(torch::kCUDA));
   }
 
   const TGNConfig cfg_;
@@ -324,16 +329,20 @@ auto TGNImpl::reset_state() -> void {
   impl_->nbr_loader_.reset_state();
 }
 
-auto TGNImpl::update_state(const torch::Tensor& src, const torch::Tensor& dst,
-                           const torch::Tensor& time, const torch::Tensor& msg)
+auto TGNImpl::update_state(torch::Tensor& src, torch::Tensor& dst,
+                           torch::Tensor& time, torch::Tensor& msg)
     -> void {
+  src = src.to(torch::device(torch::kCUDA));
+  dst = dst.to(torch::device(torch::kCUDA));
+  time= time.to(torch::device(torch::kCUDA));
+  msg= msg.to(torch::device(torch::kCUDA));
   impl_->memory_->update_state(src, dst, time, msg);
   impl_->nbr_loader_.insert(src, dst);
 }
 
 auto TGNImpl::forward_internal(const std::vector<torch::Tensor>& input_list)
     -> std::vector<torch::Tensor> {
-  const auto all_global_ids = torch::cat(input_list).view({-1});
+  const auto all_global_ids = torch::cat(input_list).view({-1}).to(torch::device(torch::kCUDA));
   const auto [unique_global_ids, _] = at::_unique(all_global_ids);
 
   // Load neighbors and fetch memory

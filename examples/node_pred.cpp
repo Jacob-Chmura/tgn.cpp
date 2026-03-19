@@ -78,7 +78,7 @@ auto train(tgn::TGN& encoder, NodePredictor& decoder, torch::optim::Adam& opt,
     const auto stop_e_id = store->get_edge_cutoff_for_label_event(l_id);
     if (e_id < stop_e_id) {
       const auto num_edges_to_process = stop_e_id - e_id;
-      const auto batch = store->get_batch(e_id, num_edges_to_process);
+      auto batch = store->get_batch(e_id, num_edges_to_process);
 
       encoder->update_state(batch.src, batch.dst, batch.time, batch.msg);
       e_id = stop_e_id;
@@ -127,7 +127,7 @@ auto eval(tgn::TGN& encoder, NodePredictor& decoder,
     const auto stop_e_id = store->get_edge_cutoff_for_label_event(l_id);
     if (e_id < stop_e_id) {
       const auto num_edges_to_process = stop_e_id - e_id;
-      const auto batch = store->get_batch(e_id, num_edges_to_process);
+      auto batch = store->get_batch(e_id, num_edges_to_process);
 
       encoder->update_state(batch.src, batch.dst, batch.time, batch.msg);
       e_id = stop_e_id;
