@@ -144,6 +144,12 @@ auto eval(tgn::TGN& encoder, LinkPredictor& decoder,
 
 auto main(int argc, char** argv) -> int {
   TGN_LOG_INFO("Running Link Prediction");
+  if (torch::cuda::is_available()) {
+    TGN_LOG_INFO("CUDA is available!");
+    torch::Device device(torch::kCUDA);
+  } else {
+    TGN_LOG_INFO("CUDA not found!");
+  }
   args = util::parse_args(argc, argv);
   util::log_torch_backend_info();
 

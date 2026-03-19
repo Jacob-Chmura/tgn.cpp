@@ -29,7 +29,8 @@ include(FetchContent)
 if(APPLE) # Target Apple Silicon (M1/M2/M3)
     set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cpu/libtorch-macos-arm64-2.10.0.zip")
 else() # Target Linux x86_64
-    set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cpu/libtorch-shared-with-deps-2.10.0%2Bcpu.zip")
+    #set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cpu/libtorch-shared-with-deps-2.10.0%2Bcpu.zip")
+    set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu126/libtorch-shared-with-deps-2.10.0%2Bcu126.zip")
 endif()
 
 FetchContent_Declare(
