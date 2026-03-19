@@ -171,16 +171,17 @@ See also:
           },
           nb::arg("src"), nb::arg("dst"), nb::arg("time"), nb::arg("msg"),
           nb::arg("neg_dst") = nb::none())
+
       .def_prop_ro(
-          "src", [](tguf::Batch &b) { return nb::cast(b.src); },
+          "src", [](tguf::Batch &b) { return nb::ndarray<nb::pytorch, std::int64_t, nb::shape<1>>(b.src.data_ptr<std::int64_t>(), {static_cast<std::size_t>(b.src.size(0))}, nb::handle()); },
           "Source node IDs")
       .def_prop_ro(
-          "dst", [](tguf::Batch &b) { return nb::cast(b.dst); },
+          "dst", [](tguf::Batch &b) { return nb::ndarray<nb::pytorch, std::int64_t, nb::shape<1>>(b.dst.data_ptr<std::int64_t>(), {static_cast<std::size_t>(b.dst.size(0))}, nb::handle()); },
           "Destination node IDs")
       .def_prop_ro(
-          "time", [](tguf::Batch &b) { return nb::cast(b.time); }, "Timestamps")
+          "time", [](tguf::Batch &b) { return nb::ndarray<nb::pytorch, std::int64_t, nb::shape<1>>(b.time.data_ptr<std::int64_t>(), {static_cast<std::size_t>(b.time.size(0))}, nb::handle()); },
       .def_prop_ro(
-          "msg", [](tguf::Batch &b) { return nb::cast(b.msg); },
+          "msg", [](tguf::Batch &b) { return nb::ndarray<nb::pytorch, std::int64_t, nb::shape<1>>(b.msg.data_ptr<std::int64_t>(), {static_cast<std::size_t>(b.time.size(0))}, nb::handle()); },
           "Edge Features")
       .def_prop_ro(
           "neg_dst",

@@ -110,8 +110,8 @@ def test_tgstore_from_memory():
     assert store.val_split.size == 3
     assert store.test_split.start == 18
 
-    # TODO(kuba)
-    store.get_batch(0, 5, tguf.NegStrategy.None_)
+    b = store.get_batch(0, 5, tguf.NegStrategy.None_)
+    print(b.src)
     # assert b.src.shape[0] == 5
     # assert torch.is_tensor(b.src) # nanobind-torch returns tensors
 
