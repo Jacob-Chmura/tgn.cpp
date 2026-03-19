@@ -1,6 +1,6 @@
 BUILD_DIR := build
 PROFILE_DIR := build-profile
-CMAKE_FLAGS := -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_CUDA_ARCHITECTURES=native -DCMAKE_CUDA_COMPILER=/usr/local/cuda-12.6/bin/nvcc
+CMAKE_FLAGS := -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCMAKE_CUDA_ARCHITECTURES=80 -DCMAKE_CUDA_COMPILER=/usr/local/cuda-12.6/bin/nvcc
 NPROCS := $(shell nproc 2>/dev/null || sysctl -n hw.logicalcpu)
 EXAMPLE_LINK := $(BUILD_DIR)/examples/tgn_link_pred
 EXAMPLE_NODE := $(BUILD_DIR)/examples/tgn_node_pred
