@@ -35,6 +35,7 @@ NB_MODULE(_tguf_py, m) {
     Temporal Graph Unified Format (TGUF) datasets.
 
     )doc";
+
   nb::class_<tguf::TGUFSchema>(m, "TGUFSchema", R"doc(
 Metadata defining the layout of a TGUF dataset.
 
@@ -245,7 +246,6 @@ Abstract interface for temporal graph storage.
 Implementations can be purely in-memory or memory-mapped TGUF files.
 Use :meth:`from_memory` or :meth:`from_tguf` to instantiate.
 )doc")
-      // Factory methods
       .def_static("from_memory", &tguf::TGStore::from_memory, nb::arg("edges"),
                   nb::arg("node_feats") = nb::none(),
                   nb::arg("label_n_id") = nb::none(),
@@ -289,7 +289,9 @@ Use :meth:`from_memory` or :meth:`from_tguf` to instantiate.
           [](const tguf::TGStore &self, nb::ndarray<> e_id) {
             nb::gil_scoped_release release;
             auto res = self.gather_timestamps(tensor_view(e_id, torch::kLong));
-            return nb::cast(res);
+            return nb::ndarray<nb::pytorch, std::int64_t, nb::shape<1>>(
+                res.data_ptr<std::int64_t>(),
+                {static_cast<std::size_t>(res.size(0))}, nb::handle());
           },
           nb::arg("e_id"), "Vectorized gather of edge timestamps.")
 
@@ -298,7 +300,11 @@ Use :meth:`from_memory` or :meth:`from_tguf` to instantiate.
           [](const tguf::TGStore &self, nb::ndarray<> e_id) {
             nb::gil_scoped_release release;
             auto res = self.gather_msgs(tensor_view(e_id, torch::kLong));
-            return nb::cast(res);
+            return nb::ndarray<nb::pytorch, float, nb::shape<2>>(
+                res.data_ptr<float>(),
+                {static_cast<std::size_t>(res.size(0)),
+                 static_cast<std::size_t>(res.size(1))},
+                nb::handle());
           },
           nb::arg("e_id"), "Vectorized gather of edge features (messages).")
 
@@ -307,7 +313,11 @@ Use :meth:`from_memory` or :meth:`from_tguf` to instantiate.
           [](const tguf::TGStore &self, nb::ndarray<> n_id) {
             nb::gil_scoped_release release;
             auto res = self.gather_node_feats(tensor_view(n_id, torch::kLong));
-            return nb::cast(res);
+            return nb::ndarray<nb::pytorch, float, nb::shape<2>>(
+                res.data_ptr<float>(),
+                {static_cast<std::size_t>(res.size(0)),
+                 static_cast<std::size_t>(res.size(1))},
+                nb::handle());
           },
           nb::arg("n_id"), "Vectorized gather of static node features.")
 
@@ -346,10 +356,20 @@ Args:
           nb::arg("n_id"), nb::arg("target"))
 
       .def_prop_ro(
-          "n_id", [](tguf::LabelEvent &le) { return nb::cast(le.n_id); },
+          "n_id",
+          [](tguf::LabelEvent &le) {
+            return nb::ndarray<nb::pytorch, std::int64_t, nb::shape<1>>(
+                le.n_id.data_ptr<std::int64_t>(),
+                {static_cast<std::size_t>(le.n_id.size(0))}, nb::handle());
+          },
           "Node IDs associated with this label event.")
       .def_prop_ro(
-          "target", [](tguf::LabelEvent &le) { return nb::cast(le.target); },
+          "target",
+          [](tguf::LabelEvent &le) {
+            return nb::ndarray<nb::pytorch, std::int64_t, nb::shape<1>>(
+                le.target.data_ptr<std::int64_t>(),
+                {static_cast<std::size_t>(le.target.size(0))}, nb::handle());
+          },
           "Label target values (features/classes)");
 
   nb::class_<tguf::TGUFBuilder>(m, "TGUFBuilder",

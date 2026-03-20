@@ -252,13 +252,19 @@ class TGStore:
     ) -> Batch:
         """Retrieve a zero-copy slice of the graph interaction data."""
 
-    def gather_timestamps(self, e_id: NDArray) -> object:
+    def gather_timestamps(
+        self, e_id: NDArray
+    ) -> Annotated[NDArray[numpy.int64], dict(shape=(1))]:
         """Vectorized gather of edge timestamps."""
 
-    def gather_msgs(self, e_id: NDArray) -> object:
+    def gather_msgs(
+        self, e_id: NDArray
+    ) -> Annotated[NDArray[numpy.float32], dict(shape=(2))]:
         """Vectorized gather of edge features (messages)."""
 
-    def gather_node_feats(self, n_id: NDArray) -> object:
+    def gather_node_feats(
+        self, n_id: NDArray
+    ) -> Annotated[NDArray[numpy.float32], dict(shape=(2))]:
         """Vectorized gather of static node features."""
 
     def get_edge_cutoff_for_label_event(self, l_id: int) -> int:
@@ -285,11 +291,11 @@ class LabelEvent:
 
     def __init__(self, n_id: NDArray, target: NDArray) -> None: ...
     @property
-    def n_id(self) -> object:
+    def n_id(self) -> Annotated[NDArray[numpy.int64], dict(shape=(1))]:
         """Node IDs associated with this label event."""
 
     @property
-    def target(self) -> object:
+    def target(self) -> Annotated[NDArray[numpy.int64], dict(shape=(1))]:
         """Label target values (features/classes)"""
 
 class TGUFBuilder:

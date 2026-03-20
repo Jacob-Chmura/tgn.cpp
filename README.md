@@ -45,8 +45,8 @@ sudo apt-get install -y clang libc++-dev libc++abi-dev
 ##### MacOS
 
 ```sh
-# OpenMP runtime
-brew install libomp
+# CMake and OpenMP runtime
+brew install cmake libomp
 ```
 
 ##### TGUF Conversion Scripts use [uv](https://docs.astral.sh/uv/):
