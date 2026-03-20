@@ -366,9 +366,11 @@ Args:
       .def_prop_ro(
           "target",
           [](tguf::LabelEvent &le) {
-            return nb::ndarray<nb::pytorch, std::int64_t, nb::shape<1>>(
-                le.target.data_ptr<std::int64_t>(),
-                {static_cast<std::size_t>(le.target.size(0))}, nb::handle());
+            return nb::ndarray<nb::pytorch, float, nb::shape<2>>(
+                le.target.data_ptr<float>(),
+                {static_cast<std::size_t>(le.target.size(0)),
+                 static_cast<std::size_t>(le.target.size(1))},
+                nb::handle());
           },
           "Label target values (features/classes)");
 

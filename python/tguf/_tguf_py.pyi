@@ -295,7 +295,7 @@ class LabelEvent:
         """Node IDs associated with this label event."""
 
     @property
-    def target(self) -> Annotated[NDArray[numpy.int64], dict(shape=(1))]:
+    def target(self) -> Annotated[NDArray[numpy.float32], dict(shape=(2))]:
         """Label target values (features/classes)"""
 
 class TGUFBuilder:
