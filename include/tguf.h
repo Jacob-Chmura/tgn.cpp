@@ -24,7 +24,8 @@ static constexpr std::uint64_t TGUF_MAGIC = 0x54474E42494E3031;
 static constexpr std::uint64_t TGUF_VERSION = 1;
 
 /** @brief Memory/page alignment size in bytes.
- * Ensures all sections in the TGUF file are page-aligned for efficient mmap access.
+ * Ensures all sections in the TGUF file are page-aligned for efficient mmap
+ * access.
  */
 static constexpr std::size_t TGUF_PAGE = 4096;
 
