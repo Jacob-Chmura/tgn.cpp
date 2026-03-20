@@ -11,7 +11,6 @@ from typing import Annotated
 import numpy
 from numpy.typing import NDArray
 
-
 class TGUFSchema:
     """
     Metadata defining the layout of a TGUF dataset.
@@ -58,71 +57,62 @@ class TGUFSchema:
         as fully training unless overridden during loading.
     """
 
-    def __init__(self, path: str, edge_capacity: int | None = None, msg_dim: int | None = None, label_dim: int | None = None, node_feat_capacity: int | None = None, node_feat_dim: int | None = None, label_capacity: int | None = None, negatives_start_e_id: int | None = None, negatives_per_edge: int | None = None, val_start: int | None = None, test_start: int | None = None) -> None: ...
-
+    def __init__(
+        self,
+        path: str,
+        edge_capacity: int | None = None,
+        msg_dim: int | None = None,
+        label_dim: int | None = None,
+        node_feat_capacity: int | None = None,
+        node_feat_dim: int | None = None,
+        label_capacity: int | None = None,
+        negatives_start_e_id: int | None = None,
+        negatives_per_edge: int | None = None,
+        val_start: int | None = None,
+        test_start: int | None = None,
+    ) -> None: ...
     @property
     def path(self) -> str: ...
-
     @path.setter
     def path(self, arg: str, /) -> None: ...
-
     @property
     def edge_capacity(self) -> int: ...
-
     @edge_capacity.setter
     def edge_capacity(self, arg: int, /) -> None: ...
-
     @property
     def msg_dim(self) -> int: ...
-
     @msg_dim.setter
     def msg_dim(self, arg: int, /) -> None: ...
-
     @property
     def label_dim(self) -> int: ...
-
     @label_dim.setter
     def label_dim(self, arg: int, /) -> None: ...
-
     @property
     def node_feat_capacity(self) -> int: ...
-
     @node_feat_capacity.setter
     def node_feat_capacity(self, arg: int, /) -> None: ...
-
     @property
     def node_feat_dim(self) -> int: ...
-
     @node_feat_dim.setter
     def node_feat_dim(self, arg: int, /) -> None: ...
-
     @property
     def label_capacity(self) -> int: ...
-
     @label_capacity.setter
     def label_capacity(self, arg: int, /) -> None: ...
-
     @property
     def negatives_start_e_id(self) -> int: ...
-
     @negatives_start_e_id.setter
     def negatives_start_e_id(self, arg: int, /) -> None: ...
-
     @property
     def negatives_per_edge(self) -> int: ...
-
     @negatives_per_edge.setter
     def negatives_per_edge(self, arg: int, /) -> None: ...
-
     @property
     def val_start(self) -> int | None: ...
-
     @val_start.setter
     def val_start(self, arg: int | None) -> None: ...
-
     @property
     def test_start(self) -> int | None: ...
-
     @test_start.setter
     def test_start(self, arg: int | None) -> None: ...
 
@@ -157,22 +147,28 @@ class Batch:
         - :class:`TGUFBuilder`
     """
 
-    def __init__(self, src: NDArray, dst: NDArray, time: NDArray, msg: NDArray, neg_dst: NDArray | None = None) -> None: ...
-
+    def __init__(
+        self,
+        src: NDArray,
+        dst: NDArray,
+        time: NDArray,
+        msg: NDArray,
+        neg_dst: NDArray | None = None,
+    ) -> None: ...
     @property
     def src(self) -> Annotated[NDArray[numpy.int64], dict(shape=(1))]:
         """Source node IDs"""
 
     @property
-    def dst(self) -> object:
+    def dst(self) -> Annotated[NDArray[numpy.int64], dict(shape=(1))]:
         """Destination node IDs"""
 
     @property
-    def time(self) -> object:
-        """Timestamps"""
+    def time(self) -> Annotated[NDArray[numpy.int64], dict(shape=(1))]:
+        """Edge Timestamps"""
 
     @property
-    def msg(self) -> object:
+    def msg(self) -> Annotated[NDArray[numpy.float32], dict(shape=(2))]:
         """Edge Features"""
 
     @property
@@ -196,13 +192,10 @@ class IndexRange:
     """A contiguous slice of the graph data."""
 
     def __init__(self, arg0: int, arg1: int, /) -> None: ...
-
     @property
     def start(self) -> int: ...
-
     @property
     def end(self) -> int: ...
-
     @property
     def size(self) -> int: ...
 
@@ -215,47 +208,48 @@ class TGStore:
     """
 
     @staticmethod
-    def from_memory(edges: Batch, node_feats: "at::Tensor" | None = None, label_n_id: "at::Tensor" | None = None, label_time: "at::Tensor" | None = None, label_target: "at::Tensor" | None = None, val_start: int | None = None, test_start: int | None = None) -> TGStore:
+    def from_memory(
+        edges: Batch,
+        node_feats: "at::Tensor" | None = None,
+        label_n_id: "at::Tensor" | None = None,
+        label_time: "at::Tensor" | None = None,
+        label_target: "at::Tensor" | None = None,
+        val_start: int | None = None,
+        test_start: int | None = None,
+    ) -> TGStore:
         """Create a high-speed, purely RAM-based store."""
 
     @staticmethod
-    def from_tguf(path: str, val_start: int | None = None, test_start: int | None = None) -> TGStore:
+    def from_tguf(
+        path: str, val_start: int | None = None, test_start: int | None = None
+    ) -> TGStore:
         """Create a memory-mapped store from a TGUF file."""
 
     @property
     def edge_count(self) -> int: ...
-
     @property
     def node_count(self) -> int: ...
-
     @property
     def msg_dim(self) -> int: ...
-
     @property
     def label_dim(self) -> int: ...
-
     @property
     def node_feat_dim(self) -> int: ...
-
     @property
     def train_split(self) -> IndexRange: ...
-
     @property
     def val_split(self) -> IndexRange: ...
-
     @property
     def test_split(self) -> IndexRange: ...
-
     @property
     def train_label_split(self) -> IndexRange: ...
-
     @property
     def val_label_split(self) -> IndexRange: ...
-
     @property
     def test_label_split(self) -> IndexRange: ...
-
-    def get_batch(self, start: int, size: int, strategy: NegStrategy = NegStrategy.None_) -> Batch:
+    def get_batch(
+        self, start: int, size: int, strategy: NegStrategy = NegStrategy.None_
+    ) -> Batch:
         """Retrieve a zero-copy slice of the graph interaction data."""
 
     def gather_timestamps(self, e_id: NDArray) -> object:
@@ -290,7 +284,6 @@ class LabelEvent:
     """
 
     def __init__(self, n_id: NDArray, target: NDArray) -> None: ...
-
     @property
     def n_id(self) -> object:
         """Node IDs associated with this label event."""
@@ -315,7 +308,6 @@ class TGUFBuilder:
     """
 
     def __init__(self, schema: TGUFSchema) -> None: ...
-
     def append_edges(self, batch: Batch) -> None:
         """
         Append a batch of temporal edges to the dataset.

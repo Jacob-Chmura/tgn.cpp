@@ -6,7 +6,7 @@
 ![Clang](https://img.shields.io/badge/Compiler-Clang-orange?style=flat&labelColor=white&logo=clang&logoColor=black)
 ![Linux](https://img.shields.io/badge/Linux-FCC624?style=flat&logo=linux&logoColor=black)
 ![macOS](https://img.shields.io/badge/macOS-000000?style=flat&logo=apple&logoColor=white)
-[![Docs](https://img.shields.io/readthedocs/tgn.cpp?style=flat&label=Docs&labelColor=white&logo=readthedocs&logoColor=black)](https://tgncpp.readthedocs.io/en/latest/?badge=latest)
+[![Docs](https://img.shields.io/readthedocs/tgncpp?style=flat&label=Docs&labelColor=white&logo=readthedocs&logoColor=black)](https://tgncpp.readthedocs.io/en/latest/?badge=latest)
 [![Tests](https://img.shields.io/github/actions/workflow/status/Jacob-Chmura/tgn.cpp/ci.yml?label=Tests&style=flat&labelColor=white&logo=github-actions&logoColor=black)](https://github.com/Jacob-Chmura/tgn.cpp/actions/workflows/ci.yml)
 
 </div>

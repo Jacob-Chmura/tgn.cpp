@@ -111,9 +111,16 @@ def test_tgstore_from_memory():
     assert store.test_split.start == 18
 
     b = store.get_batch(0, 5, tguf.NegStrategy.None_)
-    print(b.src)
-    # assert b.src.shape[0] == 5
-    # assert torch.is_tensor(b.src) # nanobind-torch returns tensors
+    assert b.src.shape[0] == 5
+    assert torch.is_tensor(b.src)
+    assert b.dst.shape[0] == 5
+    assert torch.is_tensor(b.dst)
+    assert b.time.shape[0] == 5
+    assert torch.is_tensor(b.time)
+    assert b.msg.shape[0] == 5
+    assert torch.is_tensor(b.msg)
+
+    assert b.neg_dst is None
 
 
 def test_tgstore_from_tguf(schema):
