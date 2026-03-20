@@ -175,6 +175,29 @@ class Batch:
     def neg_dst(self) -> object:
         """Optional negative destinations for link prediction"""
 
+class LabelEvent:
+    """
+    Container for a label event at a single point in time.
+
+    This structure represents node-centric targets (classification or regression)
+    occurring at a specific timestamp in the temporal graph.
+
+    Args:
+        n_id (ndarray):
+            Node IDs associated with the labels, shape [B], dtype=int64.
+        target (ndarray):
+            Label target values, shape [B, label_dim], dtype=float32.
+    """
+
+    def __init__(self, n_id: NDArray, target: NDArray) -> None: ...
+    @property
+    def n_id(self) -> Annotated[NDArray[numpy.int64], dict(shape=(1))]:
+        """Node IDs associated with this label event."""
+
+    @property
+    def target(self) -> Annotated[NDArray[numpy.float32], dict(shape=(2))]:
+        """Label target values (features/classes)"""
+
 class NegStrategy(enum.Enum):
     """Negative sampling strategies for batch retrieval."""
 
@@ -210,10 +233,10 @@ class TGStore:
     @staticmethod
     def from_memory(
         edges: Batch,
-        node_feats: "at::Tensor" | None = None,
-        label_n_id: "at::Tensor" | None = None,
-        label_time: "at::Tensor" | None = None,
-        label_target: "at::Tensor" | None = None,
+        node_feats: NDArray | None = None,
+        label_n_id: NDArray | None = None,
+        label_time: NDArray | None = None,
+        label_target: NDArray | None = None,
         val_start: int | None = None,
         test_start: int | None = None,
     ) -> TGStore:
@@ -274,29 +297,6 @@ class TGStore:
 
     def get_label_event(self, l_id: int) -> LabelEvent:
         """Retrieve a specific label event."""
-
-class LabelEvent:
-    """
-    Container for a label event at a single point in time.
-
-    This structure represents node-centric targets (classification or regression)
-    occurring at a specific timestamp in the temporal graph.
-
-    Args:
-        n_id (ndarray):
-            Node IDs associated with the labels, shape [B], dtype=int64.
-        target (ndarray):
-            Label target values, shape [B, label_dim], dtype=float32.
-    """
-
-    def __init__(self, n_id: NDArray, target: NDArray) -> None: ...
-    @property
-    def n_id(self) -> Annotated[NDArray[numpy.int64], dict(shape=(1))]:
-        """Node IDs associated with this label event."""
-
-    @property
-    def target(self) -> Annotated[NDArray[numpy.float32], dict(shape=(2))]:
-        """Label target values (features/classes)"""
 
 class TGUFBuilder:
     """

@@ -16,7 +16,8 @@ namespace nb = nanobind;
 
 namespace {
 // This takes any Python object supporting DLPack/Buffer Protocol
-torch::Tensor tensor_view(const nb::ndarray<> &array, torch::ScalarType type) {
+auto tensor_view(const nb::ndarray<> &array, torch::ScalarType type)
+    -> torch::Tensor {
   std::vector<std::int64_t> shape;
   for (auto i = 0; i < array.ndim(); ++i) {
     shape.push_back(array.shape(i));
@@ -25,6 +26,22 @@ torch::Tensor tensor_view(const nb::ndarray<> &array, torch::ScalarType type) {
   return torch::from_blob(array.data(), shape,
                           torch::TensorOptions().dtype(type))
       .clone();
+}
+
+template <typename T, std::size_t NDIM>
+auto transfer_ownership_to_python(torch::Tensor x)
+    -> nb::ndarray<nb::pytorch, T, nb::shape<NDIM>> {
+  auto *holder = new torch::Tensor(std::move(x));
+  std::array<size_t, NDIM> shape;
+  for (auto i = 0; i < NDIM; ++i) {
+    shape[i] = static_cast<std::size_t>(holder->size(i));
+  }
+
+  nb::capsule cleanup(
+      holder, [](void *p) noexcept { delete static_cast<torch::Tensor *>(p); });
+
+  return nb::ndarray<nb::pytorch, T, nb::shape<NDIM>>(
+      holder->data_ptr<T>(), NDIM, shape.data(), cleanup);
 }
 
 NB_MODULE(_tguf_py, m) {
@@ -223,117 +240,6 @@ See also:
           },
           "Optional negative destinations for link prediction");
 
-  nb::enum_<tguf::TGStore::NegStrategy>(
-      m, "NegStrategy", "Negative sampling strategies for batch retrieval.")
-      .value("None_", tguf::TGStore::NegStrategy::None,
-             "No negatives (inference or node-level tasks).")
-      .value("Random", tguf::TGStore::NegStrategy::Random,
-             "Samples one random negative node per edge.")
-      .value("PreComputed", tguf::TGStore::NegStrategy::PreComputed,
-             "Uses fixed negatives stored in TGUF (for eval).")
-      .export_values();
-
-  nb::class_<tguf::TGStore::IndexRange>(m, "IndexRange",
-                                        "A contiguous slice of the graph data.")
-      .def(nb::init<std::size_t, std::size_t>())
-      .def_prop_ro("start", &tguf::TGStore::IndexRange::start)
-      .def_prop_ro("end", &tguf::TGStore::IndexRange::end)
-      .def_prop_ro("size", &tguf::TGStore::IndexRange::size);
-
-  nb::class_<tguf::TGStore>(m, "TGStore", R"doc(
-Abstract interface for temporal graph storage.
-
-Implementations can be purely in-memory or memory-mapped TGUF files.
-Use :meth:`from_memory` or :meth:`from_tguf` to instantiate.
-)doc")
-      .def_static("from_memory", &tguf::TGStore::from_memory, nb::arg("edges"),
-                  nb::arg("node_feats") = nb::none(),
-                  nb::arg("label_n_id") = nb::none(),
-                  nb::arg("label_time") = nb::none(),
-                  nb::arg("label_target") = nb::none(),
-                  nb::arg("val_start") = nb::none(),
-                  nb::arg("test_start") = nb::none(),
-                  "Create a high-speed, purely RAM-based store.")
-
-      .def_static("from_tguf", &tguf::TGStore::from_tguf, nb::arg("path"),
-                  nb::arg("val_start") = nb::none(),
-                  nb::arg("test_start") = nb::none(),
-                  "Create a memory-mapped store from a TGUF file.")
-
-      .def_prop_ro("edge_count", &tguf::TGStore::edge_count)
-      .def_prop_ro("node_count", &tguf::TGStore::node_count)
-      .def_prop_ro("msg_dim", &tguf::TGStore::msg_dim)
-      .def_prop_ro("label_dim", &tguf::TGStore::label_dim)
-      .def_prop_ro("node_feat_dim", &tguf::TGStore::node_feat_dim)
-
-      .def_prop_ro("train_split", &tguf::TGStore::train_split)
-      .def_prop_ro("val_split", &tguf::TGStore::val_split)
-      .def_prop_ro("test_split", &tguf::TGStore::test_split)
-      .def_prop_ro("train_label_split", &tguf::TGStore::train_label_split)
-      .def_prop_ro("val_label_split", &tguf::TGStore::val_label_split)
-      .def_prop_ro("test_label_split", &tguf::TGStore::test_label_split)
-
-      .def(
-          "get_batch",
-          [](const tguf::TGStore &self, std::size_t start, std::size_t size,
-             tguf::TGStore::NegStrategy strategy) {
-            nb::gil_scoped_release release;
-            return self.get_batch(start, size, strategy);
-          },
-          nb::arg("start"), nb::arg("size"),
-          nb::arg("strategy") = tguf::TGStore::NegStrategy::None,
-          "Retrieve a zero-copy slice of the graph interaction data.")
-
-      .def(
-          "gather_timestamps",
-          [](const tguf::TGStore &self, nb::ndarray<> e_id) {
-            nb::gil_scoped_release release;
-            auto res = self.gather_timestamps(tensor_view(e_id, torch::kLong));
-            return nb::ndarray<nb::pytorch, std::int64_t, nb::shape<1>>(
-                res.data_ptr<std::int64_t>(),
-                {static_cast<std::size_t>(res.size(0))}, nb::handle());
-          },
-          nb::arg("e_id"), "Vectorized gather of edge timestamps.")
-
-      .def(
-          "gather_msgs",
-          [](const tguf::TGStore &self, nb::ndarray<> e_id) {
-            nb::gil_scoped_release release;
-            auto res = self.gather_msgs(tensor_view(e_id, torch::kLong));
-            return nb::ndarray<nb::pytorch, float, nb::shape<2>>(
-                res.data_ptr<float>(),
-                {static_cast<std::size_t>(res.size(0)),
-                 static_cast<std::size_t>(res.size(1))},
-                nb::handle());
-          },
-          nb::arg("e_id"), "Vectorized gather of edge features (messages).")
-
-      .def(
-          "gather_node_feats",
-          [](const tguf::TGStore &self, nb::ndarray<> n_id) {
-            nb::gil_scoped_release release;
-            auto res = self.gather_node_feats(tensor_view(n_id, torch::kLong));
-            return nb::ndarray<nb::pytorch, float, nb::shape<2>>(
-                res.data_ptr<float>(),
-                {static_cast<std::size_t>(res.size(0)),
-                 static_cast<std::size_t>(res.size(1))},
-                nb::handle());
-          },
-          nb::arg("n_id"), "Vectorized gather of static node features.")
-
-      .def("get_edge_cutoff_for_label_event",
-           &tguf::TGStore::get_edge_cutoff_for_label_event, nb::arg("l_id"),
-           "Retrieves the maximum edge_id that can be safely processed before "
-           "a label.")
-
-      .def(
-          "get_label_event",
-          [](const tguf::TGStore &self, std::size_t l_id) {
-            nb::gil_scoped_release release;
-            return self.get_label_event(l_id);
-          },
-          nb::arg("l_id"), "Retrieve a specific label event.");
-
   nb::class_<tguf::LabelEvent>(m, "LabelEvent", R"doc(
 Container for a label event at a single point in time.
 
@@ -373,6 +279,131 @@ Args:
                 nb::handle());
           },
           "Label target values (features/classes)");
+
+  nb::enum_<tguf::TGStore::NegStrategy>(
+      m, "NegStrategy", "Negative sampling strategies for batch retrieval.")
+      .value("None_", tguf::TGStore::NegStrategy::None,
+             "No negatives (inference or node-level tasks).")
+      .value("Random", tguf::TGStore::NegStrategy::Random,
+             "Samples one random negative node per edge.")
+      .value("PreComputed", tguf::TGStore::NegStrategy::PreComputed,
+             "Uses fixed negatives stored in TGUF (for eval).")
+      .export_values();
+
+  nb::class_<tguf::TGStore::IndexRange>(m, "IndexRange",
+                                        "A contiguous slice of the graph data.")
+      .def(nb::init<std::size_t, std::size_t>())
+      .def_prop_ro("start", &tguf::TGStore::IndexRange::start)
+      .def_prop_ro("end", &tguf::TGStore::IndexRange::end)
+      .def_prop_ro("size", &tguf::TGStore::IndexRange::size);
+
+  nb::class_<tguf::TGStore>(m, "TGStore", R"doc(
+Abstract interface for temporal graph storage.
+
+Implementations can be purely in-memory or memory-mapped TGUF files.
+Use :meth:`from_memory` or :meth:`from_tguf` to instantiate.
+)doc")
+      .def_static(
+          "from_memory",
+          [](const tguf::Batch &edges, std::optional<nb::ndarray<>> node_feats,
+             std::optional<nb::ndarray<>> label_n_id,
+             std::optional<nb::ndarray<>> label_time,
+             std::optional<nb::ndarray<>> label_target,
+             std::optional<std::size_t> val_start,
+             std::optional<std::size_t> test_start) {
+            return tguf::TGStore::from_memory(
+                edges,
+                node_feats ? std::make_optional(
+                                 tensor_view(*node_feats, torch::kFloat))
+                           : std::nullopt,
+                label_n_id
+                    ? std::make_optional(tensor_view(*label_n_id, torch::kLong))
+                    : std::nullopt,
+                label_time
+                    ? std::make_optional(tensor_view(*label_time, torch::kLong))
+                    : std::nullopt,
+                label_target ? std::make_optional(
+                                   tensor_view(*label_target, torch::kFloat))
+                             : std::nullopt,
+                val_start, test_start);
+          },
+
+          nb::arg("edges"), nb::arg("node_feats") = nb::none(),
+          nb::arg("label_n_id") = nb::none(),
+          nb::arg("label_time") = nb::none(),
+          nb::arg("label_target") = nb::none(),
+          nb::arg("val_start") = nb::none(), nb::arg("test_start") = nb::none(),
+          "Create a high-speed, purely RAM-based store.")
+
+      .def_static("from_tguf", &tguf::TGStore::from_tguf, nb::arg("path"),
+                  nb::arg("val_start") = nb::none(),
+                  nb::arg("test_start") = nb::none(),
+                  "Create a memory-mapped store from a TGUF file.")
+
+      .def_prop_ro("edge_count", &tguf::TGStore::edge_count)
+      .def_prop_ro("node_count", &tguf::TGStore::node_count)
+      .def_prop_ro("msg_dim", &tguf::TGStore::msg_dim)
+      .def_prop_ro("label_dim", &tguf::TGStore::label_dim)
+      .def_prop_ro("node_feat_dim", &tguf::TGStore::node_feat_dim)
+
+      .def_prop_ro("train_split", &tguf::TGStore::train_split)
+      .def_prop_ro("val_split", &tguf::TGStore::val_split)
+      .def_prop_ro("test_split", &tguf::TGStore::test_split)
+      .def_prop_ro("train_label_split", &tguf::TGStore::train_label_split)
+      .def_prop_ro("val_label_split", &tguf::TGStore::val_label_split)
+      .def_prop_ro("test_label_split", &tguf::TGStore::test_label_split)
+
+      .def(
+          "get_batch",
+          [](const tguf::TGStore &self, std::size_t start, std::size_t size,
+             tguf::TGStore::NegStrategy strategy) {
+            nb::gil_scoped_release release;
+            return self.get_batch(start, size, strategy);
+          },
+          nb::arg("start"), nb::arg("size"),
+          nb::arg("strategy") = tguf::TGStore::NegStrategy::None,
+          "Retrieve a zero-copy slice of the graph interaction data.")
+
+      .def(
+          "gather_timestamps",
+          [](const tguf::TGStore &self, nb::ndarray<> e_id) {
+            nb::gil_scoped_release release;
+            auto res = self.gather_timestamps(tensor_view(e_id, torch::kLong));
+            return transfer_ownership_to_python<std::int64_t, 1>(
+                std::move(res));
+          },
+          nb::arg("e_id"), "Vectorized gather of edge timestamps.")
+
+      .def(
+          "gather_msgs",
+          [](const tguf::TGStore &self, nb::ndarray<> e_id) {
+            nb::gil_scoped_release release;
+            auto res = self.gather_msgs(tensor_view(e_id, torch::kLong));
+            return transfer_ownership_to_python<float, 2>(std::move(res));
+          },
+          nb::arg("e_id"), "Vectorized gather of edge features (messages).")
+
+      .def(
+          "gather_node_feats",
+          [](const tguf::TGStore &self, nb::ndarray<> n_id) {
+            nb::gil_scoped_release release;
+            auto res = self.gather_node_feats(tensor_view(n_id, torch::kLong));
+            return transfer_ownership_to_python<float, 2>(std::move(res));
+          },
+          nb::arg("n_id"), "Vectorized gather of static node features.")
+
+      .def("get_edge_cutoff_for_label_event",
+           &tguf::TGStore::get_edge_cutoff_for_label_event, nb::arg("l_id"),
+           "Retrieves the maximum edge_id that can be safely processed before "
+           "a label.")
+
+      .def(
+          "get_label_event",
+          [](const tguf::TGStore &self, std::size_t l_id) {
+            nb::gil_scoped_release release;
+            return self.get_label_event(l_id);
+          },
+          nb::arg("l_id"), "Retrieve a specific label event.");
 
   nb::class_<tguf::TGUFBuilder>(m, "TGUFBuilder",
                                 R"doc(
