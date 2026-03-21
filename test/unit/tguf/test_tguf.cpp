@@ -54,7 +54,9 @@ TEST_F(TGUFBuilderTest, PhysicalLayoutAndAlignment) {
   EXPECT_EQ(h.val_start, schema.val_start);
   EXPECT_EQ(h.test_start, schema.test_start);
 
-  auto is_aligned = [](uint64_t off) { return off % tguf::detail::TGUF_PAGE == 0; };
+  auto is_aligned = [](uint64_t off) {
+    return off % tguf::detail::TGUF_PAGE == 0;
+  };
 
   EXPECT_TRUE(is_aligned(h.src_offset));
   EXPECT_TRUE(is_aligned(h.msg_offset));
