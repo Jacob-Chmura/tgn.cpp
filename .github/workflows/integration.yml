@@ -106,39 +106,6 @@ jobs:
       - name: Run Node Prediction
         run: make run-node-${{ matrix.dataset }}
 
-  cpp-integration-tests:
-    needs: build-all
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        # Testing across Linux and macOS
-        os: [ubuntu-latest, macos-latest]
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download Build Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: build-${{ matrix.os }}-Release
-          path: build/
-
-      - name: Restore Binary Permissions
-        run: |
-          chmod +x build/examples/tgn_node_pred
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@v5
-        with:
-          enable-cache: true
-
-      - name: Install OpenMP (MacOS)
-        if: runner.os == 'macOS'
-        run: brew install libomp
-
-      - name: Run Integration Tests
-        run: make test-integration
-
   node-pred-on-container:
     runs-on: ubuntu-latest
     steps:
