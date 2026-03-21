@@ -8,6 +8,7 @@
 #include <string>
 
 #include "tguf.h"
+#include "tguf_header.h"
 
 class TGUFBuilderTest : public ::testing::Test {
  protected:

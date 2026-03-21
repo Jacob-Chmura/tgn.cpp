@@ -12,6 +12,7 @@
 #include <string>
 
 #include "logging.h"
+#include "tguf_header.h"
 
 namespace tguf {
 
