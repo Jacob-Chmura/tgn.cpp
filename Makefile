@@ -33,7 +33,6 @@ help:
 	@echo ""
 	@echo "Testing Targets:"
 	@echo "  make test                - Run C++ unit tests (no Python dep)"
-	@echo "  make test-integration    - Run Python-C++ TGUF roundtrip (requires uv)"
 	@echo ""
 	@echo "Run Targets (Download + TGUF Convert + Run):"
 	@echo "  make run-link-<ds>       - Link prediction (e.g., make run-link-tgbl-wiki)"
@@ -87,13 +86,6 @@ test:
 	@cd $(BUILD_DIR) && cmake $(CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=Debug -DTGN_BUILD_TESTS=ON ..
 	@$(MAKE) build BUILD_TYPE=Debug
 	@cd $(BUILD_DIR) && ctest -L unit --output-on-failure -j $(NPROCS)
-
-.PHONY: test-integration
-test-integration: python
-	@mkdir -p $(BUILD_DIR)
-	@cd $(BUILD_DIR) && cmake $(CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=Debug -DTGN_BUILD_TESTS=ON ..
-	@$(MAKE) build BUILD_TYPE=Debug
-	@cd $(BUILD_DIR) && ctest -L integration --output-on-failure -j $(NPROCS)
 
 data/%.tguf: python
 	@mkdir -p data

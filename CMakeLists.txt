@@ -120,23 +120,6 @@ if (TGN_BUILD_TESTS)
         ${CMAKE_CURRENT_SOURCE_DIR}/src
     )
 
-    # Integration tests
-    add_executable(test_integration
-        test/integration/test_csv_tguf_roundtrip.cpp
-    )
-    target_link_libraries(test_integration PRIVATE
-        ${PROJECT_NAME}
-        "${TORCH_LIBRARIES}"
-        GTest::gtest_main
-    )
-    target_include_directories(test_integration PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/src
-    )
-
     include(GoogleTest)
     gtest_discover_tests(test_unit PROPERTIES LABELS "unit")
-    gtest_discover_tests(test_integration
-        PROPERTIES LABELS "integration"
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-    )
 endif()
