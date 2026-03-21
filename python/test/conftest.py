@@ -1,9 +1,10 @@
-import pytest
 import tempfile
-import torch
-import numpy as np
 from pathlib import Path
+
+import numpy as np
+import pytest
 import tguf
+import torch
 
 
 @pytest.fixture
@@ -34,8 +35,8 @@ def get_data():
         if lib == "torch":
             dtypes = {"int64": torch.long, "float32": torch.float32}
             return torch.tensor(values, dtype=dtypes[dtype])
-        
+
         dtypes = {"int64": np.int64, "float32": np.float32}
         return np.array(values, dtype=dtypes[dtype])
-    
+
     return _get_data

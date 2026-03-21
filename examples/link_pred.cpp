@@ -24,7 +24,7 @@ struct LinkPredictorImpl : torch::nn::Module {
     w_src_ = register_module("w_src_", torch::nn::Linear(in_dim, in_dim));
     w_dst_ = register_module("w_dst_", torch::nn::Linear(in_dim, in_dim));
     w_final_ = register_module("w_final_", torch::nn::Linear(in_dim, 1));
-    TGN_LOG_INFO("LinkDecoder: Initialized (in_channels={})", in_dim);
+    TGUF_LOG_INFO("LinkDecoder: Initialized (in_channels={})", in_dim);
   }
 
   auto forward(const torch::Tensor& z_src, const torch::Tensor& z_dst)
@@ -143,7 +143,7 @@ auto eval(tgn::TGN& encoder, LinkPredictor& decoder,
 }  // namespace
 
 auto main(int argc, char** argv) -> int {
-  TGN_LOG_INFO("Running Link Prediction");
+  TGUF_LOG_INFO("Running Link Prediction");
   args = util::parse_args(argc, argv);
   util::log_torch_backend_info();
 

@@ -5,10 +5,10 @@
 #include <iostream>
 #include <string_view>
 
-/** @namespace tgn::detail
+/** @namespace tguf::detail
  * @brief Internal implementation details for the logging system.
  */
-namespace tgn::detail {
+namespace tguf::detail {
 
 /// Severity levels for log filtering and output.
 enum class LogLevel {
@@ -51,32 +51,32 @@ inline void log_impl(LogLevel level, std::string_view file, int line,
                            msg);
 }
 
-}  // namespace tgn::detail
+}  // namespace tguf::detail
 
-/// @def TGN_LOG_DEBUG
+/// @def TGUF_LOG_DEBUG
 /// @brief Logs a debug message. Compiled out in release builds.
 #ifndef NDEBUG
-#define TGN_LOG_DEBUG(...)                                                \
-  tgn::detail::log_impl(tgn::detail::LogLevel::DEBUG, __FILE__, __LINE__, \
-                        std::format(__VA_ARGS__))
+#define TGUF_LOG_DEBUG(...)                                                 \
+  tguf::detail::log_impl(tguf::detail::LogLevel::DEBUG, __FILE__, __LINE__, \
+                         std::format(__VA_ARGS__))
 #else
-#define TGN_LOG_DEBUG(...) ((void)0)
+#define TGUF_LOG_DEBUG(...) ((void)0)
 #endif
 
-/// @def TGN_LOG_INFO
+/// @def TGUF_LOG_INFO
 /// @brief Logs an informational message.
-#define TGN_LOG_INFO(msg, ...)                                           \
-  tgn::detail::log_impl(tgn::detail::LogLevel::INFO, __FILE__, __LINE__, \
-                        std::format(msg __VA_OPT__(, ) __VA_ARGS__))
+#define TGUF_LOG_INFO(msg, ...)                                            \
+  tguf::detail::log_impl(tguf::detail::LogLevel::INFO, __FILE__, __LINE__, \
+                         std::format(msg __VA_OPT__(, ) __VA_ARGS__))
 
-/// @def TGN_LOG_WARN
+/// @def TGUF_LOG_WARN
 /// @brief Logs a warning message for non-critical issues.
-#define TGN_LOG_WARN(msg, ...)                                           \
-  tgn::detail::log_impl(tgn::detail::LogLevel::WARN, __FILE__, __LINE__, \
-                        std::format(msg __VA_OPT__(, ) __VA_ARGS__))
+#define TGUF_LOG_WARN(msg, ...)                                            \
+  tguf::detail::log_impl(tguf::detail::LogLevel::WARN, __FILE__, __LINE__, \
+                         std::format(msg __VA_OPT__(, ) __VA_ARGS__))
 
-/// @def TGN_LOG_ERROR
+/// @def TGUF_LOG_ERROR
 /// @brief Logs an error message for critical failures.
-#define TGN_LOG_ERROR(msg, ...)                                           \
-  tgn::detail::log_impl(tgn::detail::LogLevel::ERROR, __FILE__, __LINE__, \
-                        std::format(msg __VA_OPT__(, ) __VA_ARGS__))
+#define TGUF_LOG_ERROR(msg, ...)                                            \
+  tguf::detail::log_impl(tguf::detail::LogLevel::ERROR, __FILE__, __LINE__, \
+                         std::format(msg __VA_OPT__(, ) __VA_ARGS__))

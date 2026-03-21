@@ -22,8 +22,8 @@ LastNeighborLoader::LastNeighborLoader(std::size_t num_nbrs,
                           torch::TensorOptions().dtype(torch::kLong))) {
   const auto bytes =
       buffer_nbrs_.nbytes() + buffer_e_id_.nbytes() + assoc_.nbytes();
-  TGN_LOG_INFO("Sampler: ~{:.2f} MiB allocated ({} nodes, {} nbrs/node)",
-               bytes / (1024.0 * 1024.0), num_nodes, num_nbrs);
+  TGUF_LOG_INFO("Sampler: ~{:.2f} MiB allocated ({} nodes, {} nbrs/node)",
+                bytes / (1024.0 * 1024.0), num_nodes, num_nbrs);
   reset_state();
 }
 
@@ -49,7 +49,7 @@ auto LastNeighborLoader::operator()(const torch::Tensor& global_n_id)
                     torch::arange(unique_n_id.size(0), unique_n_id.options()));
 
   if (filtered_nbrs.numel() == 0) {
-    TGN_LOG_DEBUG("Sampler: No neighbors found for batch");
+    TGUF_LOG_DEBUG("Sampler: No neighbors found for batch");
     return std::make_tuple(unique_n_id,
                            torch::empty({2, 0}, unique_n_id.options()),
                            filtered_e_id);
@@ -121,7 +121,7 @@ auto LastNeighborLoader::insert(const torch::Tensor& src,
 }
 
 auto LastNeighborLoader::reset_state() -> void {
-  TGN_LOG_DEBUG("Sampler: Resetting state");
+  TGUF_LOG_DEBUG("Sampler: Resetting state");
   cur_e_id_ = 0;
   buffer_e_id_.fill_(-1);
 }
