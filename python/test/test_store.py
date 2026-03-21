@@ -1,6 +1,7 @@
 import numpy as np
-import tguf
 import torch
+
+import tguf
 
 
 def test_tgstore_from_memory(get_data):

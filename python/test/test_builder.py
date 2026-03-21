@@ -1,7 +1,8 @@
 import numpy as np
 import pytest
-import tguf
 import torch
+
+import tguf
 
 
 @pytest.mark.parametrize("lib", ["torch", "numpy"])

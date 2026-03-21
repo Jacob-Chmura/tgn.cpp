@@ -18,7 +18,7 @@ namespace tguf {
 
 struct TGUFBuilder::Impl {
   TGUFSchema schema_{};
-  TGUFHeader header_{};
+  detail::TGUFHeader header_{};
 
   void* base_ptr_ = nullptr;
   bool finalized_ = false;
@@ -38,10 +38,10 @@ struct TGUFBuilder::Impl {
     header_.test_start = schema.test_start.value_or(0);
 
     auto align = [](std::size_t size) {
-      return (size + TGUF_PAGE - 1) & ~(TGUF_PAGE - 1);
+      return (size + detail::TGUF_PAGE - 1) & ~(detail::TGUF_PAGE - 1);
     };
 
-    header_.src_offset = TGUF_PAGE;  // Header gets its own page
+    header_.src_offset = detail::TGUF_PAGE;  // Header gets its own page
     header_.dst_offset =
         header_.src_offset + align(schema.edge_capacity * sizeof(std::int64_t));
     header_.time_offset =
@@ -384,7 +384,7 @@ auto TGUFBuilder::finalize() -> void {
   impl_->header_.num_edges = impl_->written_edges_;
   impl_->header_.num_labels = impl_->written_labels_;
   impl_->header_.num_nodes = impl_->max_node_written_node_feats_;
-  std::memcpy(impl_->base_ptr_, &impl_->header_, sizeof(TGUFHeader));
+  std::memcpy(impl_->base_ptr_, &impl_->header_, sizeof(detail::TGUFHeader));
 
   msync(impl_->base_ptr_, impl_->mapped_bytes_, MS_SYNC);
   munmap(impl_->base_ptr_, impl_->mapped_bytes_);

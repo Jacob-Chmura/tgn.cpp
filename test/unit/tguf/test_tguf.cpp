@@ -8,7 +8,7 @@
 #include <string>
 
 #include "tguf.h"
-#include "tguf_header.h"
+#include "tguf/tguf_header.h"
 
 class TGUFBuilderTest : public ::testing::Test {
  protected:
@@ -21,10 +21,10 @@ class TGUFBuilderTest : public ::testing::Test {
     }
   }
 
-  auto read_header() -> tguf::TGUFHeader {
-    tguf::TGUFHeader h;
+  auto read_header() -> tguf::detail::TGUFHeader {
+    tguf::detail::TGUFHeader h;
     std::ifstream is(tguf_path_, std::ios::binary);
-    is.read(reinterpret_cast<char*>(&h), sizeof(tguf::TGUFHeader));
+    is.read(reinterpret_cast<char*>(&h), sizeof(tguf::detail::TGUFHeader));
     return h;
   }
 };
@@ -47,14 +47,14 @@ TEST_F(TGUFBuilderTest, PhysicalLayoutAndAlignment) {
   builder.finalize();
 
   auto h = read_header();
-  EXPECT_EQ(h.magic, tguf::TGUF_MAGIC);
+  EXPECT_EQ(h.magic, tguf::detail::TGUF_MAGIC);
   EXPECT_EQ(h.msg_dim, schema.msg_dim);
   EXPECT_EQ(h.negatives_start_e_id, schema.negatives_start_e_id);
   EXPECT_EQ(h.negatives_per_edge, schema.negatives_per_edge);
   EXPECT_EQ(h.val_start, schema.val_start);
   EXPECT_EQ(h.test_start, schema.test_start);
 
-  auto is_aligned = [](uint64_t off) { return off % tguf::TGUF_PAGE == 0; };
+  auto is_aligned = [](uint64_t off) { return off % tguf::detail::TGUF_PAGE == 0; };
 
   EXPECT_TRUE(is_aligned(h.src_offset));
   EXPECT_TRUE(is_aligned(h.msg_offset));
@@ -101,8 +101,8 @@ TEST_F(TGUFBuilderTest, AppendEdges) {
   builder.finalize();
 
   const auto h = read_header();
-  EXPECT_EQ(h.magic, tguf::TGUF_MAGIC);
-  EXPECT_EQ(h.version, tguf::TGUF_VERSION);
+  EXPECT_EQ(h.magic, tguf::detail::TGUF_MAGIC);
+  EXPECT_EQ(h.version, tguf::detail::TGUF_VERSION);
   EXPECT_EQ(h.num_edges, schema.edge_capacity);
   EXPECT_EQ(h.num_labels, schema.label_capacity);
   EXPECT_EQ(h.msg_dim, schema.msg_dim);
@@ -146,8 +146,8 @@ TEST_F(TGUFBuilderTest, AppendEdgesNegatives) {
   builder.finalize();
 
   const auto h = read_header();
-  EXPECT_EQ(h.magic, tguf::TGUF_MAGIC);
-  EXPECT_EQ(h.version, tguf::TGUF_VERSION);
+  EXPECT_EQ(h.magic, tguf::detail::TGUF_MAGIC);
+  EXPECT_EQ(h.version, tguf::detail::TGUF_VERSION);
   EXPECT_EQ(h.num_edges, schema.edge_capacity);
   EXPECT_EQ(h.num_labels, schema.label_capacity);
   EXPECT_EQ(h.msg_dim, schema.msg_dim);
@@ -181,8 +181,8 @@ TEST_F(TGUFBuilderTest, AppendLabels) {
   builder.finalize();
 
   const auto h = read_header();
-  EXPECT_EQ(h.magic, tguf::TGUF_MAGIC);
-  EXPECT_EQ(h.version, tguf::TGUF_VERSION);
+  EXPECT_EQ(h.magic, tguf::detail::TGUF_MAGIC);
+  EXPECT_EQ(h.version, tguf::detail::TGUF_VERSION);
   EXPECT_EQ(h.num_edges, schema.edge_capacity);
   EXPECT_EQ(h.num_labels, schema.label_capacity);
   EXPECT_EQ(h.msg_dim, schema.msg_dim);
@@ -214,8 +214,8 @@ TEST_F(TGUFBuilderTest, AppendNodeFeats) {
   builder.finalize();
 
   const auto h = read_header();
-  EXPECT_EQ(h.magic, tguf::TGUF_MAGIC);
-  EXPECT_EQ(h.version, tguf::TGUF_VERSION);
+  EXPECT_EQ(h.magic, tguf::detail::TGUF_MAGIC);
+  EXPECT_EQ(h.version, tguf::detail::TGUF_VERSION);
   EXPECT_EQ(h.num_edges, schema.edge_capacity);
   EXPECT_EQ(h.num_labels, schema.label_capacity);
   EXPECT_EQ(h.msg_dim, schema.msg_dim);
@@ -249,8 +249,8 @@ TEST_F(TGUFBuilderTest, AppendNodeFeatsContiguousIDFastPath) {
   builder.finalize();
 
   const auto h = read_header();
-  EXPECT_EQ(h.magic, tguf::TGUF_MAGIC);
-  EXPECT_EQ(h.version, tguf::TGUF_VERSION);
+  EXPECT_EQ(h.magic, tguf::detail::TGUF_MAGIC);
+  EXPECT_EQ(h.version, tguf::detail::TGUF_VERSION);
   EXPECT_EQ(h.num_edges, schema.edge_capacity);
   EXPECT_EQ(h.num_labels, schema.label_capacity);
   EXPECT_EQ(h.msg_dim, schema.msg_dim);

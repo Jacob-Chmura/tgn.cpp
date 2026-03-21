@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include <torch/types.h>
 
-#include "scatter_ops.h"
+#include "tguf_models/common/scatter_ops.h"
 
 TEST(ScatterOps, ScatterMax) {
   const auto src = torch::tensor({1.0, 4.0, 2.0, 10.0, 5.0});

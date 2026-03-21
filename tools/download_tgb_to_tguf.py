@@ -2,12 +2,13 @@ import argparse
 from pathlib import Path
 
 import numpy as np
-import tguf
 from tgb.linkproppred.dataset import LinkPropPredDataset
 from tgb.linkproppred.negative_sampler import NegativeEdgeSampler
 from tgb.nodeproppred.dataset import NodePropPredDataset
 from tgb.utils.info import DATA_VERSION_DICT, PROJ_DIR
 from tqdm import tqdm
+
+import tguf
 
 parser = argparse.ArgumentParser(
     description="Download TGB dataset directly to TGUF",

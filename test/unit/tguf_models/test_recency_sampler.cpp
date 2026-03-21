@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 #include <torch/types.h>
 
-#include "sampler.h"
+#include "tguf_models/common/sampler.h"
 
 TEST(RecencySampler, CallOnEmpty) {
   auto loader = tgn::LastNeighborLoader(10, 100);
