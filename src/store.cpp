@@ -15,6 +15,7 @@
 
 #include "logging.h"
 #include "tguf.h"
+#include "tguf_header.h"
 
 namespace tguf {
 namespace detail {
