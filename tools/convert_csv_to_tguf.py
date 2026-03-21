@@ -5,8 +5,9 @@ from typing import Dict, List
 
 import numpy as np
 import pandas as pd
-import tguf
 from tqdm import tqdm
+
+import tguf
 
 parser = argparse.ArgumentParser(
     description="Convert CSV data to TGUF binary format.",

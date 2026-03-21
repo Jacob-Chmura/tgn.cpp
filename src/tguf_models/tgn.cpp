@@ -12,9 +12,9 @@
 #include <utility>
 #include <vector>
 
+#include "common/sampler.h"
+#include "common/scatter_ops.h"
 #include "logging.h"
-#include "sampler.h"
-#include "scatter_ops.h"
 #include "tguf.h"
 
 namespace tgn {

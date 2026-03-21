@@ -457,7 +457,7 @@ class TGStoreImpl final : public TGStore {
   }
 
   const auto file_size = std::filesystem::file_size(path);
-  if (file_size < sizeof(TGUFHeader)) {
+  if (file_size < sizeof(detail::TGUFHeader)) {
     close(fd);
     throw std::runtime_error("File too small to contain TGUF header");
   }
@@ -468,8 +468,8 @@ class TGStoreImpl final : public TGStore {
     throw std::runtime_error("Mmap failed for: " + path);
   }
 
-  auto* header = static_cast<TGUFHeader*>(addr);
-  if (header->magic != TGUF_MAGIC) {
+  auto* header = static_cast<detail::TGUFHeader*>(addr);
+  if (header->magic != detail::TGUF_MAGIC) {
     munmap(addr, file_size);
     close(fd);
     throw std::runtime_error(

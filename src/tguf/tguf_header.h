@@ -1,6 +1,7 @@
 #include <cstdint>
 
 namespace tguf {
+namespace detail {
 
 /** @brief Magic number used to identify valid TGUF files.
  * Stored at the beginning of the file header for format validation.
@@ -48,4 +49,5 @@ struct alignas(8) TGUFHeader {
   std::uint64_t test_start{};
 };
 
+}  // namespace detail
 }  // namespace tguf

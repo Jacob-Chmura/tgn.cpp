@@ -61,11 +61,11 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release")
 endif()
 
 add_library(${PROJECT_NAME} SHARED
-    src/tgn.cpp
-    src/tguf.cpp
-    src/sampler.cpp
-    src/scatter_ops.cpp
-    src/store.cpp
+    src/tguf/store.cpp
+    src/tguf/tguf.cpp
+    src/tguf_models/common/sampler.cpp
+    src/tguf_models/common/scatter_ops.cpp
+    src/tguf_models/tgn.cpp
 )
 
 target_link_libraries(${PROJECT_NAME} PUBLIC
@@ -105,11 +105,11 @@ if (TGN_BUILD_TESTS)
 
     # Unit tests
     add_executable(test_unit
-        test/unit/test_recency_sampler.cpp
-        test/unit/test_scatter_ops.cpp
-        test/unit/test_store.cpp
-        test/unit/test_tgn.cpp
-        test/unit/test_tguf.cpp
+        test/unit/tguf/test_store.cpp
+        test/unit/tguf/test_tguf.cpp
+        test/unit/tguf_models/test_recency_sampler.cpp
+        test/unit/tguf_models/test_scatter_ops.cpp
+        test/unit/tguf_models/test_tgn.cpp
     )
     target_link_libraries(test_unit PRIVATE
         ${PROJECT_NAME}
