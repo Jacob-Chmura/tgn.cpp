@@ -27,7 +27,7 @@ struct TGUFBuilder::Impl {
   std::size_t mapped_bytes_{};
 
   explicit Impl(const TGUFSchema& schema) : schema_(schema) {
-    TGN_LOG_INFO("TGUFBuilder: Creating TGUF binary at {}", schema.path);
+    TGUF_LOG_INFO("TGUFBuilder: Creating TGUF binary at {}", schema.path);
     header_.msg_dim = schema.msg_dim;
     header_.label_dim = schema.label_dim;
     header_.node_feat_dim = schema.node_feat_dim;
@@ -80,7 +80,7 @@ struct TGUFBuilder::Impl {
 
     mapped_bytes_ = last_offset;
 
-    TGN_LOG_INFO(
+    TGUF_LOG_INFO(
         "TGUFBuilder: Pre-allocating {:.2f} GiB for {} edges, {} labels, and "
         "{} unique node feats "
         "(msg_dim={}, label_dim={}, node_feat_dim={}, negatives_start_e_id={}, "
@@ -91,7 +91,7 @@ struct TGUFBuilder::Impl {
         header_.negatives_per_edge);
 
     if (header_.val_start > 0 || header_.test_start > 0) {
-      TGN_LOG_INFO(
+      TGUF_LOG_INFO(
           "TGUFBuilder: Using hardcoded edge splits (Val Start: {}, Test "
           "Start: {})",
           header_.val_start, header_.test_start);
@@ -131,7 +131,7 @@ struct TGUFBuilder::Impl {
     }
 #endif
 
-    TGN_LOG_INFO(
+    TGUF_LOG_INFO(
         "TGUFBuilder: Memory mapping {:.2f} GiB, might take a sec for the OS "
         "to find a contiguous allocation of this size",
         mapped_bytes_ / (1024.0 * 1024.0 * 1024.0));
@@ -174,7 +174,7 @@ auto TGUFBuilder::append_edges(const Batch& batch) const -> void {
   if (count == 0) {
     return;
   }
-  TGN_LOG_DEBUG("TGUFBuilder: Appending {} edges to TGUF file", count);
+  TGUF_LOG_DEBUG("TGUFBuilder: Appending {} edges to TGUF file", count);
 
   if (impl_->written_edges_ + count > impl_->schema_.edge_capacity) {
     throw std::runtime_error(
@@ -249,7 +249,7 @@ auto TGUFBuilder::append_labels(const torch::Tensor& n_id,
   if (count == 0) {
     return;
   }
-  TGN_LOG_DEBUG("TGUFBuilder: Appending {} labels to TGUF file", count);
+  TGUF_LOG_DEBUG("TGUFBuilder: Appending {} labels to TGUF file", count);
 
   if (impl_->written_labels_ + count > impl_->schema_.label_capacity) {
     throw std::runtime_error(
@@ -288,7 +288,7 @@ auto TGUFBuilder::append_node_feats(const torch::Tensor& n_id,
   if (count == 0) {
     return;
   }
-  TGN_LOG_DEBUG("TGUFBuilder: Appending {} node_feats to TGUF file", count);
+  TGUF_LOG_DEBUG("TGUFBuilder: Appending {} node_feats to TGUF file", count);
 
   const auto max_id_allowed =
       static_cast<std::int64_t>(impl_->schema_.node_feat_capacity);
@@ -333,7 +333,7 @@ auto TGUFBuilder::append_node_feats(const torch::Tensor& n_id,
     auto* dst = static_cast<std::uint8_t*>(impl_->base_ptr_) + base_offset +
                 (ids_ptr[0] * row_size_bytes);
     std::memcpy(dst, node_feat.contiguous().data_ptr(), node_feat.nbytes());
-    TGN_LOG_DEBUG(
+    TGUF_LOG_DEBUG(
         "TGUFBuilder:append_labels: Used fast-path for {} contiguous nodes",
         count);
   } else {  // Slow path: Scattered memcpy
@@ -343,7 +343,7 @@ auto TGUFBuilder::append_node_feats(const torch::Tensor& n_id,
                   (ids_ptr[i] * row_size_bytes);
       std::memcpy(dst, feats_ptr + (i * feat_dim), row_size_bytes);
     }
-    TGN_LOG_DEBUG(
+    TGUF_LOG_DEBUG(
         "TGUFBuilder:::append_labels: Used slow-path for {} non-contiguous "
         "nodes",
         count);
@@ -360,19 +360,19 @@ auto TGUFBuilder::finalize() -> void {
   }
 
   if (impl_->written_edges_ < impl_->schema_.edge_capacity) {
-    TGN_LOG_WARN(
+    TGUF_LOG_WARN(
         "TGUFBuilder: Finalizing with fewer edges than declared ({} < {}). "
         "TGUF file will have some unused padding.",
         impl_->written_edges_, impl_->schema_.edge_capacity);
   }
   if (impl_->written_labels_ < impl_->schema_.label_capacity) {
-    TGN_LOG_WARN(
+    TGUF_LOG_WARN(
         "TGUFBuilder: Finalizing with fewer labels than declared ({} < {}). "
         "TGUF file will have some unused padding.",
         impl_->written_labels_, impl_->schema_.label_capacity);
   }
   if (impl_->max_node_written_node_feats_ < impl_->schema_.node_feat_capacity) {
-    TGN_LOG_WARN(
+    TGUF_LOG_WARN(
         "TGUFBuilder: Finalizing with fewer unique node feats than declared "
         "({} < {}). "
         "TGUF file will have some unused padding.",
@@ -390,7 +390,7 @@ auto TGUFBuilder::finalize() -> void {
   impl_->base_ptr_ = nullptr;
   impl_->finalized_ = true;
 
-  TGN_LOG_INFO(
+  TGUF_LOG_INFO(
       "TGUFBuilder: Finalized to {} (Total edges: {}, Total labels: {}, Total "
       "unique node feats: {})",
       impl_->schema_.path, impl_->header_.num_edges, impl_->header_.num_labels,

@@ -1,5 +1,5 @@
-import tguf
 import numpy as np
+import tguf
 import torch
 
 

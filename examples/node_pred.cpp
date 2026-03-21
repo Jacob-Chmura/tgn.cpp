@@ -27,7 +27,7 @@ struct NodePredictorImpl : torch::nn::Module {
                                    torch::nn::ReLU(),
                                    torch::nn::Linear(hidden_dim, out_dim));
     register_module("model_", model_);
-    TGN_LOG_INFO(
+    TGUF_LOG_INFO(
         "NodeDecoder: Initialized (in_channels={}, hidden_dim={}, "
         "out_channels={})",
         in_dim, hidden_dim, out_dim);
@@ -151,7 +151,7 @@ auto eval(tgn::TGN& encoder, NodePredictor& decoder,
 }  // namespace
 
 auto main(int argc, char** argv) -> int {
-  TGN_LOG_INFO("Running Node Prediction");
+  TGUF_LOG_INFO("Running Node Prediction");
   args = util::parse_args(argc, argv);
   util::log_torch_backend_info();
 

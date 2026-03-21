@@ -97,16 +97,16 @@ inline auto parse_args(int argc, char** argv) -> TGNArgs {
     i++;
   }
 
-  TGN_LOG_INFO(" TGUF Path:    {}", args.tguf_path);
-  TGN_LOG_INFO(" Epochs:       {}", args.epochs);
-  TGN_LOG_INFO(" Batch Size:   {}", args.batch_size);
-  TGN_LOG_INFO(" Learning Rate:{:.2e}", args.lr);
-  TGN_LOG_INFO(" Embedding Dim:{}", args.embedding_dim);
-  TGN_LOG_INFO(" Memory Dim:   {}", args.memory_dim);
-  TGN_LOG_INFO(" Time Dim:     {}", args.time_dim);
-  TGN_LOG_INFO(" Num Heads:    {}", args.num_heads);
-  TGN_LOG_INFO(" Neighbors:    {}", args.num_nbrs);
-  TGN_LOG_INFO(" Dropout:      {:.2f}", args.dropout);
+  TGUF_LOG_INFO(" TGUF Path:    {}", args.tguf_path);
+  TGUF_LOG_INFO(" Epochs:       {}", args.epochs);
+  TGUF_LOG_INFO(" Batch Size:   {}", args.batch_size);
+  TGUF_LOG_INFO(" Learning Rate:{:.2e}", args.lr);
+  TGUF_LOG_INFO(" Embedding Dim:{}", args.embedding_dim);
+  TGUF_LOG_INFO(" Memory Dim:   {}", args.memory_dim);
+  TGUF_LOG_INFO(" Time Dim:     {}", args.time_dim);
+  TGUF_LOG_INFO(" Num Heads:    {}", args.num_heads);
+  TGUF_LOG_INFO(" Neighbors:    {}", args.num_nbrs);
+  TGUF_LOG_INFO(" Dropout:      {:.2f}", args.dropout);
   return args;
 }
 
@@ -170,17 +170,17 @@ inline auto progress_bar = [](std::size_t current, std::size_t total,
 };
 
 inline auto log_torch_backend_info() -> void {
-  TGN_LOG_INFO("LibTorch Backend | Intra-op threads: {}",
-               torch::get_num_threads());
-  TGN_LOG_INFO("LibTorch Backend | Inter-op threads: {}",
-               torch::get_num_interop_threads());
-  TGN_LOG_INFO("LibTorch Backend | CPU Capability: {}",
-               torch::get_cpu_capability());
+  TGUF_LOG_INFO("LibTorch Backend | Intra-op threads: {}",
+                torch::get_num_threads());
+  TGUF_LOG_INFO("LibTorch Backend | Inter-op threads: {}",
+                torch::get_num_interop_threads());
+  TGUF_LOG_INFO("LibTorch Backend | CPU Capability: {}",
+                torch::get_cpu_capability());
 
 #ifdef AT_MKL_ENABLED
-  TGN_LOG_INFO("LibTorch Backend | BLAS: Intel MKL (Enabled)");
+  TGUF_LOG_INFO("LibTorch Backend | BLAS: Intel MKL (Enabled)");
 #else
-  TGN_LOG_WARN("LibTorch Backend | BLAS: Intel MKL not found");
+  TGUF_LOG_WARN("LibTorch Backend | BLAS: Intel MKL not found");
 #endif
 };
 

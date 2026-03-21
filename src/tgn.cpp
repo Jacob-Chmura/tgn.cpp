@@ -22,8 +22,8 @@ namespace detail {
 struct TimeEncoderImpl : torch::nn::Module {
   explicit TimeEncoderImpl(std::size_t out_channels) {
     lin_ = register_module("lin_", torch::nn::Linear(1, out_channels));
-    TGN_LOG_INFO("TimeEncoder: Initialized (time_embedding_dim={})",
-                 out_channels);
+    TGUF_LOG_INFO("TimeEncoder: Initialized (time_embedding_dim={})",
+                  out_channels);
   }
 
   auto forward(const torch::Tensor& t) -> torch::Tensor {
@@ -50,7 +50,7 @@ struct TransformerConvImpl : torch::nn::Module {
         "w_e_", torch::nn::Linear(torch::nn::LinearOptions(
                                       static_cast<std::int64_t>(edge_dim), O_)
                                       .bias(false)));
-    TGN_LOG_INFO(
+    TGUF_LOG_INFO(
         "TransformerConv: Initialized (in_channels={}, out_channels={}, "
         "heads={}, edge_dim={}, dropout={:.2f})",
         in_channels, out_channels, heads, edge_dim, dropout);
@@ -165,7 +165,7 @@ struct TGNMemoryImpl : torch::nn::Module {
     const auto bytes = memory_.nbytes() + last_update_.nbytes() +
                        assoc_.nbytes() + get_store_bytes(src_store_) +
                        get_store_bytes(dst_store_);
-    TGN_LOG_INFO(
+    TGUF_LOG_INFO(
         "TGNMemory: ~{:.2f} MiB allocated ({} nodes, memory_dim: {}, msg_dim: "
         "{}, gru_cell_dim: {})",
         bytes / (1024.0 * 1024.0), num_nodes_, cfg.memory_dim, msg_dim_,
@@ -173,7 +173,7 @@ struct TGNMemoryImpl : torch::nn::Module {
   }
 
   auto reset_state() -> void {
-    TGN_LOG_DEBUG("TGNMemory: Resetting state");
+    TGUF_LOG_DEBUG("TGNMemory: Resetting state");
     memory_.zero_();
     last_update_.zero_();
     src_store_.reset();
@@ -208,7 +208,7 @@ struct TGNMemoryImpl : torch::nn::Module {
   auto train(bool mode = true) -> void override {
     if (is_training() && !mode) {
       // Flush message store in case we just entered eval mode.
-      TGN_LOG_DEBUG(
+      TGUF_LOG_DEBUG(
           "TGNMemory: Switching to Eval. Flushing memory for all {} nodes",
           num_nodes_);
       update_memory(torch::arange(static_cast<std::int64_t>(num_nodes_)));

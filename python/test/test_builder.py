@@ -1,7 +1,7 @@
-import tguf
 import numpy as np
-import torch
 import pytest
+import tguf
+import torch
 
 
 @pytest.mark.parametrize("lib", ["torch", "numpy"])
@@ -54,7 +54,7 @@ def test_builder_to_store_roundtrip(schema):
     msgs = np.random.randn(num_edges, schema.msg_dim).astype(np.float32)
 
     builder = tguf.TGUFBuilder(schema)
-    batch = tguf.Batch(src=src, dst=src+100, time=src * 10, msg=msgs)
+    batch = tguf.Batch(src=src, dst=src + 100, time=src * 10, msg=msgs)
     builder.append_edges(batch)
 
     n_ids = np.array([0, 1, 2], dtype=np.int64)

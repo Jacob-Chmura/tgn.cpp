@@ -1,7 +1,7 @@
-import tguf
 import numpy as np
-import torch
 import pytest
+import tguf
+import torch
 
 
 def test_index_range():
@@ -111,10 +111,9 @@ def test_schema_get_set():
         "edge_capacity": 1000,
         "label_capacity": 50,
         "msg_dim": 128,
-        "val_start": 800
+        "val_start": 800,
     }
 
     for key, value in updates.items():
         setattr(schema, key, value)
         assert getattr(schema, key) == value
-
