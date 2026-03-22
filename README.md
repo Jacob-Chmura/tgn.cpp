@@ -55,6 +55,8 @@ If you prefer a bare-metal install:
 sudo apt-get install -y clang libc++-dev libc++abi-dev
 ```
 
+If you want to run with CUDA support, refer to [nvidia docs](https://developer.nvidia.com/cuda-12-6-0-download-archive?target_os=Linux&target_arch=x86_64&Distribution=Ubuntu&target_version=20.04&target_type=deb_local) for installation steps.
+
 ##### MacOS
 
 ```sh
@@ -64,13 +66,11 @@ brew install cmake libomp
 
 > \[!Important\]
 > **Platform Support**:
->
-> macOS:
->   - CPU (*Apple Silicon*)
->
-> Linux (Ubuntu 22.04+):
->   - CPU (*x86_64*)
->   - CUDA (12.6, 12.8, 13.0)
+
+> | Variable     | Description                                  | Options                       | Linux Support             | macOS Support              | Default  |
+> | ------------ | -------------------------------------------- | ----------------------------- | ------------------------- | -------------------------- | -------- |
+> | CUDA_VERSION | CUDA backend version                         | `cpu`, `12.6`, `12.8`, `13.0` | All options supported     | `cpu` only (Apple Silicon) | `cpu`    |
+> | GPU_ARCH     | Compute Capability (GPU architecture target) | `80`, `90`, `native`          | Supported when using CUDA | N/A                        | `native` |
 
 ##### TGUF Conversion Scripts use [uv](https://docs.astral.sh/uv/):
 
@@ -107,11 +107,6 @@ make run-node-tgbn-trade
 # Example: Cuda 12.6 on an A100 (Arch 80)
 CUDA_VERSION=12.6 GPU_ARCH=80 make run-link-tgbl-wiki
 ```
-
-| Variable     | Description                                    | Default  |
-| ------------ | ---------------------------------------------- | -------- |
-| *CUDA_VERSION* | CUDA Version: `cpu`, `12.6`, `12.8`, `13.0`    | `cpu`    |
-| *GPU_ARCH*     | Compute Capability (e.g. `80`, `90`, `native`) | `native` |
 
 > \[!TIP\]
 > Use `nvidia-smi` to check your *CUDA_VERSION* and *GPU_ARCH*
