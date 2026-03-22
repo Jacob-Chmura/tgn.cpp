@@ -9,13 +9,26 @@ on: # yamllint disable-line rule:truthy
 
 jobs:
   build:
+    name: Build (${{ matrix.os }}, ${{ matrix.cuda_version }}, ${{ matrix.build_type }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         # Testing across Linux and macOS
         os: [ubuntu-latest, macos-latest]
-        build_type: [Debug, Release]
+        build_type: [Release]
+        cuda_version: [cpu, 12.6, 12.8, 13.0]
+        include:
+          - os: ubuntu-latest
+            cuda_version: cpu
+            build_type: Debug
+        exclude:
+          - os: macos-latest
+            cuda_version: 12.6
+          - os: macos-latest
+            cuda_version: 12.8
+          - os: macos-latest
+            cuda_version: 13.0
 
     steps:
       - uses: actions/checkout@v4
@@ -31,12 +44,12 @@ jobs:
         run: brew install libomp
 
       - name: Build TGN
-        run: make build BUILD_TYPE=${{ matrix.build_type }}
+        run: make build BUILD_TYPE=${{ matrix.build_type }} CUDA_VERSION=${{ matrix.cuda_version }}
 
       - name: Upload Build Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: build-${{ matrix.os }}-${{ matrix.build_type }}
+          name: build-${{ matrix.os }}-${{ matrix.cuda_version }}-${{ matrix.build_type }}
           path: build/
 
   test:
@@ -51,10 +64,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download Debug Build
+      - name: Download CPU Debug Build
         uses: actions/download-artifact@v4
         with:
-          name: build-${{ matrix.os }}-Debug
+          name: build-${{ matrix.os }}-cpu-Debug
           path: build/
 
       - name: Install OpenMP (MacOS)
@@ -70,10 +83,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Download Debug Build
+      - name: Download CPU Debug Build
         uses: actions/download-artifact@v4
         with:
-          name: build-ubuntu-latest-Debug
+          name: build-ubuntu-latest-cpu-Debug
           path: build/
 
       - uses: cpp-linter/cpp-linter-action@v2
@@ -87,17 +100,20 @@ jobs:
 
   test-on-container:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        cuda_version: [cpu, 12.6, 12.8, 13.0]
     steps:
       - uses: actions/checkout@v4
 
       - name: Build TGN Container
-        run: docker build -t tgn-dev .
+        run: docker build --build-arg CUDA_VERSION=${{ matrix.cuda_version }} -t tgn-dev:${{ matrix.cuda_version }} .
 
       - name: Run Tests inside Container
         run: |
-          docker run --rm \
-          -v "$(pwd):/workspace:Z" \
-            tgn-dev /bin/bash -c "make test"
+          # If CPU, run tests. If CUDA, just run build to verify compilation.
+          CMD=$([[ "${{ matrix.cuda_version }}" == "cpu" ]] && echo "make test" || echo "make build")
+          docker run --rm -v "$(pwd):/workspace:Z" tgn-dev:${{ matrix.cuda_version }} /bin/bash -c "$CMD"
 
   python-tests:
     needs: build
@@ -111,10 +127,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download Build Artifacts
+      - name: Download CPU Release Build
         uses: actions/download-artifact@v4
         with:
-          name: build-${{ matrix.os }}-Release
+          name: build-${{ matrix.os }}-cpu-Release
           path: build/
 
       - name: Setup uv

@@ -1,6 +1,27 @@
 BUILD_DIR := build
 PROFILE_DIR := build-profile
-CMAKE_FLAGS := -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+
+CUDA_VERSION ?= cpu
+GPU_ARCH ?= native
+
+CMAKE_FLAGS := -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCUDA_VERSION=$(CUDA_VERSION)
+
+ifneq ($(CUDA_VERSION), cpu)
+    CMAKE_FLAGS += -DCMAKE_CUDA_ARCHITECTURES=$(GPU_ARCH)
+
+    # Add Torch-specific Arch list (converts 80 -> 8.0)
+    ifneq ($(GPU_ARCH), native)
+        TORCH_ARCH := $(shell echo $(GPU_ARCH) | sed 's/\([0-9]\)\([0-9]\)/\1.\2/')
+        CMAKE_FLAGS += -DTORCH_CUDA_ARCH_LIST="$(TORCH_ARCH)"
+    endif
+
+    # Handle CUDA Compiler Path (Look in standard /usr/local/cuda-X.Y)
+    CUDA_PATH := /usr/local/cuda-$(CUDA_VERSION)
+    ifneq ("$(wildcard $(CUDA_PATH)/bin/nvcc)","")
+        CMAKE_FLAGS += -DCMAKE_CUDA_COMPILER=$(CUDA_PATH)/bin/nvcc
+    endif
+endif
+
 NPROCS := $(shell nproc 2>/dev/null || sysctl -n hw.logicalcpu)
 
 EXAMPLE_LINK := $(BUILD_DIR)/examples/tgn_link_pred
@@ -28,6 +49,10 @@ help:
 	@echo "  make release             - Build entire project with High optimization"
 	@echo "  make examples            - Build tgn_link_prop and tgn_node_prop examples"
 	@echo "  make clean               - Remove build directory"
+	@echo ""
+	@echo "Build Parameters (Optional):"
+	@echo "  CUDA_VERSION=<ver>       - Build for CUDA (e.g., 12.6, 12.8, 13.0). Default: cpu"
+	@echo "  GPU_ARCH=<arch>          - Compute capability (e.g., 80, 90, native). Default: native"
 	@echo ""
 	@echo "Documentation Targets:"
 	@echo "  make docs                - Build project documentation"

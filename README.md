@@ -6,6 +6,9 @@
 ![Clang](https://img.shields.io/badge/Compiler-Clang-orange?style=flat&labelColor=white&logo=clang&logoColor=black)
 ![Linux](https://img.shields.io/badge/Linux-FCC624?style=flat&logo=linux&logoColor=black)
 ![macOS](https://img.shields.io/badge/macOS-000000?style=flat&logo=apple&logoColor=white)
+![CUDA 12.6](https://img.shields.io/badge/CUDA-12.6-green?logo=nvidia&logoColor=white)
+![CUDA 12.8](https://img.shields.io/badge/CUDA-12.8-green?logo=nvidia&logoColor=white)
+![CUDA 13.0](https://img.shields.io/badge/CUDA-13.0-green?logo=nvidia&logoColor=white)
 [![Docs](https://img.shields.io/readthedocs/tgncpp?style=flat&label=Docs&labelColor=white&logo=readthedocs&logoColor=black)](https://tgncpp.readthedocs.io/en/latest/?badge=latest)
 [![Tests](https://img.shields.io/github/actions/workflow/status/Jacob-Chmura/tgn.cpp/ci.yml?label=Tests&style=flat&labelColor=white&logo=github-actions&logoColor=black)](https://github.com/Jacob-Chmura/tgn.cpp/actions/workflows/ci.yml)
 
@@ -73,3 +76,13 @@ make run-link-tgbl-wiki
 # Download `tgbn-trade` data, convert to `.tguf` and run examples/node_pred.cpp
 make run-node-tgbn-trade
 ```
+
+### CI Status
+
+| Target        | Platform      | Status                                                                                                                                                              |
+| :------------ | :------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Linux CPU** | Ubuntu        | ![CPU](https://github.com/Jacob-Chmura/tgn.cpp/actions/workflows/integration.yml/badge.svg?query=branch%3Amaster+job%3Abuild-all+%28ubuntu-latest%2C+cpu%29)        |
+| **macOS CPU** | Apple Silicon | ![macOS](https://github.com/Jacob-Chmura/tgn.cpp/actions/workflows/integration.yml/badge.svg?query=branch%3Amaster+job%3Abuild-all+%28macos-latest%2C+cpu%29)       |
+| **CUDA 13.0** | Ubuntu        | ![CUDA 13.0](https://github.com/Jacob-Chmura/tgn.cpp/actions/workflows/integration.yml/badge.svg?query=branch%3Amaster+job%3Abuild-all+%28ubuntu-latest%2C+13.0%29) |
+| **CUDA 12.6** | Ubuntu        | ![CUDA 12.6](https://github.com/Jacob-Chmura/tgn.cpp/actions/workflows/integration.yml/badge.svg?query=branch%3Amaster+job%3Abuild-all+%28ubuntu-latest%2C+12.6%29) |
+| **CUDA 12.8** | Ubuntu        | ![CUDA 12.8](https://github.com/Jacob-Chmura/tgn.cpp/actions/workflows/integration.yml/badge.svg?query=branch%3Amaster+job%3Abuild-all+%28ubuntu-latest%2C+12.8%29) |
