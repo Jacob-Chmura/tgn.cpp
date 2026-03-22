@@ -148,6 +148,8 @@ class TGStoreImpl final : public TGStore {
                        ? 1 + std::max(src_.max().item<std::int64_t>(),
                                       dst_.max().item<std::int64_t>())
                        : 0),
+        num_labels_(static_cast<std::size_t>(
+            data.label_target.has_value() ? data.label_target->size(0) : 0)),
         msg_dim_(static_cast<std::size_t>(msg_.size(1))),
         label_dim_(static_cast<std::size_t>(
             data.label_target.has_value() ? data.label_target->size(1) : 0)),
@@ -159,8 +161,8 @@ class TGStoreImpl final : public TGStore {
         val_(data.val_start.value_or(data.test_start.value_or(num_edges_)),
              data.test_start.value_or(num_edges_)),
         test_(data.test_start.value_or(num_edges_), num_edges_) {
-    TGUF_LOG_INFO("TGStore: Loaded {} edges ({} nodes, msg_dim: {})",
-                  num_edges_, num_nodes_, msg_dim_);
+    TGUF_LOG_INFO("TGStore: Loaded {} edges ({} nodes, {} labels, msg_dim: {})",
+                  num_edges_, num_nodes_, num_labels_, msg_dim_);
     if (neg_dst_.has_value()) {
       TGUF_LOG_INFO("TGStore: Pre-computed negatives found ({} negatives/edge)",
                     neg_dst_->size(1));
@@ -296,6 +298,9 @@ class TGStoreImpl final : public TGStore {
   [[nodiscard]] auto node_count() const -> std::size_t override {
     return num_nodes_;
   }
+  [[nodiscard]] auto label_count() const -> std::size_t override {
+    return num_labels_;
+  }
   [[nodiscard]] auto msg_dim() const -> std::size_t override {
     return msg_dim_;
   }
@@ -385,11 +390,17 @@ class TGStoreImpl final : public TGStore {
 
   [[nodiscard]] auto get_edge_cutoff_for_label_event(std::size_t l_id) const
       -> std::size_t override {
+    TORCH_CHECK(l_id < stop_e_ids_.size(), "TGStore: Label index ", l_id,
+                " is out of bounds (size: ", stop_e_ids_.size(),
+                "). Ensure your label split matches the dataset.");
     return stop_e_ids_.at(l_id);
   }
 
   [[nodiscard]] auto get_label_event(std::size_t l_id) const
       -> LabelEvent override {
+    TORCH_CHECK(l_id < label_events_.size(),
+                "TGStore: Requested LabelEvent at index ", l_id, " but only ",
+                label_events_.size(), " events exist.");
     return label_events_.at(l_id);
   }
 
@@ -400,6 +411,7 @@ class TGStoreImpl final : public TGStore {
 
   std::size_t num_edges_{0};
   std::size_t num_nodes_{0};
+  std::size_t num_labels_{0};
   std::size_t msg_dim_{0};
   std::size_t label_dim_{0};
   std::size_t node_feat_dim_{0};
