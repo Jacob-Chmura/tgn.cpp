@@ -67,12 +67,12 @@ brew install cmake libomp
 > \[!Important\]
 > **Platform Support**:
 
-| Platform | CUDA_VERSION Backend Support | Default |
+| Platform | **CUDA_VERSION** Options| Default |
 |----------|----------------------------------|---------|
 | Linux    | `cpu`, `12.6`, `12.8`, `13.0`    | `cpu`   |
 | macOS    | `cpu`                            | `cpu`   |
 
-> **GPU_ARCH**: Specifies the GPU compute capability (e.g. `80`, `90`, `native`) when using CUDA backend on Linux.
+> **GPU_ARCH**: Specifies compute capability (e.g. `80`, `90`, `native`) for CUDA backend on Linux.
 
 ##### TGUF Conversion Scripts use [uv](https://docs.astral.sh/uv/):
 
