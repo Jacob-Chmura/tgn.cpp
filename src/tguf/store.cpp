@@ -421,7 +421,7 @@ class TGStoreImpl final : public TGStore {
     const std::optional<torch::Tensor>& label_time,
     const std::optional<torch::Tensor>& label_target,
     std::optional<std::size_t> val_start, std::optional<std::size_t> test_start)
-    -> std::shared_ptr<TGStore> {
+    -> std::unique_ptr<TGStore> {
   auto data =
       detail::TGData{.src = edges.src,
                      .dst = edges.dst,
@@ -443,13 +443,13 @@ class TGStoreImpl final : public TGStore {
 
   TGUF_LOG_INFO("TGStore: Initialized from memory (~{:.2f} GiB allocated)",
                 data.get_size_bytes() / (1024.0 * 1024.0 * 1024.0));
-  return std::make_shared<detail::TGStoreImpl>(std::move(data));
+  return std::make_unique<detail::TGStoreImpl>(std::move(data));
 }
 
 [[nodiscard]] auto TGStore::from_tguf(const std::string& path,
                                       std::optional<std::size_t> val_start,
                                       std::optional<std::size_t> test_start)
-    -> std::shared_ptr<TGStore> {
+    -> std::unique_ptr<TGStore> {
   TGUF_LOG_INFO("TGStore: Mapping TGUF file: {}", path);
   auto fd = open(path.c_str(), O_RDONLY);
   if (fd == -1) {
@@ -575,7 +575,7 @@ class TGStoreImpl final : public TGStore {
   data.validate();
   TGUF_LOG_INFO("TGStore: Initialized from TGUF (~{:.2f} GiB Memory-Mapped)",
                 data.get_size_bytes() / (1024.0 * 1024.0 * 1024.0));
-  return std::make_shared<detail::TGStoreImpl>(std::move(data));
+  return std::make_unique<detail::TGStoreImpl>(std::move(data));
 }
 
 }  // namespace tguf

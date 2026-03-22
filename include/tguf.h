@@ -134,7 +134,7 @@ class TGStore {
       const std::optional<torch::Tensor>& label_target = std::nullopt,
       std::optional<std::size_t> val_start = std::nullopt,
       std::optional<std::size_t> test_start = std::nullopt)
-      -> std::shared_ptr<TGStore>;
+      -> std::unique_ptr<TGStore>;
 
   /** @brief Factory method for memory-mapped storage from a TGUF file.
    * Supports datasets larger than available system RAM.
@@ -143,7 +143,7 @@ class TGStore {
       const std::string& path,
       std::optional<std::size_t> val_start = std::nullopt,
       std::optional<std::size_t> test_start = std::nullopt)
-      -> std::shared_ptr<TGStore>;
+      -> std::unique_ptr<TGStore>;
 
   [[nodiscard]] virtual auto edge_count() const -> std::size_t = 0;
   [[nodiscard]] virtual auto node_count() const -> std::size_t = 0;

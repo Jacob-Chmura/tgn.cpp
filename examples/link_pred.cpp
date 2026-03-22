@@ -147,7 +147,8 @@ auto main(int argc, char** argv) -> int {
   args = util::parse_args(argc, argv);
   util::log_torch_backend_info();
 
-  const auto store = tguf::TGStore::from_tguf(args.tguf_path);
+  const std::shared_ptr<tguf::TGStore> store =
+      tguf::TGStore::from_tguf(args.tguf_path);
   const auto cfg = tgn::TGNConfig{.embedding_dim = args.embedding_dim,
                                   .memory_dim = args.memory_dim,
                                   .time_dim = args.time_dim,
