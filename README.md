@@ -70,7 +70,7 @@ brew install cmake libomp
 > | Variable     | Description                                  | Options                       | Linux | macOS | Default  |
 > | ------------ | -------------------------------------------- | ----------------------------- | ------------------------- | -------------------------- | -------- |
 > | CUDA_VERSION | CUDA backend | `cpu`, `12.6`, `12.8`, `13.0` | All | `cpu` (Apple Silicon) | `cpu`    |
-> | GPU_ARCH     | Compute Capability (GPU architecture) | `80`, `90`, `native`          | All | N/A | `native` |
+> | GPU_ARCH     | Compute Capability | `80`, `90`, `native`          | All | N/A | `native` |
 
 ##### TGUF Conversion Scripts use [uv](https://docs.astral.sh/uv/):
 
@@ -109,4 +109,4 @@ CUDA_VERSION=12.6 GPU_ARCH=80 make run-link-tgbl-wiki
 ```
 
 > \[!TIP\]
-> Use `nvidia-smi` to check your *CUDA_VERSION* and *GPU_ARCH*
+> Use `nvidia-smi` to check your **CUDA_VERSION** and **GPU_ARCH**
