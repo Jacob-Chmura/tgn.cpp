@@ -68,7 +68,7 @@ TEST_F(TGNTest, InitializationAndForwardWithStaticNodeFeatures) {
   node_feats[3] = torch::ones({feat_dim}) * 3.0F;
   node_feats[5] = torch::ones({feat_dim}) * 5.0F;
 
-  const auto feat_store = tguf::TGStore::from_memory(
+  const std::shared_ptr<tguf::TGStore> feat_store = tguf::TGStore::from_memory(
       {.src = torch::tensor({1, 2, 3}, torch::kLong),
        .dst = torch::tensor({4, 5, 6}, torch::kLong),
        .time = torch::tensor({10, 20, 30}, torch::kLong),

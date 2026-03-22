@@ -147,6 +147,7 @@ class TGStore {
 
   [[nodiscard]] virtual auto edge_count() const -> std::size_t = 0;
   [[nodiscard]] virtual auto node_count() const -> std::size_t = 0;
+  [[nodiscard]] virtual auto label_count() const -> std::size_t = 0;
   [[nodiscard]] virtual auto msg_dim() const -> std::size_t = 0;
   [[nodiscard]] virtual auto label_dim() const -> std::size_t = 0;
   [[nodiscard]] virtual auto node_feat_dim() const -> std::size_t = 0;

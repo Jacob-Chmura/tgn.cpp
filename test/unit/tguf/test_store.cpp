@@ -143,6 +143,7 @@ TYPED_TEST(TGStoreTest, MakeStoreInit) {
   EXPECT_EQ(store->node_feat_dim(), 7);
   EXPECT_EQ(store->label_dim(), 0);
   EXPECT_EQ(store->node_count(), 6);  // Max ID 5 + 1
+  EXPECT_EQ(store->label_count(), 0);
 }
 
 TYPED_TEST(TGStoreTest, GetBatchNegStrategyNone) {
@@ -522,6 +523,7 @@ TYPED_TEST(TGStoreTest, LabelSplitThreeDistinct) {
   EXPECT_EQ(store->val_label_split().size(), 0);
   EXPECT_EQ(store->test_label_split().size(), 0);
   EXPECT_EQ(store->label_dim(), 1);
+  EXPECT_EQ(store->label_count(), 3);
 }
 
 TYPED_TEST(TGStoreTest, LabelSplitThreeGrouped) {
@@ -537,6 +539,7 @@ TYPED_TEST(TGStoreTest, LabelSplitThreeGrouped) {
   EXPECT_EQ(store->val_label_split().size(), 0);
   EXPECT_EQ(store->test_label_split().size(), 0);
   EXPECT_EQ(store->label_dim(), 1);
+  EXPECT_EQ(store->label_count(), 3);
 }
 
 TYPED_TEST(TGStoreTest, LabelSplitSingle) {
@@ -552,6 +555,7 @@ TYPED_TEST(TGStoreTest, LabelSplitSingle) {
   EXPECT_EQ(store->val_label_split().size(), 0);
   EXPECT_EQ(store->test_label_split().size(), 0);
   EXPECT_EQ(store->label_dim(), 1);
+  EXPECT_EQ(store->label_count(), 1);
 }
 
 TYPED_TEST(TGStoreTest, LabelSplitsWithCustomBoundaries) {
@@ -583,6 +587,7 @@ TYPED_TEST(TGStoreTest, LabelSplitsWithCustomBoundaries) {
   EXPECT_EQ(store->test_label_split().start(), 2);
   EXPECT_EQ(store->test_label_split().end(), 3);
   EXPECT_EQ(store->label_dim(), 1);
+  EXPECT_EQ(store->label_count(), 3);
 }
 
 TYPED_TEST(TGStoreTest, GetEdgeCutoffEmptyThrows) {
@@ -591,7 +596,7 @@ TYPED_TEST(TGStoreTest, GetEdgeCutoffEmptyThrows) {
                                 .dst = torch::zeros({5}, torch::kLong),
                                 .time = torch::arange(5, torch::kLong),
                                 .msg = torch::zeros({5, 1})});
-  EXPECT_THROW(store->get_edge_cutoff_for_label_event(0), std::out_of_range);
+  EXPECT_THROW(store->get_edge_cutoff_for_label_event(0), c10::Error);
 }
 
 TYPED_TEST(TGStoreTest, GetEdgeCutoffThreeDistinct) {
@@ -643,7 +648,7 @@ TYPED_TEST(TGStoreTest, GetLabelEventEmptyThrows) {
                                 .dst = torch::zeros({5}, torch::kLong),
                                 .time = torch::arange(5, torch::kLong),
                                 .msg = torch::zeros({5, 1})});
-  EXPECT_THROW(store->get_label_event(0), std::out_of_range);
+  EXPECT_THROW(store->get_label_event(0), c10::Error);
 }
 
 TYPED_TEST(TGStoreTest, GetLabelEventThreeDistinct) {
