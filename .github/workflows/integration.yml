@@ -29,8 +29,8 @@ jobs:
         if: runner.os == 'macOS'
         run: brew install libomp
 
-      - name: Build TGN (Tools + Examples)
-        run: make tools examples BUILD_TYPE=Release
+      - name: Build TGN Examples
+        run: make examples BUILD_TYPE=Release
 
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
