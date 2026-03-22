@@ -67,10 +67,10 @@ brew install cmake libomp
 > \[!Important\]
 > **Platform Support**:
 
-> | Variable     | Description                                  | Options                       | Linux Support             | macOS Support              | Default  |
+> | Variable     | Description                                  | Options                       | Linux | macOS | Default  |
 > | ------------ | -------------------------------------------- | ----------------------------- | ------------------------- | -------------------------- | -------- |
-> | CUDA_VERSION | CUDA backend version                         | `cpu`, `12.6`, `12.8`, `13.0` | All options supported     | `cpu` only (Apple Silicon) | `cpu`    |
-> | GPU_ARCH     | Compute Capability (GPU architecture target) | `80`, `90`, `native`          | Supported when using CUDA | N/A                        | `native` |
+> | CUDA_VERSION | CUDA backend version                         | `cpu`, `12.6`, `12.8`, `13.0` | All supported     | `cpu` (Apple Silicon) | `cpu`    |
+> | GPU_ARCH     | Compute Capability (GPU architecture) | `80`, `90`, `native`          | All supprted | N/A | `native` |
 
 ##### TGUF Conversion Scripts use [uv](https://docs.astral.sh/uv/):
 
