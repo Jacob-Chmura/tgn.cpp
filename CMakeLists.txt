@@ -60,27 +60,45 @@ if(CMAKE_BUILD_TYPE STREQUAL "Release")
     add_compile_options(-O3 -march=native -ffast-math -pthread)
 endif()
 
-add_library(${PROJECT_NAME} SHARED
-    src/tguf/store.cpp
-    src/tguf/tguf.cpp
-    src/tguf_models/common/sampler.cpp
-    src/tguf_models/common/scatter_ops.cpp
-    src/tguf_models/tgn.cpp
+# TGUF Target
+add_library(tguf
+    SHARED
+        src/tguf/store.cpp
+        src/tguf/tguf.cpp
 )
-
-target_link_libraries(${PROJECT_NAME} PUBLIC
-    "${TORCH_LIBRARIES}"
-    OpenMP::OpenMP_CXX
+target_link_libraries(tguf
+    PUBLIC
+        "${TORCH_LIBRARIES}"
+        OpenMP::OpenMP_CXX
 )
-
-target_include_directories(${PROJECT_NAME}
+target_include_directories(tguf
     PUBLIC
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
-set_target_properties(${PROJECT_NAME} PROPERTIES COMPILE_FLAGS "${TORCH_CXX_FLAGS}")
+set_target_properties(tguf PROPERTIES COMPILE_FLAGS "${TORCH_CXX_FLAGS}")
+
+# TGUF-Models Target
+add_library(tguf_models
+    SHARED
+        src/tguf_models/common/sampler.cpp
+        src/tguf_models/common/scatter_ops.cpp
+        src/tguf_models/tgn.cpp
+)
+
+target_link_libraries(tguf_models
+    PUBLIC
+        tguf
+)
+
+target_include_directories(tguf_models
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+)
+
+set_target_properties(tguf_models PROPERTIES COMPILE_FLAGS "${TORCH_CXX_FLAGS}")
 
 if (TGN_BUILD_EXAMPLES)
     add_subdirectory(examples)
@@ -103,23 +121,36 @@ if (TGN_BUILD_TESTS)
     set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
     FetchContent_MakeAvailable(googletest)
 
-    # Unit tests
-    add_executable(test_unit
+    # TGUF unit tests
+    add_executable(test_tguf
         test/unit/tguf/test_store.cpp
         test/unit/tguf/test_tguf.cpp
+    )
+    target_link_libraries(test_tguf PRIVATE
+        tguf
+        "${TORCH_LIBRARIES}"
+        GTest::gtest_main
+    )
+    target_include_directories(test_tguf PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+    )
+
+    # TGUF-Model unit tests
+    add_executable(test_tguf_models
         test/unit/tguf_models/test_recency_sampler.cpp
         test/unit/tguf_models/test_scatter_ops.cpp
         test/unit/tguf_models/test_tgn.cpp
     )
-    target_link_libraries(test_unit PRIVATE
-        ${PROJECT_NAME}
+    target_link_libraries(test_tguf_models PRIVATE
+        tguf_models
         "${TORCH_LIBRARIES}"
         GTest::gtest_main
     )
-    target_include_directories(test_unit PRIVATE
+    target_include_directories(test_tguf_models PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
     )
 
     include(GoogleTest)
-    gtest_discover_tests(test_unit PROPERTIES LABELS "unit")
+    gtest_discover_tests(test_tguf PROPERTIES LABELS "tguf")
+    gtest_discover_tests(test_tguf_models PROPERTIES LABELS "models")
 endif()

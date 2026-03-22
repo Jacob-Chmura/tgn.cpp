@@ -2,6 +2,7 @@ BUILD_DIR := build
 PROFILE_DIR := build-profile
 CMAKE_FLAGS := -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
 NPROCS := $(shell nproc 2>/dev/null || sysctl -n hw.logicalcpu)
+
 EXAMPLE_LINK := $(BUILD_DIR)/examples/tgn_link_pred
 EXAMPLE_NODE := $(BUILD_DIR)/examples/tgn_node_pred
 EXAMPLE_LINK_PROF := $(PROFILE_DIR)/examples/tgn_link_pred
@@ -21,10 +22,11 @@ help:
 	@echo " TGN Build System "
 	@echo "========================================================================"
 	@echo "Build Targets:"
-	@echo "  make                     - Build project (current: $(BUILD_TYPE))"
-	@echo "  make debug               - Build project with Debug symbols"
-	@echo "  make release             - Build project with High optimization"
-	@echo "  make examples            - Build tgn_link_prop and tgn_node_prop"
+	@echo "  make                     - Build entire project (current: $(BUILD_TYPE))"
+	@echo "  make tguf                - Build only the TGUF storage package"
+	@echo "  make debug               - Build entire project with Debug symbols"
+	@echo "  make release             - Build entire project with High optimization"
+	@echo "  make examples            - Build tgn_link_prop and tgn_node_prop examples"
 	@echo "  make clean               - Remove build directory"
 	@echo ""
 	@echo "Documentation Targets:"
@@ -32,7 +34,9 @@ help:
 	@echo "  make docs-serve          - Build and serve project documentation"
 	@echo ""
 	@echo "Testing Targets:"
-	@echo "  make test                - Run C++ unit tests (no Python dep)"
+	@echo "  make test                - Run all C++ unit tests (no Python dep)"
+	@echo "  make test-tguf           - Run tguf C++ unit tests (no Python dep)"
+	@echo "  make test-models         - Run tguf-models C++ unit tests (no Python dep)"
 	@echo ""
 	@echo "Run Targets (Download + TGUF Convert + Run):"
 	@echo "  make run-link-<ds>       - Link prediction (e.g., make run-link-tgbl-wiki)"
@@ -66,6 +70,14 @@ config: $(BUILD_DIR)/CMakeCache.txt
 build: config
 	@cmake --build $(BUILD_DIR) --parallel $(NPROCS)
 
+.PHONY: tguf
+tguf: config
+	@cmake --build $(BUILD_DIR) --target tguf --parallel $(NPROCS)
+
+.PHONY: tguf-models
+tguf-models: config
+	@cmake --build $(BUILD_DIR) --target tguf_models --parallel $(NPROCS)
+
 .PHONY: debug
 debug:
 	@$(MAKE) build BUILD_TYPE=Debug
@@ -78,14 +90,27 @@ release:
 examples: config
 	@mkdir -p $(BUILD_DIR)
 	@cd $(BUILD_DIR) && cmake $(CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=$(BUILD_TYPE) -DTGN_BUILD_EXAMPLES=ON ..
-	@$(MAKE) build
+	@cmake --build $(BUILD_DIR) --parallel $(NPROCS)
 
-.PHONY: test
-test:
+.PHONY: _test_config
+_test_config:
 	@mkdir -p $(BUILD_DIR)
 	@cd $(BUILD_DIR) && cmake $(CMAKE_FLAGS) -DCMAKE_BUILD_TYPE=Debug -DTGN_BUILD_TESTS=ON ..
-	@$(MAKE) build BUILD_TYPE=Debug
-	@cd $(BUILD_DIR) && ctest -L unit --output-on-failure -j $(NPROCS)
+
+.PHONY: test
+test: _test_config
+	@cmake --build $(BUILD_DIR) --parallel $(NPROCS)
+	@cd $(BUILD_DIR) && ctest --output-on-failure -j $(NPROCS)
+
+.PHONY: test-tguf
+test-tguf: _test_config
+	@cmake --build $(BUILD_DIR) --target test_tguf --parallel $(NPROCS)
+	@cd $(BUILD_DIR) && ctest -L tguf --output-on-failure -j $(NPROCS)
+
+.PHONY: test-models
+test-models: _test_config
+	@cmake --build $(BUILD_DIR) --target test_tguf_models --parallel $(NPROCS)
+	@cd $(BUILD_DIR) && ctest -L models --output-on-failure -j $(NPROCS)
 
 data/%.tguf: python
 	@mkdir -p data
