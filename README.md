@@ -55,7 +55,7 @@ If you prefer a bare-metal install:
 sudo apt-get install -y clang libc++-dev libc++abi-dev
 ```
 
-If you want to run with CUDA support, refer to [nvidia docs](https://developer.nvidia.com/cuda-12-6-0-download-archive?target_os=Linux&target_arch=x86_64&Distribution=Ubuntu&target_version=20.04&target_type=deb_local) for installation steps.
+If you want to run with CUDA, refer to [nvidia docs](https://developer.nvidia.com/cuda-12-6-0-download-archive?target_os=Linux&target_arch=x86_64&Distribution=Ubuntu&target_version=20.04&target_type=deb_local) for nvidia toolkit installation.
 
 ##### MacOS
 
@@ -67,10 +67,10 @@ brew install cmake libomp
 > \[!Important\]
 > **Platform Support**:
 
-| Platform | **CUDA_VERSION** Options| Default |
-|----------|----------------------------------|---------|
-| Linux    | `cpu`, `12.6`, `12.8`, `13.0`    | `cpu`   |
-| macOS    | `cpu`                            | `cpu`   |
+| OS    | **CUDA_VERSION**              | Default |
+| ----- | ----------------------------- | ------- |
+| Linux | `cpu`, `12.6`, `12.8`, `13.0` | `cpu`   |
+| macOS | `cpu`                         | `cpu`   |
 
 > **GPU_ARCH**: Specifies compute capability (e.g. `80`, `90`, `native`) for CUDA backend on Linux.
 
