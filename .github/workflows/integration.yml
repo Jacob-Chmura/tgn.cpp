@@ -126,4 +126,4 @@ jobs:
         run: |
           # If CPU: run full node prediction. If CUDA: just verify 'make examples' compiles.
           CMD=$([[ "${{ matrix.cuda_version }}" == "cpu" ]] && echo "make run-node-tgbn-trade" || echo "make examples")
-          docker run --rm -v "$(pwd):/workspace:Z" tgn-dev /bin/bash -c "$CMD"
+          docker run --rm -v "$(pwd):/workspace:Z" tgn-dev:${{ matrix.cuda_version }} /bin/bash -c "$CMD"
