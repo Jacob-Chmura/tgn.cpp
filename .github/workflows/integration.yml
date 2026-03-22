@@ -10,12 +10,16 @@ on: # yamllint disable-line rule:truthy
 
 jobs:
   build-all:
+    name: Build (${{ matrix.os }}, CUDA=${{ matrix.cuda_version }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         # Testing across Linux and macOS
         os: [ubuntu-latest, macos-latest]
+        build_type: [Release]
+        cuda_version: [cpu] # Cuda builds are tested on our containers
+
     steps:
       - uses: actions/checkout@v4
 
@@ -30,12 +34,12 @@ jobs:
         run: brew install libomp
 
       - name: Build TGN Examples
-        run: make examples BUILD_TYPE=Release
+        run: make examples BUILD_TYPE=Release CUDA_VERSION=${{ matrix.cuda_version }}
 
       - name: Upload Build Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: build-${{ matrix.os }}-Release
+          name: build-${{ matrix.os }}-${{ matrix.cuda_version }}-Release
           path: build/
 
   link-pred:
@@ -53,7 +57,7 @@ jobs:
       - name: Download Build Artifact
         uses: actions/download-artifact@v4
         with:
-          name: build-${{ matrix.os }}-Release
+          name: build-${{ matrix.os }}-cpu-Release
           path: build/
 
       - name: Restore Binary Permissions
@@ -87,7 +91,7 @@ jobs:
       - name: Download Build Artifact
         uses: actions/download-artifact@v4
         with:
-          name: build-${{ matrix.os }}-Release
+          name: build-${{ matrix.os }}-cpu-Release
           path: build/
 
       - name: Restore Binary Permissions
@@ -107,15 +111,19 @@ jobs:
         run: make run-node-${{ matrix.dataset }}
 
   node-pred-on-container:
+    name: Container Integration (CUDA=${{ matrix.cuda_version }})
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        cuda_version: [cpu, 12.6, 12.8, 13.0]
     steps:
       - uses: actions/checkout@v4
 
       - name: Build TGN Container
-        run: docker build -t tgn-dev .
+        run: docker build --build-arg CUDA_VERSION=${{ matrix.cuda_version }} -t tgn-dev:${{ matrix.cuda_version }} .
 
       - name: Run Node Prediction
         run: |
-          docker run --rm \
-            -v "$(pwd):/workspace:Z" \
-            tgn-dev /bin/bash -c "make run-node-tgbn-trade"
+          # If CPU: run full node prediction. If CUDA: just verify 'make examples' compiles.
+          CMD=$([[ "${{ matrix.cuda_version }}" == "cpu" ]] && echo "make run-node-tgbn-trade" || echo "make examples")
+          docker run --rm -v "$(pwd):/workspace:Z" tgn-dev:${{ matrix.cuda_version }} /bin/bash -c "$CMD"
