@@ -46,9 +46,6 @@ docker build -t tgn-dev:cpu .
 docker build --build-arg CUDA_VERSION=12.6 -t tgn-dev:cu126 .
 ```
 
-> \[!Note\]
-> We support `CUDA_VERSION=12.6|12.8|13.0`.
-
 If you prefer a bare-metal install:
 
 ##### Linux
@@ -65,6 +62,11 @@ sudo apt-get install -y clang libc++-dev libc++abi-dev
 brew install cmake libomp
 ```
 
+> \[!Important\]
+> **Platform Suport**: 
+> - macOS: CPU (*Apple Silicon*)
+> - Linux (Ubunut 22.04+): CPU and CUDA (12.6, 12.8, 13.0)
+
 ##### TGUF Conversion Scripts use [uv](https://docs.astral.sh/uv/):
 
 ```sh
@@ -73,38 +75,39 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 ### Usage
 
-> \[!Note\]
-> Tested on Linux (Ubuntu 22.04+) and macOS (Apple Silicon)
+#### Setup
 
 ```sh
 # Clone the repo
 git clone git@github.com:Jacob-Chmura/tgn.cpp.git && cd tgn.cpp
 
-# See available targets
+# See all available targets
 make help
+```
 
-# [CPU] Download `tgbl-wiki` data, convert to `.tguf` and run examples/link_pred.cpp.
+#### Running on CPU
+```sh
+
+# Download `tgbl-wiki` data, convert to `.tguf` and run examples/link_pred.cpp.
 make run-link-tgbl-wiki
 
-# [CPU] Download `tgbn-trade` data, convert to `.tguf` and run examples/node_pred.cpp
+# Download `tgbn-trade` data, convert to `.tguf` and run examples/node_pred.cpp
 make run-node-tgbn-trade
+```
 
-# [GPU] Download `tgbl-wiki` data, convert to `.tguf` and run examples/link_pred.cpp.
+#### Running on GPU (Linux only)
+```sh
+# Example: Cuda 12.6 on an A100 (Arch 80)
 CUDA_VERSION=12.6 GPU_ARCH=80 make run-link-tgbl-wiki
 
-# [GPU] Download `tgbn-trade` data, convert to `.tguf` and run examples/node_pred.cpp
+# Example: Cuda 12.6 on an A100 (Arch 80)
 CUDA_VERSION=12.6 GPU_ARCH=80 make run-node-tgbn-trade
 ```
 
+| Variable     | Description                                    | Default  |
+|--------------|------------------------------------------------|----------|
+| CUDA_VERSION | CUDA Version: `cpu`, `12.6`, `12.8`, `13.0`    | `cpu`    |
+| GPU_ARCH     | Compute Capability (e.g. `80`, `90`, `native`) | `native` |
+
 > \[!TIP\]
-> Use `nvidia-smi` to check your CUDA version and Architecture
-
-### CI Status
-
-| Target        | Platform      | Status                                                                                                                                                              |
-| :------------ | :------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **Linux CPU** | Ubuntu        | ![CPU](https://github.com/Jacob-Chmura/tgn.cpp/actions/workflows/integration.yml/badge.svg?query=branch%3Amaster+job%3Abuild-all+%28ubuntu-latest%2C+cpu%29)        |
-| **macOS CPU** | Apple Silicon | ![macOS](https://github.com/Jacob-Chmura/tgn.cpp/actions/workflows/integration.yml/badge.svg?query=branch%3Amaster+job%3Abuild-all+%28macos-latest%2C+cpu%29)       |
-| **CUDA 13.0** | Ubuntu        | ![CUDA 13.0](https://github.com/Jacob-Chmura/tgn.cpp/actions/workflows/integration.yml/badge.svg?query=branch%3Amaster+job%3Abuild-all+%28ubuntu-latest%2C+13.0%29) |
-| **CUDA 12.6** | Ubuntu        | ![CUDA 12.6](https://github.com/Jacob-Chmura/tgn.cpp/actions/workflows/integration.yml/badge.svg?query=branch%3Amaster+job%3Abuild-all+%28ubuntu-latest%2C+12.6%29) |
-| **CUDA 12.8** | Ubuntu        | ![CUDA 12.8](https://github.com/Jacob-Chmura/tgn.cpp/actions/workflows/integration.yml/badge.svg?query=branch%3Amaster+job%3Abuild-all+%28ubuntu-latest%2C+12.8%29) |
+> Use `nvidia-smi` to check your `CUDA_VERSION` and `GPU_ARCH`
