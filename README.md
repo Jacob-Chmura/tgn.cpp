@@ -67,6 +67,7 @@ brew install cmake libomp
 >
 > macOS:
 >   - CPU (*Apple Silicon*)
+>
 > Linux (Ubuntu 22.04+):
 >   - CPU (*x86_64*)
 >   - CUDA (12.6, 12.8, 13.0)
@@ -107,12 +108,10 @@ make run-node-tgbn-trade
 CUDA_VERSION=12.6 GPU_ARCH=80 make run-link-tgbl-wiki
 ```
 
-<div align="center">
 | Variable     | Description                                    | Default  |
 | ------------ | ---------------------------------------------- | -------- |
 | *CUDA_VERSION* | CUDA Version: `cpu`, `12.6`, `12.8`, `13.0`    | `cpu`    |
 | *GPU_ARCH*     | Compute Capability (e.g. `80`, `90`, `native`) | `native` |
-</div>
 
 > \[!TIP\]
 > Use `nvidia-smi` to check your *CUDA_VERSION* and *GPU_ARCH*
