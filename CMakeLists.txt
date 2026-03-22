@@ -26,10 +26,22 @@ add_compile_options(
 
 include(FetchContent)
 
+set(CUDA_VERSION "cpu" CACHE STRING "CUDA version (cpu, 12.6, 12.8, 13.0)")
+
 if(APPLE) # Target Apple Silicon (M1/M2/M3)
     set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cpu/libtorch-macos-arm64-2.10.0.zip")
+    message(STATUS "TGUF: Target System is APPLE (ARM64). Using CPU LibTorch.")
 else() # Target Linux x86_64
-    set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cpu/libtorch-shared-with-deps-2.10.0%2Bcpu.zip")
+    if(CUDA_VERSION STREQUAL "cpu")
+        set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cpu/libtorch-shared-with-deps-2.10.0%2Bcpu.zip")
+        message(STATUS "TGUF: Target System is LINUX (CPU).")
+    else()
+        # Clean "12.6" -> "126" for the URL mapping
+        string(REPLACE "." "" CUDA_TAG ${CUDA_VERSION})
+        set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu${CUDA_TAG}/libtorch-shared-with-deps-2.10.0%2Bcu${CUDA_TAG}.zip")
+        message(STATUS "TGUF: Target System is LINUX (CUDA ${CUDA_VERSION}).")
+        enable_language(CUDA)
+    endif()
 endif()
 
 FetchContent_Declare(
