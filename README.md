@@ -6,9 +6,9 @@
 ![Clang](https://img.shields.io/badge/Compiler-Clang-orange?style=flat&labelColor=white&logo=clang&logoColor=black)
 ![Linux](https://img.shields.io/badge/Linux-FCC624?style=flat&logo=linux&logoColor=black)
 ![macOS](https://img.shields.io/badge/macOS-000000?style=flat&logo=apple&logoColor=white)
-![CUDA 12.6](https://img.shields.io/badge/CUDA-12.6-green?logo=nvidia&logoColor=white)
-![CUDA 12.8](https://img.shields.io/badge/CUDA-12.8-green?logo=nvidia&logoColor=white)
-![CUDA 13.0](https://img.shields.io/badge/CUDA-13.0-green?logo=nvidia&logoColor=white)
+![CUDA 12.6](https://img.shields.io/badge/CUDA-12.6-76B900?style=flat&labelColor=white&logo=nvidia&logoColor=76B900)
+![CUDA 12.8](https://img.shields.io/badge/CUDA-12.8-76B900?style=flat&labelColor=white&logo=nvidia&logoColor=76B900)
+![CUDA 13.0](https://img.shields.io/badge/CUDA-13.0-76B900?style=flat&labelColor=white&logo=nvidia&logoColor=76B900)
 [![Docs](https://img.shields.io/readthedocs/tgncpp?style=flat&label=Docs&labelColor=white&logo=readthedocs&logoColor=black)](https://tgncpp.readthedocs.io/en/latest/?badge=latest)
 [![Tests](https://img.shields.io/github/actions/workflow/status/Jacob-Chmura/tgn.cpp/ci.yml?label=Tests&style=flat&labelColor=white&logo=github-actions&logoColor=black)](https://github.com/Jacob-Chmura/tgn.cpp/actions/workflows/ci.yml)
 
@@ -36,7 +36,20 @@ A C++20 Port of [TGN](https://arxiv.org/abs/2006.10637) over pure LibTorch:
 
 ### Installation
 
-You should just use the [Dockerfile](./Dockerfile), but if you prefer to install dependencies manually:
+You should just use the [Dockerfile](./Dockerfile):
+
+```sh
+# Build for CPU (default)
+docker build -t tgn-dev:cpu .
+
+# Build for specific CUDA drivers (e.g. 12.6 for A100/H100)
+docker build --build-arg CUDA_VERSION=12.6 -t tgn-dev:cu126 .
+```
+
+> \[!Note\]
+> We support `CUDA_VERSION=12.6|12.8|13.0`.
+
+If you prefer a bare-metal install:
 
 ##### Linux
 
@@ -70,12 +83,21 @@ git clone git@github.com:Jacob-Chmura/tgn.cpp.git && cd tgn.cpp
 # See available targets
 make help
 
-# Download `tgbl-wiki` data, convert to `.tguf` and run examples/link_pred.cpp.
+# [CPU] Download `tgbl-wiki` data, convert to `.tguf` and run examples/link_pred.cpp.
 make run-link-tgbl-wiki
 
-# Download `tgbn-trade` data, convert to `.tguf` and run examples/node_pred.cpp
+# [CPU] Download `tgbn-trade` data, convert to `.tguf` and run examples/node_pred.cpp
 make run-node-tgbn-trade
+
+# [GPU] Download `tgbl-wiki` data, convert to `.tguf` and run examples/link_pred.cpp.
+CUDA_VERSION=12.6 GPU_ARCH=80 make run-link-tgbl-wiki
+
+# [GPU] Download `tgbn-trade` data, convert to `.tguf` and run examples/node_pred.cpp
+CUDA_VERSION=12.6 GPU_ARCH=80 make run-node-tgbn-trade
 ```
+
+> \[!TIP\]
+> Use `nvidia-smi` to check your CUDA version and Architecture
 
 ### CI Status
 

@@ -9,26 +9,15 @@ on: # yamllint disable-line rule:truthy
 
 jobs:
   build:
-    name: Build (${{ matrix.os }}, ${{ matrix.cuda_version }}, ${{ matrix.build_type }})
+    name: Build (${{ matrix.os }} ${{ matrix.build_type }}, CUDA=${{ matrix.cuda_version }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         # Testing across Linux and macOS
         os: [ubuntu-latest, macos-latest]
-        build_type: [Release]
-        cuda_version: [cpu, 12.6, 12.8, 13.0]
-        include:
-          - os: ubuntu-latest
-            cuda_version: cpu
-            build_type: Debug
-        exclude:
-          - os: macos-latest
-            cuda_version: 12.6
-          - os: macos-latest
-            cuda_version: 12.8
-          - os: macos-latest
-            cuda_version: 13.0
+        build_type: [Debug, Release]
+        cuda_version: [cpu] # Cuda builds are tested on our containers
 
     steps:
       - uses: actions/checkout@v4
@@ -99,6 +88,7 @@ jobs:
           tidy-checks: "" # Use .clang-tidy config file
 
   test-on-container:
+    name: Container Build (Cuda=${{ matrix.cuda_version }})
     runs-on: ubuntu-latest
     strategy:
       matrix:

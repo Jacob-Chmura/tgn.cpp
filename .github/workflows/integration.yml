@@ -10,7 +10,7 @@ on: # yamllint disable-line rule:truthy
 
 jobs:
   build-all:
-    name: Build (${{ matrix.os }}, ${{ matrix.cuda_version }})
+    name: Build (${{ matrix.os }}, CUDA=${{ matrix.cuda_version }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -18,14 +18,8 @@ jobs:
         # Testing across Linux and macOS
         os: [ubuntu-latest, macos-latest]
         build_type: [Release]
-        cuda_version: [cpu, 12.6, 12.8, 13.0]
-        exclude:
-          - os: macos-latest
-            cuda_version: 12.6
-          - os: macos-latest
-            cuda_version: 12.8
-          - os: macos-latest
-            cuda_version: 13.0
+        cuda_version: [cpu] # Cuda builds are tested on our containers
+
     steps:
       - uses: actions/checkout@v4
 
@@ -117,7 +111,7 @@ jobs:
         run: make run-node-${{ matrix.dataset }}
 
   node-pred-on-container:
-    name: Container Integration (${{ matrix.cuda_version }})
+    name: Container Integration (CUDA=${{ matrix.cuda_version }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
