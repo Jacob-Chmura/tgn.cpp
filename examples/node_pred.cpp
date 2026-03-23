@@ -166,6 +166,8 @@ auto main(int argc, char** argv) -> int {
   tgn::TGN encoder(cfg, store);
   NodePredictor decoder{cfg.embedding_dim,
                         store->label_dim() /* num_classes */};
+  encoder->to(args.device);
+  decoder->to(args.device);
 
   auto params = encoder->parameters();
   auto dec_params = decoder->parameters();

@@ -147,11 +147,11 @@ data/%.tguf: python
 
 .PHONY: run-link-%
 run-link-%: examples data/%.tguf
-	@$(EXAMPLE_LINK) data/$*.tguf
+	@$(EXAMPLE_LINK) data/$*.tguf $(ARGS)
 
 .PHONY: run-node-%
 run-node-%: examples data/%.tguf
-	@$(EXAMPLE_NODE) data/$*.tguf
+	@$(EXAMPLE_NODE) data/$*.tguf $(ARGS)
 
 .PHONY: profile-build
 profile-build: $(PROFILE_DIR)/CMakeCache.txt

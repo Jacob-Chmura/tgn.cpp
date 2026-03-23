@@ -41,6 +41,7 @@ else() # Target Linux x86_64
         set(LIBTORCH_URL "https://download.pytorch.org/libtorch/cu${CUDA_TAG}/libtorch-shared-with-deps-2.10.0%2Bcu${CUDA_TAG}.zip")
         message(STATUS "TGUF: Target System is LINUX (CUDA ${CUDA_VERSION}).")
         enable_language(CUDA)
+        add_compile_definitions(TGN_WITH_CUDA)
     endif()
 endif()
 

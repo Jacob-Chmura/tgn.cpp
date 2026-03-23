@@ -107,7 +107,7 @@ make run-node-tgbn-trade
 
 ```sh
 # Example: Cuda 12.6 on an A100 (Arch 80)
-CUDA_VERSION=12.6 GPU_ARCH=80 make run-link-tgbl-wiki
+CUDA_VERSION=12.6 GPU_ARCH=80 make run-link-tgbl-wiki ARGS="--device cuda:0"
 ```
 
 > \[!TIP\]

@@ -8,10 +8,16 @@
 #include <iostream>
 #include <string>
 
+#ifdef TGN_WITH_CUDA
+#include <ATen/cuda/CUDAContext.h>
+#endif
+
 namespace util {
 
 struct TGNArgs {
   std::string tguf_path;
+
+  torch::Device device = torch::kCPU;
 
   std::size_t epochs = 10;
   std::size_t batch_size = 200;
@@ -29,6 +35,7 @@ inline auto parse_args(int argc, char** argv) -> TGNArgs {
   auto print_usage = [argv]() {
     std::cerr << "Usage: " << argv[0] << " <path_to_tguf> [options]\n"
               << "Options:\n"
+              << "  --device <device> (default: cpu)\n"
               << "  --epochs <N>      (default: 10)\n"
               << "  --batch-size <N>  (default: 200)\n"
               << "  --lr <val>        (default: 1e-4)\n"
@@ -73,7 +80,9 @@ inline auto parse_args(int argc, char** argv) -> TGNArgs {
     std::string_view arg{argv[i]};
     std::string_view val{argv[i + 1]};
 
-    if (arg == "--epochs") {
+    if (arg == "--device") {
+      args.device = torch::Device(std::string(val));
+    } else if (arg == "--epochs") {
       args.epochs = to_type.template operator()<std::size_t>(val);
     } else if (arg == "--batch-size") {
       args.batch_size = to_type.template operator()<std::size_t>(val);
@@ -98,6 +107,7 @@ inline auto parse_args(int argc, char** argv) -> TGNArgs {
   }
 
   TGUF_LOG_INFO(" TGUF Path:    {}", args.tguf_path);
+  TGUF_LOG_INFO(" Device:       {}", args.device.str());
   TGUF_LOG_INFO(" Epochs:       {}", args.epochs);
   TGUF_LOG_INFO(" Batch Size:   {}", args.batch_size);
   TGUF_LOG_INFO(" Learning Rate:{:.2e}", args.lr);
@@ -182,6 +192,26 @@ inline auto log_torch_backend_info() -> void {
 #else
   TGUF_LOG_WARN("LibTorch Backend | BLAS: Intel MKL not found");
 #endif
-};
+
+#ifdef TGN_WITH_CUDA
+  if (torch::cuda::is_available()) {
+    const auto device_count = torch::cuda::device_count();
+    TGUF_LOG_INFO("LibTorch Backend | CUDA: Enabled ({} device(s) found)",
+                  device_count);
+
+    for (auto i = 0; i < device_count; ++i) {
+      const auto prop = at::cuda::getDeviceProperties(i);
+      TGUF_LOG_INFO(
+          "LibTorch Backend | Device {}: {} | Compute Capability: {}.{}", i,
+          prop->name, prop->major, prop->minor);
+    }
+  } else {
+    TGUF_LOG_WARN(
+        "LibTorch Backend | CUDA backend linked but no GPU devices found");
+  }
+#else
+  TGUF_LOG_INFO("LibTorch Backend | CUDA: Not linked with CUDA backend");
+#endif
+};  // namespace util
 
 }  // namespace util

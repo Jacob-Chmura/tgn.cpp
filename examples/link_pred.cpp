@@ -157,6 +157,8 @@ auto main(int argc, char** argv) -> int {
                                   .dropout = args.dropout};
   tgn::TGN encoder(cfg, store);
   LinkPredictor decoder{cfg.embedding_dim};
+  encoder->to(args.device);
+  decoder->to(args.device);
 
   auto params = encoder->parameters();
   auto dec_params = decoder->parameters();
