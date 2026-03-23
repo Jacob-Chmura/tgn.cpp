@@ -111,12 +111,11 @@ auto eval(tgn::TGN& encoder, LinkPredictor& decoder,
 
   std::vector<float> perf_list;
   const auto e_range = store->val_split();
+  const auto device = encoder->device();
 
   for (auto e_id = e_range.start(); e_id < e_range.end();
        e_id += args.batch_size) {
-    const auto batch = store->get_batch(e_id, args.batch_size,
-                                        tguf::TGStore::NegStrategy::PreComputed,
-                                        encoder->device());
+    const auto batch = store->get_batch(e_id, args.batch_size, tguf::TGStore::NegStrategy::PreComputed, device;
     const auto [z_src, z_dst, z_neg] =
         encoder->forward(batch.src, batch.dst, batch.neg_dst->flatten());
 

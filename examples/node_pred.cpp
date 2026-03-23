@@ -71,6 +71,7 @@ auto train(tgn::TGN& encoder, NodePredictor& decoder, torch::optim::Adam& opt,
 
   float total_loss{0};
 
+  const auto device = encoder->device();
   const auto e_range = store->train_split();
   const auto l_range = store->train_label_split();
   auto e_id = e_range.start();
@@ -82,8 +83,7 @@ auto train(tgn::TGN& encoder, NodePredictor& decoder, torch::optim::Adam& opt,
     if (e_id < stop_e_id) {
       const auto num_edges_to_process = stop_e_id - e_id;
       const auto batch =
-          store->get_batch(e_id, num_edges_to_process,
-                           tguf::TGStore::NegStrategy::None, encoder->device());
+          store->get_batch(e_id, num_edges_to_process, tguf::TGStore::NegStrategy::None, device;
 
       encoder->update_state(batch.src, batch.dst, batch.time, batch.msg);
       e_id = stop_e_id;
@@ -91,7 +91,7 @@ auto train(tgn::TGN& encoder, NodePredictor& decoder, torch::optim::Adam& opt,
 
     opt.zero_grad();
 
-    const auto label_event = store->get_label_event(l_id++, encoder->device());
+    const auto label_event = store->get_label_event(l_id++, device);
     const auto [z] = encoder->forward(label_event.n_id);
     const auto y_pred = decoder->forward(z);
 
@@ -123,6 +123,7 @@ auto eval(tgn::TGN& encoder, NodePredictor& decoder,
 
   std::vector<float> perf_list;
 
+  const auto device = encoder->device();
   const auto e_range = store->val_split();
   const auto l_range = store->val_label_split();
   auto e_id = e_range.start();
@@ -132,15 +133,14 @@ auto eval(tgn::TGN& encoder, NodePredictor& decoder,
     const auto stop_e_id = store->get_edge_cutoff_for_label_event(l_id);
     if (e_id < stop_e_id) {
       const auto num_edges_to_process = stop_e_id - e_id;
-      const auto batch =
-          store->get_batch(e_id, num_edges_to_process,
-                           tguf::TGStore::NegStrategy::None, encoder->device());
+      const auto batch = store->get_batch(
+          e_id, num_edges_to_process, tguf::TGStore::NegStrategy::None, device);
 
       encoder->update_state(batch.src, batch.dst, batch.time, batch.msg);
       e_id = stop_e_id;
     }
 
-    const auto label_event = store->get_label_event(l_id++, encoder->device());
+    const auto label_event = store->get_label_event(l_id++, device);
     const auto [z] = encoder->forward(label_event.n_id);
     const auto y_pred = decoder->forward(z);
     perf_list.push_back(compute_ndcg(y_pred, label_event.target));
