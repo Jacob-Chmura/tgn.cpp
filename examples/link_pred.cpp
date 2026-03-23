@@ -20,11 +20,12 @@ util::TGNArgs args{};
 std::size_t current_epoch = 1;
 
 struct LinkPredictorImpl : torch::nn::Module {
-  explicit LinkPredictorImpl(std::size_t in_dim) {
+  explicit LinkPredictorImpl(std::size_t in_dim, torch::Device device = torch::kCPU) {
     w_src_ = register_module("w_src_", torch::nn::Linear(in_dim, in_dim));
     w_dst_ = register_module("w_dst_", torch::nn::Linear(in_dim, in_dim));
     w_final_ = register_module("w_final_", torch::nn::Linear(in_dim, 1));
-    TGUF_LOG_INFO("LinkDecoder: Initialized (in_channels={})", in_dim);
+    this->to(device);
+    TGUF_LOG_INFO("LinkDecoder: Initialized on {} (in_channels={})", device.str(), in_dim);
   }
 
   auto forward(const torch::Tensor& z_src, const torch::Tensor& z_dst)
@@ -68,7 +69,7 @@ auto train(tgn::TGN& encoder, LinkPredictor& decoder, torch::optim::Adam& opt,
     opt.zero_grad();
 
     const auto batch = store->get_batch(e_id, args.batch_size,
-                                        tguf::TGStore::NegStrategy::Random);
+                                        tguf::TGStore::NegStrategy::Random, encoder->device());
     const auto [z_src, z_dst, z_neg] =
         encoder->forward(batch.src, batch.dst, batch.neg_dst->flatten());
 
@@ -111,7 +112,7 @@ auto eval(tgn::TGN& encoder, LinkPredictor& decoder,
   for (auto e_id = e_range.start(); e_id < e_range.end();
        e_id += args.batch_size) {
     const auto batch = store->get_batch(
-        e_id, args.batch_size, tguf::TGStore::NegStrategy::PreComputed);
+        e_id, args.batch_size, tguf::TGStore::NegStrategy::PreComputed, encoder->device());
     const auto [z_src, z_dst, z_neg] =
         encoder->forward(batch.src, batch.dst, batch.neg_dst->flatten());
 
@@ -149,16 +150,15 @@ auto main(int argc, char** argv) -> int {
 
   const std::shared_ptr<tguf::TGStore> store =
       tguf::TGStore::from_tguf(args.tguf_path);
-  const auto cfg = tgn::TGNConfig{.embedding_dim = args.embedding_dim,
+  const auto cfg = tgn::TGNConfig{.device = args.device,
+                                  .embedding_dim = args.embedding_dim,
                                   .memory_dim = args.memory_dim,
                                   .time_dim = args.time_dim,
                                   .num_heads = args.num_heads,
                                   .num_nbrs = args.num_nbrs,
                                   .dropout = args.dropout};
   tgn::TGN encoder(cfg, store);
-  LinkPredictor decoder{cfg.embedding_dim};
-  encoder->to(args.device);
-  decoder->to(args.device);
+  LinkPredictor decoder{cfg.embedding_dim, cfg.device};
 
   auto params = encoder->parameters();
   auto dec_params = decoder->parameters();

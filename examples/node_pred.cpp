@@ -21,16 +21,16 @@ util::TGNArgs args{};
 std::size_t current_epoch = 1;
 
 struct NodePredictorImpl : torch::nn::Module {
-  explicit NodePredictorImpl(std::size_t in_dim, std::size_t out_dim,
-                             std::size_t hidden_dim = 64) {
+  explicit NodePredictorImpl(std::size_t in_dim, std::size_t out_dim, torch::Device device = torch::kCPU, std::size_t hidden_dim=64) {
     model_ = torch::nn::Sequential(torch::nn::Linear(in_dim, hidden_dim),
                                    torch::nn::ReLU(),
                                    torch::nn::Linear(hidden_dim, out_dim));
     register_module("model_", model_);
+    this->to(device);
     TGUF_LOG_INFO(
-        "NodeDecoder: Initialized (in_channels={}, hidden_dim={}, "
+        "NodeDecoder: Initialized on {} (in_channels={}, hidden_dim={}, "
         "out_channels={})",
-        in_dim, hidden_dim, out_dim);
+        device.str(), in_dim, hidden_dim, out_dim);
   }
 
   auto forward(const torch::Tensor& z_node) -> torch::Tensor {
@@ -45,7 +45,7 @@ TORCH_MODULE(NodePredictor);
 auto compute_ndcg(const torch::Tensor& y_pred, const torch::Tensor& y_true,
                   std::int64_t k = 10) -> float {
   k = std::min(k, y_pred.size(-1));
-  const auto ranks = torch::arange(1, k + 1).to(torch::kFloat32);
+  const auto ranks = torch::arange(1, k + 1, y_pred.options().dtype(torch::kFloat32));
   const auto discounts = torch::log2(ranks + 1.0);
 
   const auto [pred_labels, pred_indices] = y_pred.topk(k, -1);
@@ -78,7 +78,7 @@ auto train(tgn::TGN& encoder, NodePredictor& decoder, torch::optim::Adam& opt,
     const auto stop_e_id = store->get_edge_cutoff_for_label_event(l_id);
     if (e_id < stop_e_id) {
       const auto num_edges_to_process = stop_e_id - e_id;
-      const auto batch = store->get_batch(e_id, num_edges_to_process);
+      const auto batch = store->get_batch(e_id, num_edges_to_process, tguf::TGStore::NegStrategy::None, encoder->device());
 
       encoder->update_state(batch.src, batch.dst, batch.time, batch.msg);
       e_id = stop_e_id;
@@ -86,7 +86,7 @@ auto train(tgn::TGN& encoder, NodePredictor& decoder, torch::optim::Adam& opt,
 
     opt.zero_grad();
 
-    const auto label_event = store->get_label_event(l_id++);
+    const auto label_event = store->get_label_event(l_id++, encoder->device());
     const auto [z] = encoder->forward(label_event.n_id);
     const auto y_pred = decoder->forward(z);
 
@@ -127,13 +127,13 @@ auto eval(tgn::TGN& encoder, NodePredictor& decoder,
     const auto stop_e_id = store->get_edge_cutoff_for_label_event(l_id);
     if (e_id < stop_e_id) {
       const auto num_edges_to_process = stop_e_id - e_id;
-      const auto batch = store->get_batch(e_id, num_edges_to_process);
+      const auto batch = store->get_batch(e_id, num_edges_to_process, tguf::TGStore::NegStrategy::None, encoder->device());
 
       encoder->update_state(batch.src, batch.dst, batch.time, batch.msg);
       e_id = stop_e_id;
     }
 
-    const auto label_event = store->get_label_event(l_id++);
+    const auto label_event = store->get_label_event(l_id++, encoder->device());
     const auto [z] = encoder->forward(label_event.n_id);
     const auto y_pred = decoder->forward(z);
     perf_list.push_back(compute_ndcg(y_pred, label_event.target));
@@ -157,7 +157,8 @@ auto main(int argc, char** argv) -> int {
 
   const std::shared_ptr<tguf::TGStore> store =
       tguf::TGStore::from_tguf(args.tguf_path);
-  const auto cfg = tgn::TGNConfig{.embedding_dim = args.embedding_dim,
+  const auto cfg = tgn::TGNConfig{.device = args.device,
+                                  .embedding_dim = args.embedding_dim,
                                   .memory_dim = args.memory_dim,
                                   .time_dim = args.time_dim,
                                   .num_heads = args.num_heads,
@@ -165,9 +166,7 @@ auto main(int argc, char** argv) -> int {
                                   .dropout = args.dropout};
   tgn::TGN encoder(cfg, store);
   NodePredictor decoder{cfg.embedding_dim,
-                        store->label_dim() /* num_classes */};
-  encoder->to(args.device);
-  decoder->to(args.device);
+                        store->label_dim() /* num_classes */, cfg.device};
 
   auto params = encoder->parameters();
   auto dec_params = decoder->parameters();

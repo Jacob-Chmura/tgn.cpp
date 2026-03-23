@@ -45,12 +45,14 @@ else() # Target Linux x86_64
     endif()
 endif()
 
+message(STATUS "Downloading Libtorch (${LIBTORCH_URL})")
 FetchContent_Declare(
     libtorch
     URL ${LIBTORCH_URL}
     DOWNLOAD_EXTRACT_TIMESTAMP ON
 )
 FetchContent_MakeAvailable(libtorch)
+message(STATUS "Downloading Libtorch (${LIBTORCH_URL}) - done")
 
 set(CMAKE_PREFIX_PATH ${libtorch_SOURCE_DIR})
 find_package(Torch REQUIRED)

@@ -16,6 +16,7 @@ def test_tgstore_from_memory(get_data):
 
     assert store.edge_count == num_edges
     assert store.node_count == num_edges + 1
+    assert store.label_count == 0
     assert store.msg_dim == 8
     assert store.label_dim == 0
     assert store.train_split.end == 15
@@ -46,6 +47,7 @@ def test_tgstore_from_tguf(schema, get_data):
 
     assert store.edge_count == num_edges
     assert store.node_count == num_edges + 1
+    assert store.label_count == 0
     assert store.msg_dim == 8
     assert store.label_dim == 0
     assert store.train_split.end == 15
