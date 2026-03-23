@@ -342,6 +342,7 @@ Use :meth:`from_memory` or :meth:`from_tguf` to instantiate.
 
       .def_prop_ro("edge_count", &tguf::TGStore::edge_count)
       .def_prop_ro("node_count", &tguf::TGStore::node_count)
+      .def_prop_ro("label_count", &tguf::TGStore::label_count)
       .def_prop_ro("msg_dim", &tguf::TGStore::msg_dim)
       .def_prop_ro("label_dim", &tguf::TGStore::label_dim)
       .def_prop_ro("node_feat_dim", &tguf::TGStore::node_feat_dim)

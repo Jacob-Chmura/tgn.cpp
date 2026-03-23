@@ -20,8 +20,10 @@ class LastNeighborLoader {
    * @brief Constructs the sampler and allocates persistent buffers.
    * @param num_nbrs The number of most neighbors ($K$) to track per node.
    * @param num_nodes The total capacity of the node index space ($N$).
+   * @param device The torch::Device to run on.
    */
-  LastNeighborLoader(std::size_t num_nbrs, std::size_t num_nodes);
+  LastNeighborLoader(std::size_t num_nbrs, std::size_t num_nodes,
+                     torch::Device device = torch::kCPU);
 
   /**
    * @brief Samples the temporal neighborhood and performs local relabeling.

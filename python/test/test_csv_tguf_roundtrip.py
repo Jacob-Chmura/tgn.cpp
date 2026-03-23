@@ -94,6 +94,7 @@ def test_csv_tguf_roundtrip(resource_dir, output_tguf):
 
     assert store.edge_count == 3
     assert store.node_count == 31
+    assert store.label_count == 2
     assert store.msg_dim == 2
     assert store.label_dim == 2
     assert store.node_feat_dim == 3

@@ -50,7 +50,8 @@ auto scatter_softmax(const torch::Tensor& src, const torch::Tensor& index,
 auto scatter_argmax(const torch::Tensor& src, const torch::Tensor& index,
                     std::int64_t dim_size) -> torch::Tensor {
   auto res = scatter_max(src, index, dim_size);
-  auto out = torch::full({dim_size}, /*fill_value*/ dim_size - 1);
+  auto out = torch::full({dim_size}, /*fill_value*/ dim_size - 1,
+                         src.options().dtype(torch::kLong));
 
   // Find where edge values match the winning max for each node
   const auto mask = src == res.index_select(0, index);

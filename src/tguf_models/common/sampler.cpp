@@ -10,20 +10,21 @@
 namespace tgn {
 
 LastNeighborLoader::LastNeighborLoader(std::size_t num_nbrs,
-                                       std::size_t num_nodes)
+                                       std::size_t num_nodes,
+                                       torch::Device device)
     : buffer_size_(static_cast<std::int64_t>(num_nbrs)),
       buffer_nbrs_(torch::empty({static_cast<std::int64_t>(num_nodes),
                                  static_cast<std::int64_t>(num_nbrs)},
-                                torch::TensorOptions().dtype(torch::kLong))),
+                                torch::device(device).dtype(torch::kLong))),
       buffer_e_id_(torch::empty({static_cast<std::int64_t>(num_nodes),
                                  static_cast<std::int64_t>(num_nbrs)},
-                                torch::TensorOptions().dtype(torch::kLong))),
+                                torch::device(device).dtype(torch::kLong))),
       assoc_(torch::empty({static_cast<std::int64_t>(num_nodes)},
-                          torch::TensorOptions().dtype(torch::kLong))) {
+                          torch::device(device).dtype(torch::kLong))) {
   const auto bytes =
       buffer_nbrs_.nbytes() + buffer_e_id_.nbytes() + assoc_.nbytes();
-  TGUF_LOG_INFO("Sampler: ~{:.2f} MiB allocated ({} nodes, {} nbrs/node)",
-                bytes / (1024.0 * 1024.0), num_nodes, num_nbrs);
+  TGUF_LOG_INFO("Sampler: ~{:.2f} MiB allocated on {} ({} nodes, {} nbrs/node)",
+                bytes / (1024.0 * 1024.0), device.str(), num_nodes, num_nbrs);
   reset_state();
 }
 

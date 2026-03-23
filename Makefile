@@ -7,8 +7,6 @@ GPU_ARCH ?= native
 CMAKE_FLAGS := -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -DCUDA_VERSION=$(CUDA_VERSION)
 
 ifneq ($(CUDA_VERSION), cpu)
-    CMAKE_FLAGS += -DCMAKE_CUDA_ARCHITECTURES=$(GPU_ARCH)
-
     # Add Torch-specific Arch list (converts 80 -> 8.0)
     ifneq ($(GPU_ARCH), native)
         TORCH_ARCH := $(shell echo $(GPU_ARCH) | sed 's/\([0-9]\)\([0-9]\)/\1.\2/')
@@ -20,6 +18,11 @@ ifneq ($(CUDA_VERSION), cpu)
     ifneq ("$(wildcard $(CUDA_PATH)/bin/nvcc)","")
         CMAKE_FLAGS += -DCMAKE_CUDA_COMPILER=$(CUDA_PATH)/bin/nvcc
     endif
+endif
+
+PYTHON_BUILD_FLAGS := -DTGN_BUILD_PYTHON=ON
+ifneq ($(CUDA_VERSION), cpu)
+    PYTHON_BUILD_FLAGS += -DCMAKE_CUDA_ARCHITECTURES=$(GPU_ARCH)
 endif
 
 NPROCS := $(shell nproc 2>/dev/null || sysctl -n hw.logicalcpu)
@@ -147,11 +150,11 @@ data/%.tguf: python
 
 .PHONY: run-link-%
 run-link-%: examples data/%.tguf
-	@$(EXAMPLE_LINK) data/$*.tguf
+	@$(EXAMPLE_LINK) data/$*.tguf $(ARGS)
 
 .PHONY: run-node-%
 run-node-%: examples data/%.tguf
-	@$(EXAMPLE_NODE) data/$*.tguf
+	@$(EXAMPLE_NODE) data/$*.tguf $(ARGS)
 
 .PHONY: profile-build
 profile-build: $(PROFILE_DIR)/CMakeCache.txt
@@ -173,7 +176,7 @@ download-%: data/%.tguf
 python:
 	@(cd python && \
 		uv sync --group dev --no-install-project && \
-		SKBUILD_CMAKE_ARGS="-DTGN_BUILD_PYTHON=ON" \
+		SKBUILD_CMAKE_ARGS="$(PYTHON_BUILD_FLAGS)" \
 		uv pip install -e . --no-build-isolation)
 
 .PHONY: test-python

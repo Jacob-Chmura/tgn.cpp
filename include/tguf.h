@@ -164,10 +164,12 @@ class TGStore {
    * @param start The starting edge ID.
    * @param size The number of edges to include.
    * @param strategy The negative sampling strategy to apply.
+   * @param device The torch::Device to materialize the batch on.
    */
-  [[nodiscard]] virtual auto get_batch(
-      std::size_t start, std::size_t size,
-      NegStrategy strategy = NegStrategy::None) const -> Batch = 0;
+  [[nodiscard]] virtual auto get_batch(std::size_t start, std::size_t size,
+                                       NegStrategy strategy = NegStrategy::None,
+                                       torch::Device device = torch::kCPU) const
+      -> Batch = 0;
 
   /** * @brief Performs a vectorized random-access gather of edge timestamps.
    * @param e_id Tensor of edge indices [num_edges].
@@ -205,9 +207,11 @@ class TGStore {
 
   /** * @brief Retrieves the metadata and target for a specific label event.
    * @param l_id The index of the label event.
+   * @param device The torch::Device to materialize data on.
    * @return A @ref LabelEvent containing affected node IDs and target values.
    */
-  [[nodiscard]] virtual auto get_label_event(std::size_t l_id) const
+  [[nodiscard]] virtual auto get_label_event(
+      std::size_t l_id, torch::Device device = torch::kCPU) const
       -> LabelEvent = 0;
 };
 

@@ -326,7 +326,7 @@ class TGStoreImpl final : public TGStore {
   }
 
   [[nodiscard]] auto get_batch(std::size_t start, std::size_t batch_size,
-                               NegStrategy strategy = NegStrategy::None) const
+                               NegStrategy strategy, torch::Device device) const
       -> Batch override {
     const auto end = std::min(start + batch_size, num_edges_);
     const auto s = static_cast<std::int64_t>(start);
@@ -340,7 +340,7 @@ class TGStoreImpl final : public TGStore {
       TORCH_CHECK(sampler_.has_value(),
                   "Random sampling requested but sampler not initialized "
                   "(train split is empty)");
-      batch_neg = sampler_->sample(e - s);
+      batch_neg = sampler_->sample(e - s).to(device, true);
     } else if (strategy == NegStrategy::PreComputed) {
       TGUF_LOG_DEBUG("TGStore: get_batch [{}:{}] (NegStrategy::PreComputed)",
                      start, end);
@@ -353,28 +353,38 @@ class TGStoreImpl final : public TGStore {
             std::to_string(s) + " but negative storage starts at " +
             std::to_string(negatives_start_e_id_));
       }
-      batch_neg = neg_dst_->slice(0, s - negatives_start_e_id_,
-                                  e - negatives_start_e_id_);
+      batch_neg =
+          neg_dst_
+              ->slice(0, s - negatives_start_e_id_, e - negatives_start_e_id_)
+              .to(device, true);
     } else {
       TGUF_LOG_DEBUG("TGStore: get_batch [{}:{}] (NegStrategy::None)", start,
                      end);
     }
 
-    return Batch{.src = src_.slice(0, s, e),
-                 .dst = dst_.slice(0, s, e),
-                 .time = t_.slice(0, s, e),
-                 .msg = msg_.slice(0, s, e),
+    return Batch{.src = src_.slice(0, s, e).to(device, true),
+                 .dst = dst_.slice(0, s, e).to(device, true),
+                 .time = t_.slice(0, s, e).to(device, true),
+                 .msg = msg_.slice(0, s, e).to(device, true),
                  .neg_dst = batch_neg};
   }
 
   [[nodiscard]] auto gather_timestamps(const torch::Tensor& e_id) const
       -> torch::Tensor override {
-    return t_.index_select(0, e_id.flatten());
+    const auto e_id_cpu = e_id.device().is_cpu()
+                              ? e_id.flatten()
+                              : e_id.to(torch::kCPU).flatten();
+    auto out = torch::empty({e_id_cpu.size(0)}, t_.options());
+    return at::index_select_out(out, t_, 0, e_id_cpu).to(e_id.device(), true);
   }
 
   [[nodiscard]] auto gather_msgs(const torch::Tensor& e_id) const
       -> torch::Tensor override {
-    return msg_.index_select(0, e_id.flatten());
+    const auto e_id_cpu = e_id.device().is_cpu()
+                              ? e_id.flatten()
+                              : e_id.to(torch::kCPU).flatten();
+    auto out = torch::empty({e_id_cpu.size(0), msg_.size(1)}, msg_.options());
+    return at::index_select_out(out, msg_, 0, e_id_cpu).to(e_id.device(), true);
   }
 
   [[nodiscard]] auto gather_node_feats(const torch::Tensor& n_id) const
@@ -384,8 +394,12 @@ class TGStoreImpl final : public TGStore {
     }
 
     // Every ID outside [0, num_nodes-1] hits the padded row (all zeros)
-    const auto safe_ids = n_id.clamp(0, node_feats_->size(0) - 1);
-    return node_feats_->index_select(0, safe_ids.flatten());
+    const auto n_id_cpu = n_id.device().is_cpu() ? n_id : n_id.to(torch::kCPU);
+    const auto safe_ids = n_id.clamp(0, node_feats_->size(0) - 1).flatten();
+    auto out = torch::empty({safe_ids.size(0), node_feats_->size(1)},
+                            node_feats_->options());
+    return at::index_select_out(out, node_feats_.value(), 0, safe_ids)
+        .to(n_id.device(), true);
   }
 
   [[nodiscard]] auto get_edge_cutoff_for_label_event(std::size_t l_id) const
@@ -396,12 +410,17 @@ class TGStoreImpl final : public TGStore {
     return stop_e_ids_.at(l_id);
   }
 
-  [[nodiscard]] auto get_label_event(std::size_t l_id) const
+  [[nodiscard]] auto get_label_event(std::size_t l_id,
+                                     torch::Device device) const
       -> LabelEvent override {
     TORCH_CHECK(l_id < label_events_.size(),
                 "TGStore: Requested LabelEvent at index ", l_id, " but only ",
                 label_events_.size(), " events exist.");
-    return label_events_.at(l_id);
+    const auto le = label_events_.at(l_id);
+    return LabelEvent{
+        .n_id = le.n_id.to(device, true),
+        .target = le.target.to(device, true),
+    };
   }
 
  private:
