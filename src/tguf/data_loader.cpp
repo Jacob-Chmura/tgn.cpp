@@ -34,7 +34,7 @@ auto AsyncDataLoader<T>::start(std::size_t start_idx, std::size_t end_idx,
       auto current_batch_size = std::min(batch_size, end_idx - i);
 
       // Wait for space in the prefetch buffer
-      std::unique_lock<std::mutex> lock(mutex_);
+      std::unique_lock<std::mutex> lock(mtx_);
       cv_full_.wait(lock,
                     [this] { return q_.size() < prefetch_factor_ || stop_; });
       if (stop_) {
@@ -45,7 +45,6 @@ auto AsyncDataLoader<T>::start(std::size_t start_idx, std::size_t end_idx,
       auto task = std::async(std::launch::async, [fn, i, current_batch_size] {
         return fn(i, current_batch_size);
       });
-
       q_.push(std::move(task));
 
       // Signal the consumer
@@ -58,7 +57,7 @@ auto AsyncDataLoader<T>::start(std::size_t start_idx, std::size_t end_idx,
 template <typename T>
 auto AsyncDataLoader<T>::stop() -> void {
   {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard<std::mutex> lock(mtx_);
     if (stop_) {
       return;
     }
@@ -67,12 +66,11 @@ auto AsyncDataLoader<T>::stop() -> void {
 
   cv_full_.notify_all();
   cv_empty_.notify_all();
-
   if (worker_.joinable()) {
     worker_.join();
   }
 
-  std::lock_guard<std::mutex> lock(mutex_);
+  std::lock_guard<std::mutex> lock(mtx_);
   while (!q_.empty()) {
     q_.pop();
   }
@@ -80,7 +78,7 @@ auto AsyncDataLoader<T>::stop() -> void {
 
 template <typename T>
 auto AsyncDataLoader<T>::next() -> std::optional<T> {
-  std::unique_lock<std::mutex> lock(mutex_);
+  std::unique_lock<std::mutex> lock(mtx_);
 
   // Wait for a task to be available or for the loader to stop
   cv_empty_.wait(lock, [this] { return !q_.empty() || stop_; });

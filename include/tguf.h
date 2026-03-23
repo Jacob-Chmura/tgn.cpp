@@ -256,9 +256,9 @@ class AsyncDataLoader {
 
  private:
   std::size_t prefetch_factor_{};
-  std::queue<std::future<T>> queue_{};
+  std::queue<std::future<T>> q_{};
   std::thread worker_{};
-  std::mutex mutex_{};
+  std::mutex mtx_{};
   std::condition_variable cv_empty_{}, cv_full_{};
   bool stop_{false};
 };
