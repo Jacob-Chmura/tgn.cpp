@@ -2,10 +2,16 @@
 
 #include <torch/types.h>
 
+#include <condition_variable>
 #include <cstddef>
+#include <cstdint>
+#include <future>
 #include <memory>
+#include <mutex>
 #include <optional>
+#include <queue>
 #include <string>
+#include <thread>
 
 /** @namespace tguf
  * @brief Temporal Graph Unified Format: A Temporal Graph Stream Format.
@@ -213,6 +219,48 @@ class TGStore {
   [[nodiscard]] virtual auto get_label_event(
       std::size_t l_id, torch::Device device = torch::kCPU) const
       -> LabelEvent = 0;
+};
+
+/**
+ * @class AsyncDataLoader
+ * @brief A generic producer-consumer pipeline for asynchronous data fetching.
+ * @tparam T The type of the data batch being produced.
+ */
+template <typename T>
+class AsyncDataLoader {
+ public:
+  explicit AsyncDataLoader(std::size_t prefetch_factor);
+  ~AsyncDataLoader();
+
+  /**
+   * @brief Start the background producer thread.
+   * @tparam Producer A callable type.
+   * @param start_idx The start edge index to iterate from.
+   * @param end_idx The end edge index to iterate to (exclusive).
+   * @param batch_size The step size to use for each batch.
+   */
+  // TODO(kuba): use concepts here
+  template <typename Producer>
+  auto start(std::size_t start_idx, std::size_t end_idx, std::size_t batch_size,
+             Producer&& producer) -> void;
+
+  /**
+   * @brief Stop the background producer thread.
+   */
+  auto stop() -> void;
+
+  /**
+   * @brief Retrieve next materialized batch by the producer. Blocks if empty.
+   */
+  auto next() -> std::optional<T>;
+
+ private:
+  std::size_t prefetch_factor_{};
+  std::queue<std::future<T>> q_{};
+  std::thread worker_{};
+  std::mutex mtx_{};
+  std::condition_variable cv_empty_{}, cv_full_{};
+  bool stop_{false};
 };
 
 }  // namespace tguf
