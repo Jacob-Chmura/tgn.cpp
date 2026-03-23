@@ -20,10 +20,10 @@ namespace tgn {
  * @brief Configuration parameters for the TGN model architecture.
  */
 struct TGNConfig {
-  torch::Device device = torch::kCPU; ///< Default to CPU.
-  std::size_t embedding_dim = 100;  ///< TransformerConv embedding size.
-  std::size_t memory_dim = 100;     ///< TGNMemory embedding size.
-  std::size_t time_dim = 100;       ///< TimeEncoder embedding size.
+  torch::Device device = torch::kCPU;  ///< Default to CPU.
+  std::size_t embedding_dim = 100;     ///< TransformerConv embedding size.
+  std::size_t memory_dim = 100;        ///< TGNMemory embedding size.
+  std::size_t time_dim = 100;          ///< TimeEncoder embedding size.
   std::size_t num_heads = 2;  ///< TransformerConv multi-head attention heads.
   std::size_t num_nbrs = 10;  ///< RecencySampler neighbor buffer size.
   float dropout = 0.1;        ///< TransformerConv dropout.

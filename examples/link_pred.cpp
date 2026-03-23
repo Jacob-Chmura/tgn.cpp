@@ -20,12 +20,14 @@ util::TGNArgs args{};
 std::size_t current_epoch = 1;
 
 struct LinkPredictorImpl : torch::nn::Module {
-  explicit LinkPredictorImpl(std::size_t in_dim, torch::Device device = torch::kCPU) {
+  explicit LinkPredictorImpl(std::size_t in_dim,
+                             torch::Device device = torch::kCPU) {
     w_src_ = register_module("w_src_", torch::nn::Linear(in_dim, in_dim));
     w_dst_ = register_module("w_dst_", torch::nn::Linear(in_dim, in_dim));
     w_final_ = register_module("w_final_", torch::nn::Linear(in_dim, 1));
     this->to(device);
-    TGUF_LOG_INFO("LinkDecoder: Initialized on {} (in_channels={})", device.str(), in_dim);
+    TGUF_LOG_INFO("LinkDecoder: Initialized on {} (in_channels={})",
+                  device.str(), in_dim);
   }
 
   auto forward(const torch::Tensor& z_src, const torch::Tensor& z_dst)
@@ -68,8 +70,9 @@ auto train(tgn::TGN& encoder, LinkPredictor& decoder, torch::optim::Adam& opt,
        e_id += args.batch_size) {
     opt.zero_grad();
 
-    const auto batch = store->get_batch(e_id, args.batch_size,
-                                        tguf::TGStore::NegStrategy::Random, encoder->device());
+    const auto batch =
+        store->get_batch(e_id, args.batch_size,
+                         tguf::TGStore::NegStrategy::Random, encoder->device());
     const auto [z_src, z_dst, z_neg] =
         encoder->forward(batch.src, batch.dst, batch.neg_dst->flatten());
 
@@ -111,8 +114,9 @@ auto eval(tgn::TGN& encoder, LinkPredictor& decoder,
 
   for (auto e_id = e_range.start(); e_id < e_range.end();
        e_id += args.batch_size) {
-    const auto batch = store->get_batch(
-        e_id, args.batch_size, tguf::TGStore::NegStrategy::PreComputed, encoder->device());
+    const auto batch = store->get_batch(e_id, args.batch_size,
+                                        tguf::TGStore::NegStrategy::PreComputed,
+                                        encoder->device());
     const auto [z_src, z_dst, z_neg] =
         encoder->forward(batch.src, batch.dst, batch.neg_dst->flatten());
 

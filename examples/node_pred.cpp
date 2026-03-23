@@ -21,7 +21,9 @@ util::TGNArgs args{};
 std::size_t current_epoch = 1;
 
 struct NodePredictorImpl : torch::nn::Module {
-  explicit NodePredictorImpl(std::size_t in_dim, std::size_t out_dim, torch::Device device = torch::kCPU, std::size_t hidden_dim=64) {
+  explicit NodePredictorImpl(std::size_t in_dim, std::size_t out_dim,
+                             torch::Device device = torch::kCPU,
+                             std::size_t hidden_dim = 64) {
     model_ = torch::nn::Sequential(torch::nn::Linear(in_dim, hidden_dim),
                                    torch::nn::ReLU(),
                                    torch::nn::Linear(hidden_dim, out_dim));
@@ -45,7 +47,8 @@ TORCH_MODULE(NodePredictor);
 auto compute_ndcg(const torch::Tensor& y_pred, const torch::Tensor& y_true,
                   std::int64_t k = 10) -> float {
   k = std::min(k, y_pred.size(-1));
-  const auto ranks = torch::arange(1, k + 1, y_pred.options().dtype(torch::kFloat32));
+  const auto ranks =
+      torch::arange(1, k + 1, y_pred.options().dtype(torch::kFloat32));
   const auto discounts = torch::log2(ranks + 1.0);
 
   const auto [pred_labels, pred_indices] = y_pred.topk(k, -1);
@@ -78,7 +81,9 @@ auto train(tgn::TGN& encoder, NodePredictor& decoder, torch::optim::Adam& opt,
     const auto stop_e_id = store->get_edge_cutoff_for_label_event(l_id);
     if (e_id < stop_e_id) {
       const auto num_edges_to_process = stop_e_id - e_id;
-      const auto batch = store->get_batch(e_id, num_edges_to_process, tguf::TGStore::NegStrategy::None, encoder->device());
+      const auto batch =
+          store->get_batch(e_id, num_edges_to_process,
+                           tguf::TGStore::NegStrategy::None, encoder->device());
 
       encoder->update_state(batch.src, batch.dst, batch.time, batch.msg);
       e_id = stop_e_id;
@@ -127,7 +132,9 @@ auto eval(tgn::TGN& encoder, NodePredictor& decoder,
     const auto stop_e_id = store->get_edge_cutoff_for_label_event(l_id);
     if (e_id < stop_e_id) {
       const auto num_edges_to_process = stop_e_id - e_id;
-      const auto batch = store->get_batch(e_id, num_edges_to_process, tguf::TGStore::NegStrategy::None, encoder->device());
+      const auto batch =
+          store->get_batch(e_id, num_edges_to_process,
+                           tguf::TGStore::NegStrategy::None, encoder->device());
 
       encoder->update_state(batch.src, batch.dst, batch.time, batch.msg);
       e_id = stop_e_id;
@@ -165,8 +172,8 @@ auto main(int argc, char** argv) -> int {
                                   .num_nbrs = args.num_nbrs,
                                   .dropout = args.dropout};
   tgn::TGN encoder(cfg, store);
-  NodePredictor decoder{cfg.embedding_dim,
-                        store->label_dim() /* num_classes */, cfg.device};
+  NodePredictor decoder{cfg.embedding_dim, store->label_dim() /* num_classes */,
+                        cfg.device};
 
   auto params = encoder->parameters();
   auto dec_params = decoder->parameters();

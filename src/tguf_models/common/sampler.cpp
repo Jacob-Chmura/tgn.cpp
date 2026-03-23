@@ -10,7 +10,8 @@
 namespace tgn {
 
 LastNeighborLoader::LastNeighborLoader(std::size_t num_nbrs,
-                                       std::size_t num_nodes, torch::Device device)
+                                       std::size_t num_nodes,
+                                       torch::Device device)
     : buffer_size_(static_cast<std::int64_t>(num_nbrs)),
       buffer_nbrs_(torch::empty({static_cast<std::int64_t>(num_nodes),
                                  static_cast<std::int64_t>(num_nbrs)},

@@ -22,7 +22,8 @@ class LastNeighborLoader {
    * @param num_nodes The total capacity of the node index space ($N$).
    * @param device The torch::Device to run on.
    */
-  LastNeighborLoader(std::size_t num_nbrs, std::size_t num_nodes, torch::Device device = torch::kCPU);
+  LastNeighborLoader(std::size_t num_nbrs, std::size_t num_nodes,
+                     torch::Device device = torch::kCPU);
 
   /**
    * @brief Samples the temporal neighborhood and performs local relabeling.
