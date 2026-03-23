@@ -65,14 +65,14 @@ auto train(tgn::TGN& encoder, LinkPredictor& decoder, torch::optim::Adam& opt,
 
   float total_loss{0};
   const auto e_range = store->train_split();
+  const auto device = encoder->device();
 
   for (auto e_id = e_range.start(); e_id < e_range.end();
        e_id += args.batch_size) {
     opt.zero_grad();
 
-    const auto batch =
-        store->get_batch(e_id, args.batch_size,
-                         tguf::TGStore::NegStrategy::Random, encoder->device());
+    const auto batch = store->get_batch(
+        e_id, args.batch_size, tguf::TGStore::NegStrategy::Random, device);
     const auto [z_src, z_dst, z_neg] =
         encoder->forward(batch.src, batch.dst, batch.neg_dst->flatten());
 
@@ -115,7 +115,8 @@ auto eval(tgn::TGN& encoder, LinkPredictor& decoder,
 
   for (auto e_id = e_range.start(); e_id < e_range.end();
        e_id += args.batch_size) {
-    const auto batch = store->get_batch(e_id, args.batch_size, tguf::TGStore::NegStrategy::PreComputed, device;
+    const auto batch = store->get_batch(
+        e_id, args.batch_size, tguf::TGStore::NegStrategy::PreComputed, device);
     const auto [z_src, z_dst, z_neg] =
         encoder->forward(batch.src, batch.dst, batch.neg_dst->flatten());
 
